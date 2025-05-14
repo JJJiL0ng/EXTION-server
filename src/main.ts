@@ -12,6 +12,9 @@ async function bootstrap() {
       'http://localhost:3000',
       'https://docs.google.com',
       'https://*.googleusercontent.com',
+      'https://extion-server.railway.internal',
+      'https://extion-beta.vercel.app'
+
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -31,7 +34,7 @@ async function bootstrap() {
   // 포트 설정 (기본값: 8080)
   const port = process.env.PORT || 8080;
   
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   console.log(`🚀 Extion Server is running on port ${port}`);
 }
 
