@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { FormulaModule } from './modules/formula/formula.module';
+import { ArtifactModule } from './modules/artifact/artifact.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { FormulaModule } from './modules/formula/formula.module';
       envFilePath: '.env',
     }),
     FormulaModule,
+    ArtifactModule,
   ],
   controllers: [AppController],
   providers: [AppService],
