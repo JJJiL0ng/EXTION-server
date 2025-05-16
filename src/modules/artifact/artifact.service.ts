@@ -54,7 +54,7 @@ export class ArtifactService {
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.1,
-        max_tokens: 2000,
+        max_tokens: 4000,
       });
 
       const aiResponse = completion.choices[0]?.message?.content;
@@ -152,41 +152,63 @@ export class ArtifactService {
 3. **csvData는 자동으로 사용 가능**하므로 별도 import 불필요합니다.
 4. React hooks (useState, useEffect, useMemo)는 직접 사용 가능합니다.
 5. Recharts 컴포넌트들은 직접 사용 가능합니다.
-6. **Tailwind CSS만 사용**하세요.
-7. **모든 텍스트는 한국어**로 작성하세요.
-8. **반드시 데이터 검증 로직을 포함**하세요.
+6. **JSX 대신 React.createElement를 반드시 사용**하세요.
+7. **Tailwind CSS 클래스는 className 속성으로 전달**하세요.
+8. **모든 텍스트는 한국어**로 작성하세요.
+9. **반드시 데이터 검증 로직을 포함**하세요.
 
 ## 사용 가능한 라이브러리:
-- React (모든 hooks 포함)
+- React (모든 hooks 포함) - React.createElement 사용
 - Recharts (BarChart, LineChart, PieChart, XAxis, YAxis, Tooltip, Legend 등)
-- Tailwind CSS
+- Tailwind CSS (className 속성으로 적용)
 
 ## CSV 데이터 구조:
 - headers: [${headers.map(h => `"${h}"`).join(', ')}]
 - data: string[][] (2차원 배열)
 - 각 행은 헤더 순서대로 데이터가 배열되어 있습니다.
 
-## 필수 코드 구조:
+## 필수 코드 구조 (React.createElement 사용):
 \`\`\`javascript
 const ComponentToRender = () => {
   // 1. 데이터 검증 (필수)
   if (!csvData || !csvData.data) {
-    return <div className="text-center p-4 text-red-500">데이터가 없습니다.</div>;
+    return React.createElement('div', 
+      { className: 'text-center p-4 text-red-500' }, 
+      '데이터가 없습니다.'
+    );
   }
   
   // 2. 데이터 처리
-  const processedData = csvData.data.map((row, index) => ({
+  const processedData = csvData.data.slice(1).map((row, index) => ({
     // 필요한 데이터 변환
+    name: row[0],
+    value: parseFloat(row[1]) || 0
   }));
   
-  // 3. 렌더링
-  return (
-    <div className="w-full p-4">
-      {/* 컴포넌트 내용 */}
-    </div>
+  // 3. 렌더링 (React.createElement만 사용)
+  return React.createElement('div', 
+    { className: 'w-full p-4' },
+    React.createElement('h2', 
+      { className: 'text-center text-xl font-bold mb-4' }, 
+      '차트 제목'
+    ),
+    React.createElement(BarChart, 
+      { width: 600, height: 300, data: processedData },
+      React.createElement(XAxis, { dataKey: 'name' }),
+      React.createElement(YAxis, {}),
+      React.createElement(Tooltip, {}),
+      React.createElement(Legend, {}),
+      React.createElement(Bar, { dataKey: 'value', fill: '#8884d8' })
+    )
   );
 };
 \`\`\`
+
+## React.createElement 사용법:
+1. **기본 HTML 태그**: React.createElement('div', {속성들}, ...자식요소들)
+2. **React 컴포넌트**: React.createElement(BarChart, {속성들}, ...자식요소들)
+3. **속성 예시**: { className: 'css-class', onClick: handler, dataKey: 'field' }
+4. **자식 요소**: 문자열, 다른 React.createElement 호출, 배열 등
 
 ## 요청 타입: ${artifactType}
 ${artifactType === ArtifactType.CHART ? '- 차트 시각화에 집중하세요. 적절한 차트 타입(Bar, Line, Pie 등)을 선택하세요.' : ''}
@@ -203,7 +225,40 @@ const numericValue = parseFloat(row[1]) || 0;
 const integerValue = parseInt(row[2]) || 0;
 \`\`\`
 
-위 규칙을 준수하여 ComponentToRender 함수를 생성해주세요.`;
+## 실제 구현 예시:
+\`\`\`javascript
+const ComponentToRender = () => {
+  if (!csvData || !csvData.data || csvData.data.length < 2) {
+    return React.createElement('div', 
+      { className: 'text-center p-4 text-red-500' }, 
+      '데이터가 없습니다.'
+    );
+  }
+
+  const processedData = csvData.data.slice(1, 19).map((row) => ({
+    year: row[0],
+    value: parseInt(row[2]) || 0,
+  }));
+
+  return React.createElement('div', 
+    { className: 'w-full p-4' },
+    React.createElement('h2', 
+      { className: 'text-center text-xl font-bold mb-4' }, 
+      '데이터 분석 결과'
+    ),
+    React.createElement(BarChart, 
+      { width: 600, height: 300, data: processedData },
+      React.createElement(XAxis, { dataKey: 'year' }),
+      React.createElement(YAxis, {}),
+      React.createElement(Tooltip, {}),
+      React.createElement(Legend, {}),
+      React.createElement(Bar, { dataKey: 'value', fill: '#8884d8' })
+    )
+  );
+};
+\`\`\`
+
+**중요**: JSX를 절대 사용하지 말고, 모든 요소를 React.createElement로 생성해주세요. 이렇게 해야 프론트엔드에서 오류 없이 렌더링됩니다.`;
   }
 
   private createUserPrompt(userInput: string, sheetContext: any): string {
