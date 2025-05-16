@@ -1,8 +1,8 @@
-//src/modules/artifact/artifact.service.ts
+// src/modules/artifact/artifact.service.ts
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
-import { GenerateArtifactDto, ArtifactResponseDto, ArtifactType } from './dto/generate-artifact.dto';
+import { GenerateArtifactDto, ArtifactResponseDto, ArtifactType, ExtendedSheetContext, SheetsData, SheetContext } from './dto/generate-artifact.dto';
 
 @Injectable()
 export class ArtifactService {
@@ -19,21 +19,33 @@ export class ArtifactService {
     try {
       this.logger.log(`Generating artifact for: ${dto.userInput}`);
 
-      // 디버깅을 위한 sheetContext 로깅
-      this.logger.debug('=== SheetContext Debug Info ===');
-      this.logger.debug(`SheetName: ${dto.sheetContext?.sheetName}`);
-      this.logger.debug(`Headers: ${JSON.stringify(dto.sheetContext?.headers)}`);
-      this.logger.debug(`DataRange: ${JSON.stringify(dto.sheetContext?.dataRange)}`);
-      this.logger.debug(`SampleData type: ${typeof dto.sheetContext?.sampleData}`);
-      this.logger.debug(`SampleData length: ${dto.sheetContext?.sampleData?.length}`);
-      if (dto.sheetContext?.sampleData?.[0]) {
-        this.logger.debug(`First sample row type: ${typeof dto.sheetContext.sampleData[0]}`);
-        this.logger.debug(`First sample row: ${JSON.stringify(dto.sheetContext.sampleData[0])}`);
+      // 다중 시트 지원을 위한 컨텍스트 선택
+      const sheetContext = this.selectSheetContext(dto);
+      
+      // 디버깅을 위한 컨텍스트 로깅
+      this.logger.debug('=== Sheet Context Debug Info ===');
+      this.logger.debug(`Context Type: ${this.getContextType(dto)}`);
+      
+      if (dto.extendedSheetContext) {
+        this.logger.debug(`Extended - SheetName: ${dto.extendedSheetContext.sheetName}`);
+        this.logger.debug(`Extended - SheetIndex: ${dto.extendedSheetContext.sheetIndex}`);
+        this.logger.debug(`Extended - TotalSheets: ${dto.extendedSheetContext.totalSheets}`);
+        this.logger.debug(`Extended - Headers: ${JSON.stringify(dto.extendedSheetContext.headers)}`);
       }
-      this.logger.debug('=== End SheetContext Debug ===');
+      
+      if (dto.sheetsData) {
+        this.logger.debug(`SheetsData - TotalSheets: ${dto.sheetsData.sheets.length}`);
+        this.logger.debug(`SheetsData - ActiveSheet: ${dto.sheetsData.activeSheet}`);
+        dto.sheetsData.sheets.forEach((sheet, index) => {
+          this.logger.debug(`Sheet ${index}: ${sheet.name} (${sheet.metadata?.rowCount || 0} rows)`);
+        });
+      }
+      
+      this.logger.debug(`Legacy SheetContext: ${JSON.stringify(dto.sheetContext?.sheetName)}`);
+      this.logger.debug('=== End Context Debug ===');
 
       // 입력 검증
-      if (!dto.sheetContext || !dto.sheetContext.headers.length) {
+      if (!sheetContext) {
         throw new BadRequestException('시트 컨텍스트 정보가 필요합니다.');
       }
 
@@ -41,10 +53,10 @@ export class ArtifactService {
       const artifactType = this.determineArtifactType(dto.userInput);
 
       // 시스템 프롬프트 생성
-      const systemPrompt = this.createSystemPrompt(dto.sheetContext, artifactType);
+      const systemPrompt = this.createSystemPrompt(dto, artifactType);
 
       // 사용자 프롬프트 생성
-      const userPrompt = this.createUserPrompt(dto.userInput, dto.sheetContext);
+      const userPrompt = this.createUserPrompt(dto.userInput, dto);
 
       // OpenAI API 호출
       const completion = await this.openai.chat.completions.create({
@@ -120,6 +132,46 @@ export class ArtifactService {
     }
   }
 
+  private selectSheetContext(dto: GenerateArtifactDto): ExtendedSheetContext | SheetContext | null {
+    // 우선순위: extendedSheetContext > sheetContext > sheetsData의 활성 시트
+    if (dto.extendedSheetContext) {
+      return dto.extendedSheetContext;
+    }
+    
+    if (dto.sheetContext) {
+      return dto.sheetContext;
+    }
+    
+    if (dto.sheetsData && dto.sheetsData.sheets && dto.sheetsData.sheets.length > 0) {
+      // 활성 시트 찾기
+      const activeSheet = dto.sheetsData.sheets.find(sheet => sheet.name === dto.sheetsData?.activeSheet);
+      if (activeSheet) {
+        return {
+          sheetName: activeSheet.name,
+          headers: activeSheet.metadata?.headers?.map((name, index) => ({
+            column: String.fromCharCode(65 + index),
+            name
+          })) || [],
+          dataRange: {
+            startRow: '2',
+            endRow: ((activeSheet.metadata?.rowCount || 0) + 1).toString(),
+            startColumn: 'A',
+            endColumn: activeSheet.metadata?.headers ? String.fromCharCode(64 + (activeSheet.metadata.headers.length || 0)) : 'A'
+          }
+        };
+      }
+    }
+    
+    return null;
+  }
+
+  private getContextType(dto: GenerateArtifactDto): string {
+    if (dto.extendedSheetContext) return 'ExtendedSheetContext';
+    if (dto.sheetsData) return 'SheetsData';
+    if (dto.sheetContext) return 'SheetContext';
+    return 'None';
+  }
+
   private determineArtifactType(userInput: string): ArtifactType {
     const input = userInput.toLowerCase();
     
@@ -141,15 +193,17 @@ export class ArtifactService {
     return ArtifactType.ANALYSIS;
   }
 
-  private createSystemPrompt(sheetContext: any, artifactType: ArtifactType): string {
-    const headers = sheetContext.headers.map(h => h.name || h.column);
+  private createSystemPrompt(dto: GenerateArtifactDto, artifactType: ArtifactType): string {
+    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (dto.sheetsData?.sheets?.length || 0) > 1;
+    const context = this.selectSheetContext(dto);
+    const headers = this.extractHeaders(dto);
     
     return `당신은 React와 Recharts를 사용하여 데이터 분석 컴포넌트를 생성하는 전문가입니다.
 
 ## 🚨 중요한 규칙 (반드시 준수):
 1. **반드시 ComponentToRender 함수 컴포넌트를 정의**해야 합니다.
 2. **import 문을 절대 사용하지 마세요** - React, Recharts는 이미 전역으로 주입됩니다.
-3. **csvData는 자동으로 사용 가능**하므로 별도 import 불필요합니다.
+3. **데이터는 자동으로 사용 가능**하므로 별도 import 불필요합니다.
 4. React hooks (useState, useEffect, useMemo)는 직접 사용 가능합니다.
 5. Recharts 컴포넌트들은 직접 사용 가능합니다.
 6. **JSX 대신 React.createElement를 반드시 사용**하세요.
@@ -162,7 +216,25 @@ export class ArtifactService {
 - Recharts (BarChart, LineChart, PieChart, XAxis, YAxis, Tooltip, Legend 등)
 - Tailwind CSS (className 속성으로 적용)
 
-## CSV 데이터 구조:
+## 데이터 접근 방법:
+${isMultiSheet ? `
+### 다중 시트 환경:
+- **xlsxData**: 전체 XLSX 파일 정보 (fileName, sheets, activeSheetIndex)
+- **activeSheetData**: 현재 활성 시트 데이터 (headers, data, sheetName)
+- **allSheetsData**: 모든 시트 데이터 배열
+- **getSheetByName(name)**: 이름으로 시트 찾기
+- **getSheetByIndex(index)**: 인덱스로 시트 찾기
+- **csvData**: 하위 호환성을 위한 활성 시트 데이터 (headers, data, fileName, sheetName)
+
+### 활성 시트 정보:
+- 시트명: ${context?.sheetName || '알 수 없음'}
+- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || dto.sheetsData?.sheets.length || 1}
+` : `
+### 단일 시트 환경:
+- **csvData**: 메인 데이터 객체 (headers, data, fileName)
+`}
+
+## 현재 시트 구조:
 - headers: [${headers.map(h => `"${h}"`).join(', ')}]
 - data: string[][] (2차원 배열)
 - 각 행은 헤더 순서대로 데이터가 배열되어 있습니다.
@@ -171,6 +243,18 @@ export class ArtifactService {
 \`\`\`javascript
 const ComponentToRender = () => {
   // 1. 데이터 검증 (필수)
+  ${isMultiSheet ? `
+  if (!xlsxData || !activeSheetData || !activeSheetData.data) {
+    return React.createElement('div', 
+      { className: 'text-center p-4 text-red-500' }, 
+      '데이터가 없습니다.'
+    );
+  }
+  
+  // 활성 시트의 데이터 사용
+  const currentData = activeSheetData.data;
+  const headers = activeSheetData.headers;
+  ` : `
   if (!csvData || !csvData.data) {
     return React.createElement('div', 
       { className: 'text-center p-4 text-red-500' }, 
@@ -178,9 +262,12 @@ const ComponentToRender = () => {
     );
   }
   
+  const currentData = csvData.data;
+  const headers = csvData.headers;
+  `}
+  
   // 2. 데이터 처리
-  const processedData = csvData.data.slice(1).map((row, index) => ({
-    // 필요한 데이터 변환
+  const processedData = currentData.map((row, index) => ({
     name: row[0],
     value: parseFloat(row[1]) || 0
   }));
@@ -190,7 +277,7 @@ const ComponentToRender = () => {
     { className: 'w-full p-4' },
     React.createElement('h2', 
       { className: 'text-center text-xl font-bold mb-4' }, 
-      '차트 제목'
+      '${artifactType === ArtifactType.CHART ? '차트 분석' : '데이터 분석'}'
     ),
     React.createElement(BarChart, 
       { width: 600, height: 300, data: processedData },
@@ -204,6 +291,29 @@ const ComponentToRender = () => {
 };
 \`\`\`
 
+## 다중 시트 데이터 접근 예시:
+${isMultiSheet ? `
+\`\`\`javascript
+// 다른 시트 데이터 접근
+const salesSheet = getSheetByName('Sales');
+const expenseSheet = getSheetByName('Expenses');
+
+// 여러 시트 데이터 합치기
+const combinedData = allSheetsData.flatMap(sheet => 
+  sheet.data.map(row => ({
+    sheet: sheet.sheetName,
+    value: parseFloat(row[1]) || 0
+  }))
+);
+
+// 시트별 요약 데이터
+const sheetSummary = allSheetsData.map(sheet => ({
+  name: sheet.sheetName,
+  total: sheet.data.reduce((sum, row) => sum + (parseFloat(row[1]) || 0), 0)
+}));
+\`\`\`
+` : ''}
+
 ## React.createElement 사용법:
 1. **기본 HTML 태그**: React.createElement('div', {속성들}, ...자식요소들)
 2. **React 컴포넌트**: React.createElement(BarChart, {속성들}, ...자식요소들)
@@ -215,119 +325,124 @@ ${artifactType === ArtifactType.CHART ? '- 차트 시각화에 집중하세요. 
 ${artifactType === ArtifactType.TABLE ? '- 테이블 형태의 데이터 표시에 집중하세요. 정렬, 검색 기능을 포함하세요.' : ''}
 ${artifactType === ArtifactType.ANALYSIS ? '- 데이터 통계 분석에 집중하세요. 평균, 합계, 최댓값 등을 계산하세요.' : ''}
 
-## 데이터 접근 예시:
-\`\`\`javascript
-// 특정 컬럼의 값들
-const values = csvData.data.map(row => row[0]); // 첫 번째 컬럼
-
-// 숫자 변환
-const numericValue = parseFloat(row[1]) || 0;
-const integerValue = parseInt(row[2]) || 0;
-\`\`\`
-
-## 실제 구현 예시:
-\`\`\`javascript
-const ComponentToRender = () => {
-  if (!csvData || !csvData.data || csvData.data.length < 2) {
-    return React.createElement('div', 
-      { className: 'text-center p-4 text-red-500' }, 
-      '데이터가 없습니다.'
-    );
-  }
-
-  const processedData = csvData.data.slice(1, 19).map((row) => ({
-    year: row[0],
-    value: parseInt(row[2]) || 0,
-  }));
-
-  return React.createElement('div', 
-    { className: 'w-full p-4' },
-    React.createElement('h2', 
-      { className: 'text-center text-xl font-bold mb-4' }, 
-      '데이터 분석 결과'
-    ),
-    React.createElement(BarChart, 
-      { width: 600, height: 300, data: processedData },
-      React.createElement(XAxis, { dataKey: 'year' }),
-      React.createElement(YAxis, {}),
-      React.createElement(Tooltip, {}),
-      React.createElement(Legend, {}),
-      React.createElement(Bar, { dataKey: 'value', fill: '#8884d8' })
-    )
-  );
-};
-\`\`\`
-
 **중요**: JSX를 절대 사용하지 말고, 모든 요소를 React.createElement로 생성해주세요. 이렇게 해야 프론트엔드에서 오류 없이 렌더링됩니다.`;
   }
 
-  private createUserPrompt(userInput: string, sheetContext: any): string {
-    // sampleData 안전하게 처리
-    const sampleData = sheetContext.sampleData?.slice(0, 3) || [];
+  private extractHeaders(dto: GenerateArtifactDto): string[] {
+    if (dto.extendedSheetContext) {
+      return dto.extendedSheetContext.headers.map(h => h.name || h.column);
+    }
     
-    // 샘플 데이터를 안전하게 포맷팅
-    const formatSampleData = (data: any[]): string => {
-      if (!data || data.length === 0) {
-        return '**샘플 데이터 없음**';
-      }
-      
-      return data.map((row, i) => {
-        // row가 배열인지 확인
-        if (Array.isArray(row)) {
-          return `**${i + 1}행**: [${row.map(cell => `"${cell}"`).join(', ')}]`;
-        } else if (typeof row === 'object' && row !== null) {
-          // 객체인 경우 값들을 추출
-          const values = Object.values(row);
-          return `**${i + 1}행**: [${values.map(cell => `"${cell}"`).join(', ')}]`;
-        } else {
-          // 다른 타입인 경우 문자열로 변환
-          return `**${i + 1}행**: "${row}"`;
-        }
-      }).join('\n');
-    };
+    if (dto.sheetContext) {
+      return dto.sheetContext.headers.map(h => h.name || h.column);
+    }
+    
+    if (dto.sheetsData && dto.sheetsData.sheets && dto.sheetsData.sheets.length > 0) {
+      const activeSheet = dto.sheetsData.sheets.find(sheet => sheet.name === dto.sheetsData?.activeSheet);
+      return activeSheet?.metadata?.headers || [];
+    }
+    
+    return [];
+  }
+
+  private createUserPrompt(userInput: string, dto: GenerateArtifactDto): string {
+    const context = this.selectSheetContext(dto);
+    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (dto.sheetsData?.sheets?.length || 0) > 1;
+    
+    // 샘플 데이터 추출
+    const sampleData = this.extractSampleData(dto);
     
     // 헤더 정보 안전하게 추출
-    const getHeaderNames = (headers: any[]): string => {
-      if (!headers || headers.length === 0) {
-        return '헤더 정보 없음';
+    const headers = this.extractHeaders(dto);
+    
+    // 데이터 범위 정보 추출
+    const getDataRange = (): string => {
+      if (dto.extendedSheetContext?.dataRange) {
+        const dataRange = dto.extendedSheetContext.dataRange;
+        return `${dataRange.startRow}행 ~ ${dataRange.endRow}행`;
       }
       
-      return headers.map(h => {
-        if (typeof h === 'string') return h;
-        if (h && h.name) return h.name;
-        if (h && h.column) return h.column;
-        return 'Unknown';
-      }).join(', ');
+      if (dto.sheetContext?.dataRange) {
+        const dataRange = dto.sheetContext.dataRange;
+        return `${dataRange.startRow}행 ~ ${dataRange.endRow}행`;
+      }
+      
+      if (dto.sheetsData && dto.sheetsData.sheets && dto.sheetsData.sheets.length > 0) {
+        const activeSheet = dto.sheetsData.sheets.find(sheet => sheet.name === dto.sheetsData?.activeSheet);
+        return activeSheet ? `총 ${activeSheet.metadata?.rowCount || 0}행` : '범위 정보 없음';
+      }
+      
+      return '범위 정보 없음';
     };
     
-    // 데이터 범위 정보 안전하게 추출
-    const getDataRange = (dataRange: any): string => {
-      if (!dataRange) return '범위 정보 없음';
+    // 다중 시트 정보
+    const getMultiSheetInfo = (): string => {
+      if (!isMultiSheet) return '';
       
-      const startRow = dataRange.startRow || 0;
-      const endRow = dataRange.endRow || 0;
-      const totalRows = endRow - startRow + 1;
+      let info = '\n## 다중 시트 정보:\n';
       
-      return `${startRow}행 ~ ${endRow}행 (총 ${totalRows}행)`;
+      if (dto.extendedSheetContext) {
+        info += `- **총 시트 수**: ${dto.extendedSheetContext.totalSheets}\n`;
+        info += `- **시트 목록**: ${dto.extendedSheetContext.sheetList.join(', ')}\n`;
+        info += `- **활성 시트**: ${dto.extendedSheetContext.sheetName}\n`;
+      } else if (dto.sheetsData && dto.sheetsData.sheets) {
+        info += `- **총 시트 수**: ${dto.sheetsData.sheets.length}\n`;
+        info += `- **시트 목록**: ${dto.sheetsData.sheets.map(s => s.name).join(', ')}\n`;
+        info += `- **활성 시트**: ${dto.sheetsData.activeSheet}\n`;
+      }
+      
+      return info;
     };
     
     return `사용자 요청: "${userInput}"
 
 ## 데이터 정보:
-- **파일명**: ${sheetContext.sheetName || '파일명 없음'}
-- **컬럼**: ${getHeaderNames(sheetContext.headers)}
-- **데이터 범위**: ${getDataRange(sheetContext.dataRange)}
+- **파일/시트명**: ${context?.sheetName || '파일명 없음'}
+- **컬럼**: ${headers.join(', ')}
+- **데이터 범위**: ${getDataRange()}
+${getMultiSheetInfo()}
 
 ## 샘플 데이터:
-${formatSampleData(sampleData)}
+${sampleData}
 
 ## 요구사항:
 1. 위 데이터를 활용하여 사용자 요청에 맞는 컴포넌트를 생성해주세요.
 2. 데이터 타입을 적절히 변환하세요 (문자열 → 숫자 변환 등).
 3. 사용자에게 의미 있는 시각화나 분석을 제공해주세요.
 4. 에러 처리와 빈 데이터 처리를 포함해주세요.
+${isMultiSheet ? '5. 다중 시트 환경에서는 필요시 다른 시트의 데이터도 활용하세요.' : ''}
 
 **ComponentToRender 함수만 반환하고, 별도의 설명은 주석으로 포함해주세요.**`;
+  }
+
+  private extractSampleData(dto: GenerateArtifactDto): string {
+    // 샘플 데이터 추출
+    let sampleData: any[] = [];
+    
+    if (dto.extendedSheetContext?.sampleData) {
+      sampleData = dto.extendedSheetContext.sampleData.slice(0, 3);
+    } else if (dto.sheetContext?.sampleData) {
+      sampleData = dto.sheetContext.sampleData.slice(0, 3);
+    } else if (dto.sheetsData && dto.sheetsData.sheets && dto.sheetsData.sheets.length > 0) {
+      const activeSheet = dto.sheetsData.sheets.find(sheet => sheet.name === dto.sheetsData?.activeSheet);
+      sampleData = activeSheet?.metadata?.sampleData?.slice(0, 3) || [];
+    }
+    
+    // 샘플 데이터 포맷팅
+    if (!sampleData || sampleData.length === 0) {
+      return '**샘플 데이터 없음**';
+    }
+    
+    return sampleData.map((row, i) => {
+      if (Array.isArray(row)) {
+        return `**${i + 1}행**: [${row.map(cell => `"${cell}"`).join(', ')}]`;
+      } else if (typeof row === 'object' && row !== null) {
+        const values = Object.values(row);
+        return `**${i + 1}행**: [${values.map(cell => `"${cell}"`).join(', ')}]`;
+      } else {
+        return `**${i + 1}행**: "${row}"`;
+      }
+    }).join('\n');
   }
 
   private extractCodeFromResponse(response: string): string {
