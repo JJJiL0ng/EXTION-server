@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { FormulaModule } from './modules/formula/formula.module';
 import { ArtifactModule } from './modules/artifact/artifact.module';
+import { DataGenerationModule } from './modules/datageneration/datageneration.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { ArtifactModule } from './modules/artifact/artifact.module';
     }),
     FormulaModule,
     ArtifactModule,
+    DataGenerationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
