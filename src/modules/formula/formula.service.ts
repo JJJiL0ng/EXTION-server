@@ -92,10 +92,10 @@ export class FormulaService {
 
   private buildSystemMessage(): string {
     return `
-당신은 Google Sheets 전문가입니다. 사용자의 자연어 요청을 분석하여 적절한 스프레드시트 함수를 생성해주세요.
+당신은 hyperformula 함수 전문가입니다. 사용자의 자연어 요청을 분석하여 적절한 hyperformula 함수를 생성해주세요.
 
 규칙:
-1. 오직 Google Sheets에서 지원하는 함수만 사용하세요.
+1. 오직 hyperformula에서 지원하는 함수만 사용하세요.
 2. 함수는 반드시 =로 시작해야 합니다.
 3. 셀 범위는 제공된 데이터 범위 내에서만 사용하세요.
 4. 함수 외에 설명도 함께 제공해주세요.
@@ -204,10 +204,20 @@ ${context}
 
   private getSupportedFunctions(): string[] {
     return [
-      'AVERAGE', 'SUM', 'COUNT', 'MAX', 'MIN',
-      'COUNTIF', 'SUMIF', 'AVERAGEIF',
-      'SORT', 'FILTER',
-      'VLOOKUP', 'INDEX', 'MATCH'
+      // 기본 수학 함수
+      'SUM', 'AVERAGE', 'COUNT', 'MAX', 'MIN', 'MEDIAN',
+      // 조건부 집계 함수
+      'COUNTIF', 'SUMIF', 'AVERAGEIF', 'COUNTIFS', 'SUMIFS', 'AVERAGEIFS',
+      // 검색 및 참조 함수
+      'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'INDIRECT', 'ADDRESS',
+      // 날짜 및 시간 함수
+      'TODAY', 'NOW', 'DATE', 'YEAR', 'MONTH', 'DAY', 'EOMONTH',
+      // 논리 함수
+      'IF', 'AND', 'OR', 'NOT', 'IFERROR', 'IFS',
+      // 텍스트 함수
+      'CONCATENATE', 'LEFT', 'RIGHT', 'MID', 'FIND', 'SEARCH', 'SUBSTITUTE'
+      // HyperFormula에서 지원하지 않는 함수는 제외
+      // 'SORT', 'FILTER', 'UNIQUE' 등
     ];
   }
 }
