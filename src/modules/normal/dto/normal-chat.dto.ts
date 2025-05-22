@@ -15,6 +15,13 @@ export class NormalChatDto {
   @Type(() => ExtendedSheetContext)
   extendedSheetContext?: ExtendedSheetContext;
 
+  // ✅ 새로 추가: sheetsData 필드 (프론트엔드와 일치)
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SheetsData)
+  sheetsData?: SheetsData;
+
+  // ✅ 기존 호환성 유지
   @IsOptional()
   @ValidateNested()
   @Type(() => SheetsData)
