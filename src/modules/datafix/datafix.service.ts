@@ -40,13 +40,21 @@ export class DataFixService {
         }
       }
       
-      if (dto.currentData) {
-        this.logger.log('현재 데이터:');
-        this.logger.log(`- 전체 시트 수: ${dto.currentData.sheets?.length || 0}`);
-        this.logger.log(`- 활성 시트: ${dto.currentData.activeSheet || '없음'}`);
-        if (dto.currentData.sheets) {
-          dto.currentData.sheets.forEach((sheet, index) => {
-            this.logger.log(`- 시트 ${index}: ${sheet.name} (${sheet.metadata?.rowCount || 0} 행)`);
+      // ✅ sheetsData 우선 처리
+      const sheetsData = dto.sheetsData || dto.currentData;
+      if (sheetsData) {
+        this.logger.log('시트 데이터:');
+        this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
+        this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
+        this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
+        
+        if (sheetsData.sheets) {
+          sheetsData.sheets.forEach((sheet, index) => {
+            this.logger.log(`- 시트 ${index}: ${sheet.name}`);
+            this.logger.log(`  * 행 수: ${sheet.metadata?.rowCount || 0}`);
+            this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
+            this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
+            this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
           });
         }
       }
@@ -67,11 +75,15 @@ export class DataFixService {
         this.logger.debug(`확장 컨텍스트 - 헤더: ${JSON.stringify(dto.extendedSheetContext.headers)}`);
       }
       
-      if (dto.currentData) {
-        this.logger.debug(`현재 데이터 - 전체 시트 수: ${dto.currentData.sheets.length}`);
-        this.logger.debug(`현재 데이터 - 활성 시트: ${dto.currentData.activeSheet}`);
-        dto.currentData.sheets.forEach((sheet, index) => {
+      if (sheetsData) {
+        this.logger.debug(`시트 데이터 - 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
+        this.logger.debug(`시트 데이터 - 활성 시트: ${sheetsData.activeSheet}`);
+        sheetsData.sheets?.forEach((sheet, index) => {
           this.logger.debug(`시트 ${index}: ${sheet.name} (${sheet.metadata?.rowCount || 0} 행)`);
+          // ✅ 전체 데이터 존재 여부 확인
+          if (sheet.metadata?.fullData) {
+            this.logger.debug(`  * 전체 데이터 행 수: ${sheet.metadata.fullData.length}`);
+          }
         });
       }
       
@@ -91,7 +103,7 @@ export class DataFixService {
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.2,
-        max_tokens: 5000,
+        max_tokens: 10000,
       });
 
       const aiResponse = completion.choices[0]?.message?.content;
@@ -117,7 +129,7 @@ export class DataFixService {
         this.logger.log(`변경 세부 내용: ${result.changes.details}`);
       }
       
-      this.logger.log('==================== 프론트엔드ㄴㄴㄴㄴㄴㄴㄴㄴㄴㄴㄴㄴㄴ 전송 응답 데이터 끝 ====================');
+      this.logger.log('==================== 프론트엔드 전송 응답 데이터 끝 ====================');
       
       return result;
 
@@ -141,15 +153,17 @@ export class DataFixService {
     }
   }
 
+  // ✅ getDataContext 메서드 수정
   private getDataContext(dto: ProcessDataDto): any {
-    // 우선순위: extendedSheetContext > currentData
+    // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
       return dto.extendedSheetContext;
     }
     
-    if (dto.currentData && dto.currentData.sheets && dto.currentData.sheets.length > 0) {
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       // 활성 시트 찾기
-      const activeSheet = dto.currentData.sheets.find(sheet => sheet.name === dto.currentData?.activeSheet);
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
       if (activeSheet) {
         return {
@@ -158,7 +172,12 @@ export class DataFixService {
             column: String.fromCharCode(65 + index),
             name
           })) || [],
-          data: this.parseCsvToArray(activeSheet.csv)
+          // ✅ 전체 데이터 우선 사용, 없으면 CSV 파싱
+          data: activeSheet.metadata?.fullData || this.parseCsvToArray(activeSheet.csv),
+          // ✅ 추가 메타데이터
+          rowCount: activeSheet.metadata?.rowCount || 0,
+          columnCount: activeSheet.metadata?.columnCount || 0,
+          sheetIndex: activeSheet.metadata?.sheetIndex || 0
         };
       }
     }
@@ -173,15 +192,18 @@ export class DataFixService {
     return csv.split('\n').map(line => line.split(','));
   }
 
+  // ✅ getContextType 메서드 수정
   private getContextType(dto: ProcessDataDto): string {
     if (dto.extendedSheetContext) return 'ExtendedSheetContext';
-    if (dto.currentData) return 'CurrentData';
+    if (dto.sheetsData) return 'SheetsData';
+    if (dto.currentData) return 'CurrentData (Legacy)';
     return 'None';
   }
 
   private createSystemPrompt(dto: ProcessDataDto): string {
-    const hasExistingData = !!(dto.extendedSheetContext || (dto.currentData && dto.currentData.sheets.length > 0));
-    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (dto.currentData?.sheets?.length || 0) > 1;
+    const sheetsData = dto.sheetsData || dto.currentData;
+    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData && sheetsData.sheets.length > 0));
+    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (sheetsData?.sheets?.length || 0) > 1;
     
     return `당신은 스프레드시트 데이터 수정, 정렬, 필터링, 변환 전문가입니다.
 
@@ -223,6 +245,7 @@ JSON 형식으로 응답해야 합니다:
 7. 변경 유형은 'sort', 'filter', 'modify', 'transform' 중 하나여야 합니다.
 8. 날짜 형식은 YYYY-MM-DD로 통일하세요.
 9. 정렬의 경우 입력받는 모든 값을 정렬해서 반환하세요
+10. 전체 데이터를 기준으로 작업하세요 (샘플 데이터가 아닌)
 
 ## 변경 유형 설명
 1. sort: 데이터 정렬 (특정 열 기준 오름차순/내림차순)
@@ -235,29 +258,35 @@ ${hasExistingData ? `
 이미 존재하는 데이터가 있습니다:
 ${isMultiSheet ? `
 - 다중 시트 환경
-- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || dto.currentData?.sheets.length || 0}
-- 활성 시트: ${dto.extendedSheetContext?.sheetName || dto.currentData?.activeSheet || '없음'}
+- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
+- 활성 시트: ${dto.extendedSheetContext?.sheetName || sheetsData?.activeSheet || '없음'}
 ` : `
 - 단일 시트 환경
-- 시트명: ${dto.extendedSheetContext?.sheetName || (dto.currentData?.sheets[0]?.name) || '없음'}
+- 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
 `}
+- 전체 데이터가 제공되어 있으므라 모든 행을 대상으로 작업하세요
 ` : `
 데이터가 없습니다. 사용자에게 먼저 데이터를 업로드하도록 안내해야 합니다.
 `}
 `;
   }
 
+  // ✅ createUserPrompt 메서드 수정
   private createUserPrompt(userInput: string, dto: ProcessDataDto): string {
     const context = this.getDataContext(dto);
     
-    // 샘플 데이터 추출
+    // 샘플 데이터 추출 (표시용)
     const sampleData = this.extractSampleData(dto);
+    
+    // 전체 데이터 정보 추출
+    const fullDataInfo = this.extractFullDataInfo(dto);
     
     // 헤더 정보 안전하게 추출
     const headers = this.extractHeaders(dto);
     
     // 데이터 존재 여부
-    const hasExistingData = !!(dto.extendedSheetContext || (dto.currentData?.sheets && dto.currentData.sheets.length > 0));
+    const sheetsData = dto.sheetsData || dto.currentData;
+    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData?.sheets && sheetsData.sheets.length > 0));
     
     return `사용자 요청: "${userInput}"
 
@@ -266,15 +295,21 @@ ${hasExistingData ? `
 ${context ? `
 - **시트명**: ${context.sheetName || '알 수 없음'}
 - **컬럼**: ${headers.length > 0 ? headers.join(', ') : '없음'}
-- **데이터 행 수**: ${context.data ? context.data.length - 1 : 0}
+- **전체 데이터 행 수**: ${context.rowCount || (context.data ? context.data.length - 1 : 0)}
+- **전체 데이터 열 수**: ${context.columnCount || headers.length}
 
-## 샘플 데이터:
+${fullDataInfo ? `
+## 전체 데이터 정보:
+${fullDataInfo}
+` : ''}
+
+## 샘플 데이터 (표시용):
 ${sampleData}
 ` : '현재 데이터 정보를 추출할 수 없습니다.'}
 ` : '## 현재 데이터가 없습니다. 데이터를 먼저 생성하도록 사용자에게 안내해주세요.'}
 
 ## 요청 분석
-사용자의 요청에 따라 데이터를 수정, 정렬, 필터링 또는 변환하세요.
+사용자의 요청에 따라 **전체 데이터**를 대상으로 수정, 정렬, 필터링 또는 변환하세요.
 다음 네 가지 작업 중 하나를 수행해야 합니다:
 
 1. 정렬(sort): 특정 열을 기준으로 데이터 정렬
@@ -282,9 +317,29 @@ ${sampleData}
 3. 수정(modify): 데이터 값을 변경하거나 열/행 추가/삭제
 4. 변환(transform): 데이터 구조나 형식 변환
 
+**중요**: 샘플 데이터가 아닌 전체 데이터를 기준으로 작업하세요.
+
 수정된 시트 이름, 헤더, 데이터 배열, 변경 유형(type), 그리고 세부 내용(details)을 포함한 JSON을 반환하세요.
 
 반드시 표준 JSON 형식으로 응답하고, 마크다운이나 추가 설명은 포함하지 마세요.`;
+  }
+
+  // ✅ 전체 데이터 정보 추출 메서드 추가
+  private extractFullDataInfo(dto: ProcessDataDto): string {
+    const sheetsData = dto.sheetsData || dto.currentData;
+    
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+      
+      if (activeSheet && activeSheet.metadata?.fullData) {
+        const fullData = activeSheet.metadata.fullData;
+        return `- **전체 데이터 행 수**: ${fullData.length}
+- **전체 데이터 사용 가능**: 예
+- **데이터 처리 범위**: ${fullData.length > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
+      }
+    }
+    
+    return '';
   }
 
   private extractSampleData(dto: ProcessDataDto): string {
@@ -293,13 +348,21 @@ ${sampleData}
     
     if (dto.extendedSheetContext?.sampleData) {
       sampleData = dto.extendedSheetContext.sampleData.slice(0, 3);
-    } else if (dto.currentData && dto.currentData.sheets && dto.currentData.sheets.length > 0) {
-      const activeSheet = dto.currentData.sheets.find(sheet => sheet.name === dto.currentData?.activeSheet);
-      
-      if (activeSheet && activeSheet.csv) {
-        const rows = activeSheet.csv.split('\n');
-        if (rows.length > 1) {
-          sampleData = rows.slice(1, 4).map(row => row.split(','));
+    } else {
+      const sheetsData = dto.sheetsData || dto.currentData;
+      if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+        const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+        
+        if (activeSheet) {
+          // ✅ 전체 데이터가 있으면 전체 데이터에서 샘플 추출
+          if (activeSheet.metadata?.fullData) {
+            sampleData = activeSheet.metadata.fullData.slice(0, 3);
+          } else if (activeSheet.csv) {
+            const rows = activeSheet.csv.split('\n');
+            if (rows.length > 1) {
+              sampleData = rows.slice(1, 4).map(row => row.split(','));
+            }
+          }
         }
       }
     }
@@ -320,22 +383,29 @@ ${sampleData}
     }).join('\n');
   }
 
+  // ✅ extractHeaders 메서드 수정
   private extractHeaders(dto: ProcessDataDto): string[] {
     if (dto.extendedSheetContext) {
       return dto.extendedSheetContext.headers.map(h => h.name || h.column);
     }
     
-    if (dto.currentData && dto.currentData.sheets && dto.currentData.sheets.length > 0) {
-      const activeSheet = dto.currentData.sheets.find(sheet => sheet.name === dto.currentData?.activeSheet);
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
-      if (activeSheet && activeSheet.csv) {
-        const firstLine = activeSheet.csv.split('\n')[0];
-        if (firstLine) {
-          return firstLine.split(',');
+      if (activeSheet) {
+        // 메타데이터의 헤더 우선 사용
+        if (activeSheet.metadata?.headers) {
+          return activeSheet.metadata.headers;
+        }
+        
+        if (activeSheet.csv) {
+          const firstLine = activeSheet.csv.split('\n')[0];
+          if (firstLine) {
+            return firstLine.split(',');
+          }
         }
       }
-      
-      return activeSheet?.metadata?.headers || [];
     }
     
     return [];
