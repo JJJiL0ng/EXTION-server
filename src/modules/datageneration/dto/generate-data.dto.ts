@@ -54,7 +54,7 @@ export class SheetMetadata {
   dataRange?: DataRange;
 }
 
-// 시트 데이터 아이템 메타데이터 클래스 정의
+// ✅ 시트 데이터 아이템 메타데이터 수정
 export class SheetDataItemMetadata {
   @IsOptional()
   @IsArray()
@@ -71,11 +71,20 @@ export class SheetDataItemMetadata {
 
   @IsOptional()
   @IsArray()
-  sampleData?: any[];
+  sampleData?: string[][]; // ✅ any[] → string[][]로 변경
+
+  // ✅ 새로 추가: 전체 데이터 필드
+  @IsOptional()
+  @IsArray()
+  fullData?: string[][];
 
   @IsOptional()
   @IsNumber()
   sheetIndex?: number;
+
+  // ✅ 새로 추가: 원본 메타데이터
+  @IsOptional()
+  originalMetadata?: any;
 }
 
 // 시트 데이터 아이템 수정
@@ -92,7 +101,7 @@ export class SheetDataItem {
   metadata?: SheetDataItemMetadata;
 }
 
-// 다중 시트 데이터 구조
+// ✅ 다중 시트 데이터 구조 수정
 export class SheetsData {
   @IsArray()
   @ValidateNested({ each: true })
@@ -101,6 +110,15 @@ export class SheetsData {
 
   @IsString()
   activeSheet: string;
+
+  // ✅ 새로 추가: 전체 컨텍스트 정보
+  @IsOptional()
+  @IsNumber()
+  totalSheets?: number;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
 }
 
 // 확장된 시트 컨텍스트
@@ -151,7 +169,7 @@ export class SheetContext {
   sampleData?: Record<string, string>[];
 }
 
-// 데이터 생성 요청 DTO
+// ✅ 데이터 생성 요청 DTO 수정
 export class GenerateDataDto {
   @IsString()
   @IsNotEmpty()
@@ -163,6 +181,13 @@ export class GenerateDataDto {
   @Type(() => ExtendedSheetContext)
   extendedSheetContext?: ExtendedSheetContext;
 
+  // ✅ 새로 추가: sheetsData 필드 (프론트엔드와 일치)
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SheetsData)
+  sheetsData?: SheetsData;
+
+  // ✅ 기존 호환성 유지
   @IsOptional()
   @ValidateNested()
   @Type(() => SheetsData)

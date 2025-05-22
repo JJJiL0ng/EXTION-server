@@ -27,6 +27,42 @@ export class DataGenerationService {
     try {
       this.logger.log(`데이터 생성 요청: ${dto.userInput}`);
 
+      // 프론트엔드에서 받은 데이터 로깅
+      this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
+      this.logger.log(`사용자 입력: ${dto.userInput}`);
+
+      if (dto.extendedSheetContext) {
+        this.logger.log('확장 시트 컨텍스트:');
+        this.logger.log(`- 시트명: ${dto.extendedSheetContext.sheetName}`);
+        this.logger.log(`- 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
+        this.logger.log(`- 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
+        this.logger.log(`- 헤더 수: ${dto.extendedSheetContext.headers?.length || 0}`);
+        if (dto.extendedSheetContext.sampleData) {
+          this.logger.log(`- 샘플 데이터 행 수: ${dto.extendedSheetContext.sampleData.length}`);
+        }
+      }
+
+      // ✅ sheetsData 우선 처리
+      const sheetsData = dto.sheetsData || dto.currentData;
+      if (sheetsData) {
+        this.logger.log('시트 데이터:');
+        this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
+        this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
+        this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
+        
+        if (sheetsData.sheets) {
+          sheetsData.sheets.forEach((sheet, index) => {
+            this.logger.log(`- 시트 ${index}: ${sheet.name}`);
+            this.logger.log(`  * 행 수: ${sheet.metadata?.rowCount || 0}`);
+            this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
+            this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
+            this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
+          });
+        }
+      }
+
+      this.logger.log('==================== 프론트엔드에서 받은 데이터 끝 ====================');
+
       // 데이터 컨텍스트 조회
       const dataContext = this.getDataContext(dto);
       
@@ -41,11 +77,15 @@ export class DataGenerationService {
         this.logger.debug(`확장 컨텍스트 - 헤더: ${JSON.stringify(dto.extendedSheetContext.headers)}`);
       }
       
-      if (dto.currentData) {
-        this.logger.debug(`현재 데이터 - 전체 시트 수: ${dto.currentData.sheets.length}`);
-        this.logger.debug(`현재 데이터 - 활성 시트: ${dto.currentData.activeSheet}`);
-        dto.currentData.sheets.forEach((sheet, index) => {
+      if (sheetsData) {
+        this.logger.debug(`시트 데이터 - 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
+        this.logger.debug(`시트 데이터 - 활성 시트: ${sheetsData.activeSheet}`);
+        sheetsData.sheets?.forEach((sheet, index) => {
           this.logger.debug(`시트 ${index}: ${sheet.name} (${sheet.metadata?.rowCount || 0} 행)`);
+          // ✅ 전체 데이터 존재 여부 확인
+          if (sheet.metadata?.fullData) {
+            this.logger.debug(`  * 전체 데이터 행 수: ${sheet.metadata.fullData.length}`);
+          }
         });
       }
       
@@ -59,13 +99,13 @@ export class DataGenerationService {
 
       // OpenAI API 호출
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.3,
-        max_tokens: 5000,
+        max_tokens: 10000,
       });
 
       const aiResponse = completion.choices[0]?.message?.content;
@@ -109,15 +149,17 @@ export class DataGenerationService {
     }
   }
 
+  // ✅ getDataContext 메서드 수정
   private getDataContext(dto: GenerateDataDto): any {
-    // 우선순위: extendedSheetContext > currentData
+    // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
       return dto.extendedSheetContext;
     }
     
-    if (dto.currentData && dto.currentData.sheets && dto.currentData.sheets.length > 0) {
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       // 활성 시트 찾기
-      const activeSheet = dto.currentData.sheets.find(sheet => sheet.name === dto.currentData?.activeSheet);
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
       if (activeSheet) {
         return {
@@ -126,7 +168,12 @@ export class DataGenerationService {
             column: String.fromCharCode(65 + index),
             name
           })) || [],
-          data: this.parseCsvToArray(activeSheet.csv)
+          // ✅ 전체 데이터 우선 사용, 없으면 CSV 파싱
+          data: activeSheet.metadata?.fullData || this.parseCsvToArray(activeSheet.csv),
+          // ✅ 추가 메타데이터
+          rowCount: activeSheet.metadata?.rowCount || 0,
+          columnCount: activeSheet.metadata?.columnCount || 0,
+          sheetIndex: activeSheet.metadata?.sheetIndex || 0
         };
       }
     }
@@ -141,15 +188,18 @@ export class DataGenerationService {
     return csv.split('\n').map(line => line.split(','));
   }
 
+  // ✅ getContextType 메서드 수정
   private getContextType(dto: GenerateDataDto): string {
     if (dto.extendedSheetContext) return 'ExtendedSheetContext';
-    if (dto.currentData) return 'CurrentData';
+    if (dto.sheetsData) return 'SheetsData';
+    if (dto.currentData) return 'CurrentData (Legacy)';
     return 'None';
   }
 
   private createSystemPrompt(dto: GenerateDataDto): string {
-    const hasExistingData = !!(dto.extendedSheetContext || (dto.currentData && dto.currentData.sheets.length > 0));
-    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (dto.currentData?.sheets?.length || 0) > 1;
+    const sheetsData = dto.sheetsData || dto.currentData;
+    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData && sheetsData.sheets.length > 0));
+    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (sheetsData?.sheets?.length || 0) > 1;
     
     return `당신은 스프레드시트 데이터 생성 및 가공 전문가입니다.
 
@@ -192,35 +242,42 @@ JSON 형식으로 응답해야 합니다:
 9. 시트 이름은 의미 있고 간결하게 지정하세요.
 10. 헤더 이름은 명확하고 식별 가능하게 작성하세요.
 11. 변경 로그는 상세하게 기록하세요.
+12. 기존 데이터가 있다면 전체 데이터를 기준으로 작업하세요 (샘플 데이터가 아닌)
 
 ## 기존 데이터 컨텍스트
 ${hasExistingData ? `
 이미 존재하는 데이터가 있습니다:
 ${isMultiSheet ? `
 - 다중 시트 환경
-- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || dto.currentData?.sheets.length || 0}
-- 활성 시트: ${dto.extendedSheetContext?.sheetName || dto.currentData?.activeSheet || '없음'}
+- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
+- 활성 시트: ${dto.extendedSheetContext?.sheetName || sheetsData?.activeSheet || '없음'}
 ` : `
 - 단일 시트 환경
-- 시트명: ${dto.extendedSheetContext?.sheetName || (dto.currentData?.sheets[0]?.name) || '없음'}
+- 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
 `}
+- 전체 데이터가 제공되어 있으므로 모든 행을 대상으로 작업하세요
 ` : `
 기존 데이터가 없습니다. 사용자 요청에 따라 새 데이터를 생성해야 합니다.
 `}
 `;
   }
 
+  // ✅ createUserPrompt 메서드 수정
   private createUserPrompt(userInput: string, dto: GenerateDataDto): string {
     const context = this.getDataContext(dto);
     
-    // 샘플 데이터 추출
+    // 샘플 데이터 추출 (표시용)
     const sampleData = this.extractSampleData(dto);
+    
+    // 전체 데이터 정보 추출
+    const fullDataInfo = this.extractFullDataInfo(dto);
     
     // 헤더 정보 안전하게 추출
     const headers = this.extractHeaders(dto);
     
     // 데이터 존재 여부
-    const hasExistingData = !!(dto.extendedSheetContext || (dto.currentData?.sheets && dto.currentData.sheets.length > 0));
+    const sheetsData = dto.sheetsData || dto.currentData;
+    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData?.sheets && sheetsData.sheets.length > 0));
     
     return `사용자 요청: "${userInput}"
 
@@ -229,9 +286,15 @@ ${hasExistingData ? `
 ${context ? `
 - **시트명**: ${context.sheetName || '알 수 없음'}
 - **컬럼**: ${headers.length > 0 ? headers.join(', ') : '없음'}
-- **데이터 행 수**: ${context.data ? context.data.length - 1 : 0}
+- **전체 데이터 행 수**: ${context.rowCount || (context.data ? context.data.length - 1 : 0)}
+- **전체 데이터 열 수**: ${context.columnCount || headers.length}
 
-## 샘플 데이터:
+${fullDataInfo ? `
+## 전체 데이터 정보:
+${fullDataInfo}
+` : ''}
+
+## 샘플 데이터 (표시용):
 ${sampleData}
 ` : '현재 데이터 정보를 추출할 수 없습니다.'}
 ` : '## 현재 데이터가 없습니다. 새 데이터를 생성하세요.'}
@@ -240,12 +303,32 @@ ${sampleData}
 사용자의 요청을 분석한 후, 다음 중 하나를 수행하세요:
 
 1. **데이터 생성**: 새로운 스프레드시트 데이터 생성
-2. **데이터 수정**: 기존 데이터를 변환하거나 업데이트
+2. **데이터 수정**: 기존 **전체 데이터**를 변환하거나 업데이트
+
+**중요**: 기존 데이터가 있다면 샘플 데이터가 아닌 전체 데이터를 기준으로 작업하세요.
 
 시트 이름, 헤더, 그리고 최소 5개 이상의 행을 포함한 데이터를 JSON 형식으로 반환하세요.
 변경사항에 대한 설명도 포함해주세요.
 
 반드시 표준 JSON 형식으로 응답하고, 추가 설명이나 마크다운은 포함하지 마세요.`;
+  }
+
+  // ✅ 전체 데이터 정보 추출 메서드 추가
+  private extractFullDataInfo(dto: GenerateDataDto): string {
+    const sheetsData = dto.sheetsData || dto.currentData;
+    
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+      
+      if (activeSheet && activeSheet.metadata?.fullData) {
+        const fullData = activeSheet.metadata.fullData;
+        return `- **전체 데이터 행 수**: ${fullData.length}
+- **전체 데이터 사용 가능**: 예
+- **데이터 처리 범위**: ${fullData.length > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
+      }
+    }
+    
+    return '';
   }
 
   private extractSampleData(dto: GenerateDataDto): string {
@@ -254,13 +337,21 @@ ${sampleData}
     
     if (dto.extendedSheetContext?.sampleData) {
       sampleData = dto.extendedSheetContext.sampleData.slice(0, 3);
-    } else if (dto.currentData && dto.currentData.sheets && dto.currentData.sheets.length > 0) {
-      const activeSheet = dto.currentData.sheets.find(sheet => sheet.name === dto.currentData?.activeSheet);
-      
-      if (activeSheet && activeSheet.csv) {
-        const rows = activeSheet.csv.split('\n');
-        if (rows.length > 1) {
-          sampleData = rows.slice(1, 4).map(row => row.split(','));
+    } else {
+      const sheetsData = dto.sheetsData || dto.currentData;
+      if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+        const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+        
+        if (activeSheet) {
+          // ✅ 전체 데이터가 있으면 전체 데이터에서 샘플 추출
+          if (activeSheet.metadata?.fullData) {
+            sampleData = activeSheet.metadata.fullData.slice(0, 3);
+          } else if (activeSheet.csv) {
+            const rows = activeSheet.csv.split('\n');
+            if (rows.length > 1) {
+              sampleData = rows.slice(1, 4).map(row => row.split(','));
+            }
+          }
         }
       }
     }
@@ -281,22 +372,29 @@ ${sampleData}
     }).join('\n');
   }
 
+  // ✅ extractHeaders 메서드 수정
   private extractHeaders(dto: GenerateDataDto): string[] {
     if (dto.extendedSheetContext) {
       return dto.extendedSheetContext.headers.map(h => h.name || h.column);
     }
     
-    if (dto.currentData && dto.currentData.sheets && dto.currentData.sheets.length > 0) {
-      const activeSheet = dto.currentData.sheets.find(sheet => sheet.name === dto.currentData?.activeSheet);
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
-      if (activeSheet && activeSheet.csv) {
-        const firstLine = activeSheet.csv.split('\n')[0];
-        if (firstLine) {
-          return firstLine.split(',');
+      if (activeSheet) {
+        // 메타데이터의 헤더 우선 사용
+        if (activeSheet.metadata?.headers) {
+          return activeSheet.metadata.headers;
+        }
+        
+        if (activeSheet.csv) {
+          const firstLine = activeSheet.csv.split('\n')[0];
+          if (firstLine) {
+            return firstLine.split(',');
+          }
         }
       }
-      
-      return activeSheet?.metadata?.headers || [];
     }
     
     return [];
