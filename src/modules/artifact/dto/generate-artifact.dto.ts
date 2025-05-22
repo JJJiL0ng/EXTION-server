@@ -58,29 +58,38 @@ export class SheetMetadata {
   dataRange?: DataRange;
 }
 
-// 시트 데이터 아이템 메타데이터 클래스 정의
+// ✅ 시트 데이터 아이템 메타데이터 수정 (DataFix/DataGeneration과 동일하게)
 export class SheetDataItemMetadata {
-    @IsOptional()
-    @IsArray()
-    @IsString({ each: true })
-    headers?: string[];
-  
-    @IsOptional()
-    @IsNumber()
-    rowCount?: number;
-  
-    @IsOptional()
-    @IsNumber()
-    columnCount?: number;
-  
-    @IsOptional()
-    @IsArray()
-    sampleData?: any[];
-  
-    @IsOptional()
-    @IsNumber()
-    sheetIndex?: number;
-  }
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  headers?: string[];
+
+  @IsOptional()
+  @IsNumber()
+  rowCount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  columnCount?: number;
+
+  @IsOptional()
+  @IsArray()
+  sampleData?: string[][]; // ✅ any[] → string[][]로 변경
+
+  // ✅ 새로 추가: 전체 데이터 필드
+  @IsOptional()
+  @IsArray()
+  fullData?: string[][];
+
+  @IsOptional()
+  @IsNumber()
+  sheetIndex?: number;
+
+  // ✅ 새로 추가: 원본 메타데이터
+  @IsOptional()
+  originalMetadata?: any;
+}
 
 // 다중 시트를 위한 새로운 인터페이스
 export class SheetData {
@@ -131,19 +140,19 @@ export class ExtendedSheetContext {
 
 // 시트 데이터 아이템 수정
 export class SheetDataItem {
-    @IsString()
-    name: string;
-  
-    @IsString()
-    csv: string;
-  
-    @IsOptional()
-    @ValidateNested()
-    @Type(() => SheetDataItemMetadata)
-    metadata?: SheetDataItemMetadata;
-  }
+  @IsString()
+  name: string;
 
-// 다중 시트 데이터 구조
+  @IsString()
+  csv: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SheetDataItemMetadata)
+  metadata?: SheetDataItemMetadata;
+}
+
+// ✅ 다중 시트 데이터 구조 수정 (DataFix/DataGeneration과 동일하게)
 export class SheetsData {
   @IsArray()
   @ValidateNested({ each: true })
@@ -152,6 +161,15 @@ export class SheetsData {
 
   @IsString()
   activeSheet: string;
+
+  // ✅ 새로 추가: 전체 컨텍스트 정보
+  @IsOptional()
+  @IsNumber()
+  totalSheets?: number;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
 }
 
 // 기존 SheetContext는 하위 호환성을 위해 유지
