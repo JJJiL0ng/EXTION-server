@@ -280,7 +280,8 @@ const ComponentToRender = () => {
       '${artifactType === ArtifactType.CHART ? '차트 분석' : '데이터 분석'}'
     ),
     React.createElement(BarChart, 
-      { width: 600, height: 300, data: processedData },
+      { width: 1000, height: 600, data: processedData },
+
       React.createElement(XAxis, { dataKey: 'name' }),
       React.createElement(YAxis, {}),
       React.createElement(Tooltip, {}),
@@ -325,7 +326,7 @@ ${artifactType === ArtifactType.CHART ? '- 차트 시각화에 집중하세요. 
 ${artifactType === ArtifactType.TABLE ? '- 테이블 형태의 데이터 표시에 집중하세요. 정렬, 검색 기능을 포함하세요.' : ''}
 ${artifactType === ArtifactType.ANALYSIS ? '- 데이터 통계 분석에 집중하세요. 평균, 합계, 최댓값 등을 계산하세요.' : ''}
 
-**중요**: JSX를 절대 사용하지 말고, 모든 요소를 React.createElement로 생성해주세요. 이렇게 해야 프론트엔드에서 오류 없이 렌더링됩니다.`;
+**중요**: JSX를 절대 사용하지 말고, 모든 요소를 React.createElement로 생성해주세요. 코드 안에서 사용되는 표에 관한 단어들을 입력받는 데이터에 작성되어 있는대로 작성해주세요. 이렇게 해야 프론트엔드에서 오류 없이 렌더링됩니다.`;
   }
 
   private extractHeaders(dto: GenerateArtifactDto): string[] {
