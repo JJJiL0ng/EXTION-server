@@ -2,9 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import * as express from 'express'; // 추가
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // ✅ JSON payload 크기 제한 증가 (추가)
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
   // CORS 설정
   app.enableCors({
@@ -14,7 +19,6 @@ async function bootstrap() {
       'https://*.googleusercontent.com',
       'https://extion-server.railway.internal',
       'https://extion-beta.vercel.app'
-
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -39,6 +43,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  console.error('❌ Failed to start server:', error);
+  console.error('❌ Failed to start서버:', error);
   process.exit(1);
 });

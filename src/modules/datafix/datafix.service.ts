@@ -55,6 +55,7 @@ export class DataFixService {
             this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
             this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
             this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
+            this.logger.log(`  * CSV 데이터 크기: ${sheet.csv?.length || 0} 문자`);
           });
         }
       }
@@ -84,6 +85,9 @@ export class DataFixService {
           if (sheet.metadata?.fullData) {
             this.logger.debug(`  * 전체 데이터 행 수: ${sheet.metadata.fullData.length}`);
           }
+          if (sheet.csv) {
+            this.logger.debug(`  * CSV 데이터 크기: ${sheet.csv.length} 문자`);
+          }
         });
       }
       
@@ -92,8 +96,19 @@ export class DataFixService {
       // 시스템 프롬프트 생성
       const systemPrompt = this.createSystemPrompt(dto);
 
-      // 사용자 프롬프트 생성
+      // 사용자 프롬프트 생성 (CSV 데이터 포함)
       const userPrompt = this.createUserPrompt(dto.userInput, dto);
+
+      // ✅ 프롬프트 크기 체크 및 로깅
+      const totalPromptSize = systemPrompt.length + userPrompt.length;
+      this.logger.log(`총 프롬프트 크기: ${totalPromptSize} 문자`);
+      this.logger.log(`시스템 프롬프트 크기: ${systemPrompt.length} 문자`);
+      this.logger.log(`사용자 프롬프트 크기: ${userPrompt.length} 문자`);
+
+      // ✅ 프롬프트가 너무 큰 경우 경고
+      if (totalPromptSize > 100000) {
+        this.logger.warn(`프롬프트 크기가 큽니다: ${totalPromptSize} 문자. 응답이 제한될 수 있습니다.`);
+      }
 
       // OpenAI API 호출
       const completion = await this.openai.chat.completions.create({
@@ -153,7 +168,7 @@ export class DataFixService {
     }
   }
 
-  // ✅ getDataContext 메서드 수정
+  // ✅ getDataContext 메서드 수정 - CSV 데이터 포함
   private getDataContext(dto: ProcessDataDto): any {
     // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
@@ -174,6 +189,8 @@ export class DataFixService {
           })) || [],
           // ✅ 전체 데이터 우선 사용, 없으면 CSV 파싱
           data: activeSheet.metadata?.fullData || this.parseCsvToArray(activeSheet.csv),
+          // ✅ 원본 CSV 데이터 추가
+          csvData: activeSheet.csv,
           // ✅ 추가 메타데이터
           rowCount: activeSheet.metadata?.rowCount || 0,
           columnCount: activeSheet.metadata?.columnCount || 0,
@@ -245,7 +262,9 @@ JSON 형식으로 응답해야 합니다:
 7. 변경 유형은 'sort', 'filter', 'modify', 'transform' 중 하나여야 합니다.
 8. 날짜 형식은 YYYY-MM-DD로 통일하세요.
 9. 정렬의 경우 입력받는 모든 값을 정렬해서 반환하세요
-10. 전체 데이터를 기준으로 작업하세요 (샘플 데이터가 아닌)
+10. ✅ 제공된 실제 CSV 데이터를 기준으로 작업하세요
+11. ✅ 실제 데이터의 값들을 정확히 확인하고 처리하세요
+12. ✅ 전체 데이터를 기준으로 작업하세요 (샘플 데이터가 아닌)
 
 ## 변경 유형 설명
 1. sort: 데이터 정렬 (특정 열 기준 오름차순/내림차순)
@@ -255,7 +274,7 @@ JSON 형식으로 응답해야 합니다:
 
 ## 기존 데이터 컨텍스트
 ${hasExistingData ? `
-이미 존재하는 데이터가 있습니다:
+이미 존재하는 실제 데이터가 있습니다:
 ${isMultiSheet ? `
 - 다중 시트 환경
 - 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
@@ -264,19 +283,17 @@ ${isMultiSheet ? `
 - 단일 시트 환경
 - 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
 `}
-- 전체 데이터가 제공되어 있으므라 모든 행을 대상으로 작업하세요
+- ✅ 실제 CSV 데이터가 제공되어 정밀한 처리가 가능합니다
+- ✅ 모든 행을 대상으로 정확한 데이터 조작을 수행하세요
 ` : `
 데이터가 없습니다. 사용자에게 먼저 데이터를 업로드하도록 안내해야 합니다.
 `}
 `;
   }
 
-  // ✅ createUserPrompt 메서드 수정
+  // ✅ createUserPrompt 메서드 수정 - CSV 데이터 포함
   private createUserPrompt(userInput: string, dto: ProcessDataDto): string {
     const context = this.getDataContext(dto);
-    
-    // 샘플 데이터 추출 (표시용)
-    const sampleData = this.extractSampleData(dto);
     
     // 전체 데이터 정보 추출
     const fullDataInfo = this.extractFullDataInfo(dto);
@@ -287,6 +304,9 @@ ${isMultiSheet ? `
     // 데이터 존재 여부
     const sheetsData = dto.sheetsData || dto.currentData;
     const hasExistingData = !!(dto.extendedSheetContext || (sheetsData?.sheets && sheetsData.sheets.length > 0));
+    
+    // ✅ CSV 데이터 추출 및 제한
+    const csvData = this.extractCsvData(dto);
     
     return `사용자 요청: "${userInput}"
 
@@ -303,13 +323,22 @@ ${fullDataInfo ? `
 ${fullDataInfo}
 ` : ''}
 
-## 샘플 데이터 (표시용):
-${sampleData}
+${csvData ? `
+## ✅ 실제 데이터 (CSV 형식):
+\`\`\`
+${csvData}
+\`\`\`
+
+**중요**: 위의 실제 데이터를 바탕으로 정확한 데이터 처리를 수행해주세요.
+- 각 행과 열의 실제 값들을 확인하여 작업하세요
+- 정렬, 필터링, 수정 시 실제 데이터 값을 기준으로 하세요
+- 중복 데이터나 특정 조건을 확인할 때 실제 값을 참조하세요
+` : ''}
 ` : '현재 데이터 정보를 추출할 수 없습니다.'}
 ` : '## 현재 데이터가 없습니다. 데이터를 먼저 생성하도록 사용자에게 안내해주세요.'}
 
 ## 요청 분석
-사용자의 요청에 따라 **전체 데이터**를 대상으로 수정, 정렬, 필터링 또는 변환하세요.
+사용자의 요청에 따라 **실제 제공된 전체 데이터**를 대상으로 수정, 정렬, 필터링 또는 변환하세요.
 다음 네 가지 작업 중 하나를 수행해야 합니다:
 
 1. 정렬(sort): 특정 열을 기준으로 데이터 정렬
@@ -317,70 +346,75 @@ ${sampleData}
 3. 수정(modify): 데이터 값을 변경하거나 열/행 추가/삭제
 4. 변환(transform): 데이터 구조나 형식 변환
 
-**중요**: 샘플 데이터가 아닌 전체 데이터를 기준으로 작업하세요.
+**중요**: 샘플 데이터가 아닌 실제 전체 데이터를 기준으로 작업하세요.
 
 수정된 시트 이름, 헤더, 데이터 배열, 변경 유형(type), 그리고 세부 내용(details)을 포함한 JSON을 반환하세요.
 
 반드시 표준 JSON 형식으로 응답하고, 마크다운이나 추가 설명은 포함하지 마세요.`;
   }
 
-  // ✅ 전체 데이터 정보 추출 메서드 추가
-  private extractFullDataInfo(dto: ProcessDataDto): string {
+  // ✅ CSV 데이터 추출 메서드 추가
+  private extractCsvData(dto: ProcessDataDto): string {
     const sheetsData = dto.sheetsData || dto.currentData;
     
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
-      if (activeSheet && activeSheet.metadata?.fullData) {
-        const fullData = activeSheet.metadata.fullData;
-        return `- **전체 데이터 행 수**: ${fullData.length}
-- **전체 데이터 사용 가능**: 예
-- **데이터 처리 범위**: ${fullData.length > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
+      if (activeSheet && activeSheet.csv) {
+        // ✅ CSV 데이터 크기 제한 (너무 큰 경우 잘라내기)
+        const maxCsvLength = 50000; // 최대 50,000 문자
+        let csvData = activeSheet.csv;
+        
+        if (csvData.length > maxCsvLength) {
+          // 헤더는 유지하고 데이터 행만 제한
+          const lines = csvData.split('\n');
+          const header = lines[0];
+          const dataLines = lines.slice(1);
+          
+          // 헤더 + 제한된 데이터 행들
+          let limitedCsv = header + '\n';
+          let currentLength = limitedCsv.length;
+          
+          for (const line of dataLines) {
+            if (currentLength + line.length + 1 > maxCsvLength) {
+              limitedCsv += '\n... (데이터가 더 있습니다. 총 ' + lines.length + '행)';
+              break;
+            }
+            limitedCsv += line + '\n';
+            currentLength += line.length + 1;
+          }
+          
+          this.logger.log(`CSV 데이터 크기 제한: ${csvData.length} → ${limitedCsv.length} 문자`);
+          return limitedCsv;
+        }
+        
+        return csvData;
       }
     }
     
     return '';
   }
 
-  private extractSampleData(dto: ProcessDataDto): string {
-    // 샘플 데이터 추출 로직
-    let sampleData: any[] = [];
+  // ✅ 전체 데이터 정보 추출 메서드 수정
+  private extractFullDataInfo(dto: ProcessDataDto): string {
+    const sheetsData = dto.sheetsData || dto.currentData;
     
-    if (dto.extendedSheetContext?.sampleData) {
-      sampleData = dto.extendedSheetContext.sampleData.slice(0, 3);
-    } else {
-      const sheetsData = dto.sheetsData || dto.currentData;
-      if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
-        const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+      
+      if (activeSheet) {
+        const hasFullData = activeSheet.metadata?.fullData;
+        const hasCsvData = !!activeSheet.csv;
+        const rowCount = activeSheet.metadata?.rowCount || 0;
         
-        if (activeSheet) {
-          // ✅ 전체 데이터가 있으면 전체 데이터에서 샘플 추출
-          if (activeSheet.metadata?.fullData) {
-            sampleData = activeSheet.metadata.fullData.slice(0, 3);
-          } else if (activeSheet.csv) {
-            const rows = activeSheet.csv.split('\n');
-            if (rows.length > 1) {
-              sampleData = rows.slice(1, 4).map(row => row.split(','));
-            }
-          }
-        }
+        return `- **전체 데이터 행 수**: ${rowCount}
+- **전체 데이터 사용 가능**: ${hasFullData || hasCsvData ? '예' : '아니오'}
+- **CSV 데이터 제공**: ${hasCsvData ? '예' : '아니오'}
+- **데이터 처리 범위**: ${rowCount > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
       }
     }
     
-    if (!sampleData || sampleData.length === 0) {
-      return "**샘플 데이터 없음**";
-    }
-    
-    return sampleData.map((row, i) => {
-      if (Array.isArray(row)) {
-        return `**${i + 1}행**: ${row.map(cell => `"${cell}"`).join(', ')}`;
-      } else if (typeof row === 'object' && row !== null) {
-        const values = Object.values(row);
-        return `**${i + 1}행**: ${values.map(cell => `"${cell}"`).join(', ')}`;
-      } else {
-        return `**${i + 1}행**: "${row}"`;
-      }
-    }).join('\n');
+    return '';
   }
 
   // ✅ extractHeaders 메서드 수정
@@ -399,10 +433,11 @@ ${sampleData}
           return activeSheet.metadata.headers;
         }
         
+        // CSV에서 헤더 추출
         if (activeSheet.csv) {
           const firstLine = activeSheet.csv.split('\n')[0];
           if (firstLine) {
-            return firstLine.split(',');
+            return firstLine.split(',').map(header => header.trim());
           }
         }
       }

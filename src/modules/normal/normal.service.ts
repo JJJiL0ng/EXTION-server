@@ -49,6 +49,7 @@ export class NormalChatService {
             this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
             this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
             this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
+            this.logger.log(`  * CSV 데이터 크기: ${sheet.csv?.length || 0} 문자`);
           });
         }
       }
@@ -78,6 +79,9 @@ export class NormalChatService {
           if (sheet.metadata?.fullData) {
             this.logger.debug(`  * 전체 데이터 행 수: ${sheet.metadata.fullData.length}`);
           }
+          if (sheet.csv) {
+            this.logger.debug(`  * CSV 데이터 크기: ${sheet.csv.length} 문자`);
+          }
         });
       }
       
@@ -86,8 +90,19 @@ export class NormalChatService {
       // 시스템 프롬프트 생성
       const systemPrompt = this.createSystemPrompt(dto);
 
-      // 사용자 프롬프트 생성
+      // 사용자 프롬프트 생성 (CSV 데이터 포함)
       const userPrompt = this.createUserPrompt(dto.userInput, dto);
+
+      // ✅ 프롬프트 크기 체크 및 로깅
+      const totalPromptSize = systemPrompt.length + userPrompt.length;
+      this.logger.log(`총 프롬프트 크기: ${totalPromptSize} 문자`);
+      this.logger.log(`시스템 프롬프트 크기: ${systemPrompt.length} 문자`);
+      this.logger.log(`사용자 프롬프트 크기: ${userPrompt.length} 문자`);
+
+      // ✅ 프롬프트가 너무 큰 경우 경고
+      if (totalPromptSize > 100000) {
+        this.logger.warn(`프롬프트 크기가 큽니다: ${totalPromptSize} 문자. 응답이 제한될 수 있습니다.`);
+      }
 
       // OpenAI API 호출
       const completion = await this.openai.chat.completions.create({
@@ -97,7 +112,7 @@ export class NormalChatService {
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.3,
-        max_tokens: 5000,
+        max_tokens: 10000,
       });
 
       const aiResponse = completion.choices[0]?.message?.content;
@@ -140,7 +155,7 @@ export class NormalChatService {
     }
   }
 
-  // ✅ getDataContext 메서드 수정
+  // ✅ getDataContext 메서드 수정 - CSV 데이터 포함
   private getDataContext(dto: NormalChatDto): any {
     // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
@@ -161,6 +176,8 @@ export class NormalChatService {
           })) || [],
           // ✅ 전체 데이터 우선 사용, 없으면 CSV 파싱
           data: activeSheet.metadata?.fullData || this.parseCsvToArray(activeSheet.csv),
+          // ✅ 원본 CSV 데이터 추가
+          csvData: activeSheet.csv,
           // ✅ 추가 메타데이터
           rowCount: activeSheet.metadata?.rowCount || 0,
           columnCount: activeSheet.metadata?.columnCount || 0,
@@ -204,10 +221,12 @@ export class NormalChatService {
 6. 데이터가 없는 경우 적절한 안내를 제공하세요.
 7. 마크다운이 아닌 일반 텍스트로 응답하세요.
 8. 전체 데이터를 기준으로 분석하세요 (샘플 데이터가 아닌)
+9. ✅ 제공된 실제 CSV 데이터를 바탕으로 정확한 분석을 수행하세요.
+10. ✅ 데이터의 패턴, 트렌드, 이상값 등을 구체적으로 언급하세요.
 
 ## 데이터 컨텍스트
 ${hasExistingData ? `
-현재 분석 가능한 데이터가 있습니다:
+현재 분석 가능한 실제 데이터가 있습니다:
 ${isMultiSheet ? `
 - 다중 시트 환경
 - 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
@@ -216,13 +235,14 @@ ${isMultiSheet ? `
 - 단일 시트 환경
 - 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
 `}
-- 전체 데이터가 제공되어 있으므로 모든 행을 대상으로 분석하세요
+- ✅ 실제 CSV 데이터가 제공되어 정밀한 분석이 가능합니다
+- ✅ 모든 행과 열을 대상으로 상세 분석을 수행하세요
 ` : `
 현재 분석할 데이터가 없습니다. 사용자에게 데이터를 업로드하도록 안내하세요.
 `}`;
   }
 
-  // ✅ createUserPrompt 메서드 수정
+  // ✅ createUserPrompt 메서드 수정 - CSV 데이터 포함
   private createUserPrompt(userInput: string, dto: NormalChatDto): string {
     const context = this.getDataContext(dto);
     
@@ -234,6 +254,9 @@ ${isMultiSheet ? `
     
     const sheetsData = dto.sheetsData || dto.currentData;
     const hasExistingData = !!(dto.extendedSheetContext || (sheetsData?.sheets && sheetsData.sheets.length > 0));
+    
+    // ✅ CSV 데이터 추출 및 제한
+    const csvData = this.extractCsvData(dto);
     
     return `사용자 요청: "${userInput}"
 
@@ -249,35 +272,93 @@ ${fullDataInfo ? `
 ## 전체 데이터 정보:
 ${fullDataInfo}
 ` : ''}
+
+${csvData ? `
+## ✅ 실제 데이터 (CSV 형식):
+\`\`\`
+${csvData}
+\`\`\`
+
+**중요**: 위의 실제 데이터를 바탕으로 정확한 분석을 수행해주세요.
+- 각 행과 열의 실제 값들을 참조하여 분석하세요
+- 데이터의 패턴, 트렌드, 통계를 구체적으로 계산하세요
+- 이상값이나 특이사항이 있다면 구체적으로 언급하세요
+` : ''}
 ` : '현재 데이터 정보를 추출할 수 없습니다.'}
 ` : '## 현재 데이터가 없습니다. 사용자에게 데이터 업로드를 안내하세요.'}
 
 사용자의 요청에 대해 전문적이고 친근한 톤으로 응답해주세요.
-데이터가 있는 경우 **전체 데이터**를 기준으로 구체적인 분석과 인사이트를 제공하고,
+데이터가 있는 경우 **실제 제공된 데이터**를 기준으로 구체적인 분석과 인사이트를 제공하고,
 데이터가 없는 경우 적절한 안내를 제공해주세요.
 
-**중요**: 샘플 데이터가 아닌 전체 데이터를 기준으로 분석하세요.`;
+**중요**: 샘플 데이터가 아닌 실제 전체 데이터를 기준으로 분석하세요.`;
   }
 
-  // ✅ 전체 데이터 정보 추출 메서드 추가
-  private extractFullDataInfo(dto: NormalChatDto): string {
+  // ✅ CSV 데이터 추출 메서드 추가
+  private extractCsvData(dto: NormalChatDto): string {
     const sheetsData = dto.sheetsData || dto.currentData;
     
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
-      if (activeSheet && activeSheet.metadata?.fullData) {
-        const fullData = activeSheet.metadata.fullData;
-        return `- **전체 데이터 행 수**: ${fullData.length}
-- **전체 데이터 사용 가능**: 예
-- **데이터 처리 범위**: ${fullData.length > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
+      if (activeSheet && activeSheet.csv) {
+        // ✅ CSV 데이터 크기 제한 (너무 큰 경우 잘라내기)
+        const maxCsvLength = 50000; // 최대 50,000 문자
+        let csvData = activeSheet.csv;
+        
+        if (csvData.length > maxCsvLength) {
+          // 헤더는 유지하고 데이터 행만 제한
+          const lines = csvData.split('\n');
+          const header = lines[0];
+          const dataLines = lines.slice(1);
+          
+          // 헤더 + 제한된 데이터 행들
+          let limitedCsv = header + '\n';
+          let currentLength = limitedCsv.length;
+          
+          for (const line of dataLines) {
+            if (currentLength + line.length + 1 > maxCsvLength) {
+              limitedCsv += '\n... (데이터가 더 있습니다. 총 ' + lines.length + '행)';
+              break;
+            }
+            limitedCsv += line + '\n';
+            currentLength += line.length + 1;
+          }
+          
+          this.logger.log(`CSV 데이터 크기 제한: ${csvData.length} → ${limitedCsv.length} 문자`);
+          return limitedCsv;
+        }
+        
+        return csvData;
       }
     }
     
     return '';
   }
 
-  // ✅ extractHeaders 메서드 추가
+  // ✅ 전체 데이터 정보 추출 메서드 수정
+  private extractFullDataInfo(dto: NormalChatDto): string {
+    const sheetsData = dto.sheetsData || dto.currentData;
+    
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+      
+      if (activeSheet) {
+        const hasFullData = activeSheet.metadata?.fullData;
+        const hasCsvData = !!activeSheet.csv;
+        const rowCount = activeSheet.metadata?.rowCount || 0;
+        
+        return `- **전체 데이터 행 수**: ${rowCount}
+- **전체 데이터 사용 가능**: ${hasFullData || hasCsvData ? '예' : '아니오'}
+- **CSV 데이터 제공**: ${hasCsvData ? '예' : '아니오'}
+- **데이터 처리 범위**: ${rowCount > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
+      }
+    }
+    
+    return '';
+  }
+
+  // ✅ extractHeaders 메서드 수정
   private extractHeaders(dto: NormalChatDto): string[] {
     if (dto.extendedSheetContext) {
       return dto.extendedSheetContext.headers.map(h => h.name || h.column);
@@ -293,10 +374,11 @@ ${fullDataInfo}
           return activeSheet.metadata.headers;
         }
         
+        // CSV에서 헤더 추출
         if (activeSheet.csv) {
           const firstLine = activeSheet.csv.split('\n')[0];
           if (firstLine) {
-            return firstLine.split(',');
+            return firstLine.split(',').map(header => header.trim());
           }
         }
       }
