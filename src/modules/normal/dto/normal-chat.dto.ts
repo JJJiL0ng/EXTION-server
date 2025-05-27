@@ -13,11 +13,9 @@ export class NormalChatDto {
 
   // === Firebase 연동 필드 추가 ===
   @IsString()
-  @IsUUID()
   userId: string; // Firebase Auth UID
 
   @IsString()
-  @IsUUID()
   @IsOptional()
   chatId?: string; // 기존 채팅 ID (새 채팅이면 없음)
 

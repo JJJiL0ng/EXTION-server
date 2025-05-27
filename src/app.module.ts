@@ -7,6 +7,7 @@ import { ArtifactModule } from './modules/artifact/artifact.module';
 import { DataGenerationModule } from './modules/datageneration/datageneration.module';
 import { NormalModule } from './modules/normal/normal.module';
 import { DataFixModule } from './modules/datafix/datafix.module';
+import { FirebaseModule } from './common/firebase/firebase.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DataFixModule } from './modules/datafix/datafix.module';
     DataGenerationModule,
     NormalModule,
     DataFixModule,
+    FirebaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

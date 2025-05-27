@@ -1,15 +1,21 @@
-// src/modules/normalchat/normalchat.service.ts
+// src/modules/normalchat/normalchat.service.ts - 수정된 서비스
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { NormalChatDto, NormalChatResponseDto } from './dto/normal-chat.dto';
+import { FirebaseService } from '../../common/firebase/firebase.service';
+import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class NormalChatService {
   private readonly logger = new Logger(NormalChatService.name);
   private readonly openai: OpenAI;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private firebaseService: FirebaseService,
+  ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
     });
@@ -18,120 +24,95 @@ export class NormalChatService {
   async chat(dto: NormalChatDto): Promise<NormalChatResponseDto> {
     try {
       this.logger.log(`일반 채팅 요청: ${dto.userInput}`);
+      this.logger.log(`사용자 ID: ${dto.userId}`);
+      this.logger.log(`채팅 ID: ${dto.chatId || '새 채팅'}`);
 
-      // 프론트엔드에서 받은 데이터 로깅
-      this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
-      this.logger.log(`사용자 입력: ${dto.userInput}`);
-
-      if (dto.extendedSheetContext) {
-        this.logger.log('확장 시트 컨텍스트:');
-        this.logger.log(`- 시트명: ${dto.extendedSheetContext.sheetName}`);
-        this.logger.log(`- 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
-        this.logger.log(`- 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
-        this.logger.log(`- 헤더 수: ${dto.extendedSheetContext.headers?.length || 0}`);
-        if (dto.extendedSheetContext.sampleData) {
-          this.logger.log(`- 샘플 데이터 행 수: ${dto.extendedSheetContext.sampleData.length}`);
+      // === 1. 채팅 세션 처리 ===
+      let chatId = dto.chatId;
+      
+      // 새 채팅인 경우 생성
+      if (!chatId) {
+        const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
+        chatId = await this.firebaseService.createChat(dto.userId, { title: chatTitle });
+        this.logger.log(`새 채팅 생성: ${chatId}`);
+      } else {
+        // 기존 채팅 존재 확인
+        const existingChat = await this.firebaseService.getChat(chatId);
+        if (!existingChat) {
+          throw new BadRequestException('존재하지 않는 채팅입니다.');
+        }
+        if (existingChat.userId !== dto.userId) {
+          throw new BadRequestException('채팅 접근 권한이 없습니다.');
         }
       }
 
-      // ✅ sheetsData 우선 처리
-      const sheetsData = dto.sheetsData || dto.currentData;
-      if (sheetsData) {
-        this.logger.log('시트 데이터:');
-        this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
-        this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
-        this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
-        
-        if (sheetsData.sheets) {
-          sheetsData.sheets.forEach((sheet, index) => {
-            this.logger.log(`- 시트 ${index}: ${sheet.name}`);
-            this.logger.log(`  * 행 수: ${sheet.metadata?.rowCount || 0}`);
-            this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
-            this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
-            this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
-            this.logger.log(`  * CSV 데이터 크기: ${sheet.csv?.length || 0} 문자`);
-          });
-        }
-      }
-
-      this.logger.log('==================== 프론트엔드에서 받은 데이터 끝 ====================');
-
-      // 데이터 컨텍스트 조회
-      const dataContext = this.getDataContext(dto);
-      
-      // 디버깅을 위한 컨텍스트 로깅
-      this.logger.debug('=== 데이터 컨텍스트 디버그 정보 ===');
-      this.logger.debug(`컨텍스트 유형: ${this.getContextType(dto)}`);
-      
-      if (dto.extendedSheetContext) {
-        this.logger.debug(`확장 컨텍스트 - 시트명: ${dto.extendedSheetContext.sheetName}`);
-        this.logger.debug(`확장 컨텍스트 - 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
-        this.logger.debug(`확장 컨텍스트 - 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
-        this.logger.debug(`확장 컨텍스트 - 헤더: ${JSON.stringify(dto.extendedSheetContext.headers)}`);
-      }
-      
-      if (sheetsData) {
-        this.logger.debug(`시트 데이터 - 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
-        this.logger.debug(`시트 데이터 - 활성 시트: ${sheetsData.activeSheet}`);
-        sheetsData.sheets?.forEach((sheet, index) => {
-          this.logger.debug(`시트 ${index}: ${sheet.name} (${sheet.metadata?.rowCount || 0} 행)`);
-          // ✅ 전체 데이터 존재 여부 확인
-          if (sheet.metadata?.fullData) {
-            this.logger.debug(`  * 전체 데이터 행 수: ${sheet.metadata.fullData.length}`);
-          }
-          if (sheet.csv) {
-            this.logger.debug(`  * CSV 데이터 크기: ${sheet.csv.length} 문자`);
-          }
-        });
-      }
-      
-      this.logger.debug('=== 컨텍스트 디버그 끝 ===');
-
-      // 시스템 프롬프트 생성
-      const systemPrompt = this.createSystemPrompt(dto);
-
-      // 사용자 프롬프트 생성 (CSV 데이터 포함)
-      const userPrompt = this.createUserPrompt(dto.userInput, dto);
-
-      // ✅ 프롬프트 크기 체크 및 로깅
-      const totalPromptSize = systemPrompt.length + userPrompt.length;
-      this.logger.log(`총 프롬프트 크기: ${totalPromptSize} 문자`);
-      this.logger.log(`시스템 프롬프트 크기: ${systemPrompt.length} 문자`);
-      this.logger.log(`사용자 프롬프트 크기: ${userPrompt.length} 문자`);
-
-      // ✅ 프롬프트가 너무 큰 경우 경고
-      if (totalPromptSize > 100000) {
-        this.logger.warn(`프롬프트 크기가 큽니다: ${totalPromptSize} 문자. 응답이 제한될 수 있습니다.`);
-      }
-
-      // OpenAI API 호출
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 10000,
-      });
-
-      const aiResponse = completion.choices[0]?.message?.content;
-      
-      if (!aiResponse) {
-        throw new InternalServerErrorException('AI 응답을 받을 수 없습니다.');
-      }
-
-      const result = {
-        success: true,
-        message: aiResponse
+      // === 2. 사용자 메시지 저장 ===
+      const userMessageDto: CreateMessageDto = {
+        content: dto.userInput,
+        role: MessageRole.USER,
+        type: MessageType.TEXT,
+        mode: MessageMode.NORMAL,
+        sheetContext: dto.extendedSheetContext ? {
+          sheetIndex: dto.extendedSheetContext.sheetIndex,
+          sheetName: dto.extendedSheetContext.sheetName,
+        } : undefined,
       };
 
-      // 전체 응답 데이터 로깅
-      this.logger.log('==================== 프론트엔드 전송 응답 데이터 시작 ====================');
-      this.logger.log(`성공 여부: ${result.success}`);
-      this.logger.log(`메시지 길이: ${result.message.length}자`);
-      this.logger.log(`메시지 미리보기: ${result.message.substring(0, 100)}...`);
-      this.logger.log('==================== 프론트엔드 전송 응답 데이터 끝 ====================');
+      const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
+      this.logger.log(`사용자 메시지 저장: ${userMessageId}`);
+
+      // === 3. 기존 AI 로직 수행 ===
+      const aiResponse = await this.generateAIResponse(dto);
+
+      // === 4. AI 응답 메시지 저장 ===
+      const aiMessageDto: CreateMessageDto = {
+        content: aiResponse,
+        role: MessageRole.EXTION_AI,
+        type: MessageType.TEXT,
+        mode: MessageMode.NORMAL,
+        sheetContext: dto.extendedSheetContext ? {
+          sheetIndex: dto.extendedSheetContext.sheetIndex,
+          sheetName: dto.extendedSheetContext.sheetName,
+        } : undefined,
+      };
+
+      const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
+      this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);
+
+      // === 5. 스프레드시트 메타데이터 업데이트 ===
+      if (dto.sheetsData || dto.currentData) {
+        const sheetsData = dto.sheetsData || dto.currentData;
+        await this.firebaseService.updateSpreadsheetMetadata(chatId, {
+          fileName: sheetsData?.fileName || 'Unknown',
+          totalSheets: sheetsData?.sheets?.length || 0,
+          activeSheetIndex: sheetsData?.sheets?.findIndex(s => s.name === sheetsData?.activeSheet) || 0,
+          sheetNames: sheetsData?.sheets?.map(s => s.name) || [],
+        });
+      }
+
+      // === 6. 응답 반환 ===
+      const result: NormalChatResponseDto = {
+        success: true,
+        message: aiResponse,
+        chatId,
+        userMessageId,
+        aiMessageId,
+        timestamp: new Date().toISOString(),
+        spreadsheetMetadata: dto.sheetsData ? {
+          hasSpreadsheet: true,
+          fileName: dto.sheetsData?.fileName || 'Unknown',
+          totalSheets: dto.sheetsData?.sheets?.length || 0,
+          activeSheetIndex: dto.sheetsData?.sheets?.findIndex(s => s.name === dto.sheetsData?.activeSheet) || 0,
+          sheetNames: dto.sheetsData?.sheets?.map(s => s.name) || [],
+          lastModifiedAt: new Date(),
+        } : undefined,
+      };
+
+      this.logger.log('==================== Firebase 저장 완료 ====================');
+      this.logger.log(`채팅 ID: ${chatId}`);
+      this.logger.log(`사용자 메시지 ID: ${userMessageId}`);
+      this.logger.log(`AI 메시지 ID: ${aiMessageId}`);
+      this.logger.log('==================== 응답 전송 ====================');
 
       return result;
 
@@ -142,20 +123,104 @@ export class NormalChatService {
         throw error;
       }
       
-      const errorResult = {
+      return {
         success: false,
-        message: error.message || '일반 채팅 중 오류가 발생했습니다.'
+        message: '',
+        error: error.message || '일반 채팅 중 오류가 발생했습니다.',
+        timestamp: new Date().toISOString(),
       };
-
-      this.logger.log('==================== 프론트엔드 전송 오류 응답 시작 ====================');
-      this.logger.log(JSON.stringify(errorResult, null, 2));
-      this.logger.log('==================== 프론트엔드 전송 오류 응답 끝 ====================');
-
-      return errorResult;
     }
   }
 
-  // ✅ getDataContext 메서드 수정 - CSV 데이터 포함
+  // === 기존 AI 응답 생성 로직 분리 ===
+  private async generateAIResponse(dto: NormalChatDto): Promise<string> {
+    // 프론트엔드에서 받은 데이터 로깅
+    this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
+    this.logger.log(`사용자 입력: ${dto.userInput}`);
+
+    if (dto.extendedSheetContext) {
+      this.logger.log('확장 시트 컨텍스트:');
+      this.logger.log(`- 시트명: ${dto.extendedSheetContext.sheetName}`);
+      this.logger.log(`- 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
+      this.logger.log(`- 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
+      this.logger.log(`- 헤더 수: ${dto.extendedSheetContext.headers?.length || 0}`);
+      if (dto.extendedSheetContext.sampleData) {
+        this.logger.log(`- 샘플 데이터 행 수: ${dto.extendedSheetContext.sampleData.length}`);
+      }
+    }
+
+    // ✅ sheetsData 우선 처리
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData) {
+      this.logger.log('시트 데이터:');
+      this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
+      this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
+      this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
+      
+      if (sheetsData.sheets) {
+        sheetsData.sheets.forEach((sheet, index) => {
+          this.logger.log(`- 시트 ${index}: ${sheet.name}`);
+          this.logger.log(`  * 행 수: ${sheet.metadata?.rowCount || 0}`);
+          this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
+          this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
+          this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
+          this.logger.log(`  * CSV 데이터 크기: ${sheet.csv?.length || 0} 문자`);
+        });
+      }
+    }
+
+    this.logger.log('==================== 프론트엔드에서 받은 데이터 끝 ====================');
+
+    // 데이터 컨텍스트 조회
+    const dataContext = this.getDataContext(dto);
+    
+    // 시스템 프롬프트 생성
+    const systemPrompt = this.createSystemPrompt(dto);
+
+    // 사용자 프롬프트 생성 (CSV 데이터 포함)
+    const userPrompt = this.createUserPrompt(dto.userInput, dto);
+
+    // ✅ 프롬프트 크기 체크 및 로깅
+    // ✅ 프롬프트 크기 체크 및 로깅
+    const totalPromptSize = systemPrompt.length + userPrompt.length;
+    this.logger.log(`총 프롬프트 크기: ${totalPromptSize} 문자`);
+    this.logger.log(`시스템 프롬프트 크기: ${systemPrompt.length} 문자`);
+    this.logger.log(`사용자 프롬프트 크기: ${userPrompt.length} 문자`);
+
+    // ✅ 프롬프트가 너무 큰 경우 경고
+    if (totalPromptSize > 100000) {
+      this.logger.warn(`프롬프트 크기가 큽니다: ${totalPromptSize} 문자. 응답이 제한될 수 있습니다.`);
+    }
+
+    // OpenAI API 호출
+    const completion = await this.openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 10000,
+    });
+
+    const aiResponse = completion.choices[0]?.message?.content;
+    
+    if (!aiResponse) {
+      throw new InternalServerErrorException('AI 응답을 받을 수 없습니다.');
+    }
+
+    this.logger.log(`AI 응답 생성 완료: ${aiResponse.length}자`);
+    return aiResponse;
+  }
+
+  // === 채팅 제목 자동 생성 ===
+  private generateChatTitle(userInput: string): string {
+    // 사용자 입력을 기반으로 간단한 제목 생성
+    const title = userInput.length > 30 ? userInput.substring(0, 30) + '...' : userInput;
+    return title || '새로운 채팅';
+  }
+
+  // === 기존 메서드들 유지 ===
   private getDataContext(dto: NormalChatDto): any {
     // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
