@@ -7,5 +7,6 @@ import { FirebaseModule } from '../firebase/firebase.module';
   imports: [FirebaseModule],
   controllers: [SheetController],
   providers: [SheetService],
+  exports: [SheetService],
 })
 export class SheetModule {}

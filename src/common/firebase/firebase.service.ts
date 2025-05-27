@@ -68,6 +68,34 @@ export class FirebaseService {
     }
   }
 
+  // 특정 ID로 채팅 생성
+  async createChatWithId(userId: string, chatId: string, createChatDto: CreateChatDto): Promise<string> {
+    try {
+      const chatRef = this.db.collection('chats').doc(chatId);
+      const chatData: Omit<FirebaseChat, 'id'> = {
+        userId,
+        title: createChatDto.title,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        messageCount: 0,
+        status: 'active',
+        analytics: {
+          formulaCount: 0,
+          artifactCount: 0,
+          dataGenerationCount: 0,
+          dataFixCount: 0,
+        },
+      };
+
+      await chatRef.set(chatData);
+      this.logger.log(`특정 ID로 채팅 생성: ${chatId}`);
+      return chatId;
+    } catch (error) {
+      this.logger.error('특정 ID로 채팅 생성 오류:', error);
+      throw error;
+    }
+  }
+
   async getChat(chatId: string): Promise<FirebaseChat | null> {
     try {
       const chatDoc = await this.db.collection('chats').doc(chatId).get();

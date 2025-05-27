@@ -78,6 +78,7 @@ import {
         success: true,
         message: '스프레드시트가 성공적으로 저장되었습니다.',
         spreadsheetId,
+        chatId: createDto.chatId,
         fileName: createDto.fileName,
         sheets: createDto.sheets.map(sheet => ({
           sheetIndex: sheet.sheetIndex,

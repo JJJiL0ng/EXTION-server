@@ -1,11 +1,11 @@
 // src/modules/normalchat/normalchat.controller.ts
-import { 
-  Controller, 
-  Post, 
-  Body, 
-  HttpStatus, 
-  HttpCode, 
-  BadRequestException, 
+import {
+  Controller,
+  Post,
+  Body,
+  HttpStatus,
+  HttpCode,
+  BadRequestException,
   Logger,
   UsePipes,
   ValidationPipe,
@@ -17,15 +17,15 @@ import { NormalChatDto, NormalChatResponseDto } from './dto/normal-chat.dto';
 @Controller('normal')
 export class NormalChatController {
   private readonly logger = new Logger(NormalChatController.name);
-  
-  constructor(private readonly normalChatService: NormalChatService) {}
+
+  constructor(private readonly normalChatService: NormalChatService) { }
 
   @Post('chat')
   @HttpCode(HttpStatus.OK)
-  @UsePipes(new ValidationPipe({ 
+  @UsePipes(new ValidationPipe({
     transform: true,
     whitelist: true,
-    forbidNonWhitelisted: true 
+    forbidNonWhitelisted: true
   }))
   async chat(
     @Body() normalChatDto: NormalChatDto
@@ -38,12 +38,12 @@ export class NormalChatController {
     this.logger.log(`Chat Title: ${normalChatDto.chatTitle || 'N/A'}`);
     this.logger.log(`Message ID: ${normalChatDto.messageId || 'N/A'}`);
     this.logger.log(`Language: ${normalChatDto.language || 'ko'}`);
-    
+
     // 스프레드시트 컨텍스트 로깅
     this.logger.log(`Has extendedSheetContext: ${!!normalChatDto.extendedSheetContext}`);
     this.logger.log(`Has sheetsData: ${!!normalChatDto.sheetsData}`);
     this.logger.log(`Has currentData (legacy): ${!!normalChatDto.currentData}`);
-    
+
     if (normalChatDto.extendedSheetContext) {
       this.logger.log(`Extended SheetContext:`, JSON.stringify({
         sheetName: normalChatDto.extendedSheetContext.sheetName,
@@ -54,22 +54,24 @@ export class NormalChatController {
     }
 
     // 새로운 sheetsData 로깅
+    // === Controller의 로깅 부분 수정 ===
+    // 새로운 sheetsData 로깅
     if (normalChatDto.sheetsData) {
       this.logger.log(`SheetsData Info:`, JSON.stringify({
-        fileName: normalChatDto.sheetsData.fileName,
-        totalSheets: normalChatDto.sheetsData.sheets?.length || 0,
+        totalSheets: normalChatDto.sheetsData.totalSheets || 0,
         activeSheet: normalChatDto.sheetsData.activeSheet,
+        currentSheetIndex: normalChatDto.sheetsData.currentSheetIndex,
+        fileName: normalChatDto.sheetsData.fileName,
         sheetsInfo: normalChatDto.sheetsData.sheets?.map(sheet => ({
           name: sheet.name,
           rowCount: sheet.metadata?.rowCount || 0,
           columnCount: sheet.metadata?.columnCount || 0,
-          hasFullData: !!sheet.metadata?.fullData,
+          hasFullData: !!(sheet.metadata?.fullData && sheet.metadata.fullData.length > 0),
           hasCsvData: !!sheet.csv,
           csvSize: sheet.csv?.length || 0
         })) || []
       }, null, 2));
     }
-
     // 필수 필드 검증
     if (!normalChatDto.userId) {
       this.logger.error('Missing required field: userId');
@@ -85,13 +87,13 @@ export class NormalChatController {
     if (!normalChatDto.chatId && !normalChatDto.chatTitle) {
       this.logger.log('New chat without title, will auto-generate from userInput');
     }
-    
+
     try {
       this.logger.log('=== Processing Normal Chat Request ===');
       const startTime = Date.now();
-      
+
       const result = await this.normalChatService.chat(normalChatDto);
-      
+
       const processingTime = Date.now() - startTime;
       this.logger.log('=== Normal Chat Response ===');
       this.logger.log(`Processing Time: ${processingTime}ms`);
@@ -101,7 +103,7 @@ export class NormalChatController {
       this.logger.log(`AI Message ID: ${result.aiMessageId}`);
       this.logger.log(`Response Length: ${result.message?.length || 0} characters`);
       this.logger.log(`Has Spreadsheet Metadata: ${!!result.spreadsheetMetadata}`);
-      
+
       if (result.spreadsheetMetadata) {
         this.logger.log(`Spreadsheet Metadata:`, JSON.stringify({
           fileName: result.spreadsheetMetadata.fileName,
@@ -114,16 +116,16 @@ export class NormalChatController {
       if (!result.success) {
         this.logger.error(`Chat processing failed: ${result.error}`);
       }
-      
+
       return result;
-      
+
     } catch (error) {
       const processingTime = Date.now() - (Date.now()); // 에러 발생 시점 계산을 위해
       this.logger.error('=== Normal Chat Error ===');
       this.logger.error(`Error Type: ${error.constructor.name}`);
       this.logger.error(`Error Message: ${error.message}`);
       this.logger.error(`Stack Trace:`, error.stack);
-      
+
       // Firebase 관련 오류 처리
       if (error.message?.includes('Firebase') || error.message?.includes('Firestore')) {
         this.logger.error('Firebase/Firestore Error Detected');
