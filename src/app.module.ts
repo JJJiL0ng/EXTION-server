@@ -8,6 +8,7 @@ import { DataGenerationModule } from './modules/datageneration/datageneration.mo
 import { NormalModule } from './modules/normal/normal.module';
 import { DataFixModule } from './modules/datafix/datafix.module';
 import { FirebaseModule } from './common/firebase/firebase.module';
+import { SheetModule } from './common/sheet/sheet.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { FirebaseModule } from './common/firebase/firebase.module';
     NormalModule,
     DataFixModule,
     FirebaseModule,
+    SheetModule,
   ],
   controllers: [AppController],
   providers: [AppService],

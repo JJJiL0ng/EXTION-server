@@ -11,6 +11,14 @@ export class FirebaseService {
   private readonly logger = new Logger(FirebaseService.name);
   private db: Firestore;
 
+  public get firestore(): Firestore {
+    return this.db;
+  }
+
+  public get FieldValue() {
+    return FieldValue;
+  }
+
   constructor(private configService: ConfigService) {
     this.initializeFirebase();
   }
