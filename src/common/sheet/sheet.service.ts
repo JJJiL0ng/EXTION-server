@@ -218,12 +218,13 @@ export class SheetService {
             result.headers = sheet.headers;
         }
 
-        // 행 데이터를 청크 단위로 분할하여 저장
+        // 행 데이터는 청크 단위로 별도 저장하므로 메타데이터만 저장
         if (sheet.data?.rows && Array.isArray(sheet.data.rows)) {
             result.rowCount = sheet.data.rows.length;
             result.hasData = true;
             result.chunkCount = Math.ceil(sheet.data.rows.length / this.CHUNK_SIZE);
             result.chunkSize = this.CHUNK_SIZE;
+            // 실제 rows 데이터는 저장하지 않고 청크로 별도 저장
         } else {
             result.rowCount = 0;
             result.hasData = false;
@@ -231,7 +232,7 @@ export class SheetService {
             result.chunkSize = this.CHUNK_SIZE;
         }
 
-        // 수식 정보
+        // 수식 정보 (1차원 배열이므로 Firestore에 안전하게 저장 가능)
         if (sheet.formulas && Array.isArray(sheet.formulas)) {
             result.formulas = sheet.formulas;
         }
@@ -258,16 +259,23 @@ export class SheetService {
             chunks.push(rows.slice(i, i + this.CHUNK_SIZE));
         }
 
-        // 각 청크를 별도 서브컬렉션에 저장
+        // 각 청크를 별도 서브컬렉션에 저장 (Firestore 호환 형태로)
         for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
             const chunkRef = sheetDataRef.collection('chunks').doc(chunkIndex.toString());
+            
+            // 2차원 배열을 Firestore 호환 형태로 직렬화
+            const serializedRows: { [key: string]: string[] } = {};
+            chunks[chunkIndex].forEach((row, rowIndex) => {
+                serializedRows[`row_${rowIndex}`] = row;
+            });
             
             const chunkData = {
                 chunkIndex,
                 startRowIndex: chunkIndex * this.CHUNK_SIZE,
                 endRowIndex: Math.min((chunkIndex + 1) * this.CHUNK_SIZE - 1, rows.length - 1),
                 rowCount: chunks[chunkIndex].length,
-                rows: chunks[chunkIndex],
+                // 기존 rows 필드 제거하고 직렬화된 데이터 사용
+                serializedRows: serializedRows,
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -431,7 +439,12 @@ export class SheetService {
             // 청크들을 합쳐서 전체 행 데이터 구성
             let allRows: string[][] = [];
             chunks.forEach((chunk: any) => {
-                if (chunk && chunk.rows && Array.isArray(chunk.rows)) {
+                if (chunk && chunk.serializedRows) {
+                    // 직렬화된 데이터를 역직렬화
+                    const chunkRows = this.deserializeRowsFromFirestore(chunk.serializedRows);
+                    allRows = allRows.concat(chunkRows);
+                } else if (chunk && chunk.rows && Array.isArray(chunk.rows)) {
+                    // 레거시 데이터 호환성
                     allRows = allRows.concat(chunk.rows);
                 }
             });
@@ -568,7 +581,7 @@ export class SheetService {
 
         await batch.commit();
 
-        // 새로운 청크들로 다시 저장
+        // 새로운 청크들로 다시 저장 (Firestore 호환 형태로)
         await this.saveSheetRowsInChunks(spreadsheetId, sheetIndex, rows);
     }
 
@@ -989,5 +1002,25 @@ export class SheetService {
       this.logger.error('전체 스프레드시트 교체 오류:', error);
       throw error;
     }
+   }
+
+   // === Firestore 데이터 역직렬화 헬퍼 함수 ===
+   private deserializeRowsFromFirestore(serializedData: { [key: string]: string[] }): string[][] {
+       const rows: string[][] = [];
+       
+       // row_0, row_1, ... 순서대로 정렬
+       const sortedKeys = Object.keys(serializedData)
+           .filter(key => key.startsWith('row_'))
+           .sort((a, b) => {
+               const aIndex = parseInt(a.split('_')[1]);
+               const bIndex = parseInt(b.split('_')[1]);
+               return aIndex - bIndex;
+           });
+       
+       sortedKeys.forEach(key => {
+           rows.push(serializedData[key]);
+       });
+       
+       return rows;
    }
 }

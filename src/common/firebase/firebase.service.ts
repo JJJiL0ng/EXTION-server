@@ -526,16 +526,20 @@ export class FirebaseService {
         chunks.push(rows.slice(i, i + CHUNK_SIZE));
       }
 
-      // 각 청크를 별도 서브컬렉션에 저장
+      // 각 청크를 별도 서브컬렉션에 저장 (Firestore 호환 형태로)
       for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
         const chunkRef = sheetDataRef.collection('chunks').doc(chunkIndex.toString());
+        
+        // 2차원 배열을 Firestore 호환 형태로 직렬화
+        const serializedChunkData = this.serializeChunkData(chunks[chunkIndex]);
         
         const chunkData = {
           chunkIndex,
           startRowIndex: chunkIndex * CHUNK_SIZE,
           endRowIndex: Math.min((chunkIndex + 1) * CHUNK_SIZE - 1, rows.length - 1),
           rowCount: chunks[chunkIndex].length,
-          rows: chunks[chunkIndex],
+          // 기존 rows 필드 제거하고 직렬화된 데이터 사용
+          serializedRows: serializedChunkData.serializedRows,
           createdAt: new Date(),
           updatedAt: new Date()
         };
@@ -612,5 +616,60 @@ export class FirebaseService {
       startColLetter: 'A',
       endColLetter: colCount > 0 ? String.fromCharCode(65 + colCount - 1) : 'A'
     };
+  }
+
+  // === Firestore 호환 데이터 변환 헬퍼 함수들 ===
+  
+  // 2차원 배열을 Firestore 호환 형태로 직렬화
+  private serializeRowsForFirestore(rows: string[][]): { [key: string]: string[] } {
+    const serializedRows: { [key: string]: string[] } = {};
+    
+    rows.forEach((row, index) => {
+      serializedRows[`row_${index}`] = row;
+    });
+    
+    return serializedRows;
+  }
+
+  // Firestore에서 가져온 데이터를 2차원 배열로 역직렬화
+  private deserializeRowsFromFirestore(serializedData: { [key: string]: string[] }): string[][] {
+    const rows: string[][] = [];
+    
+    // row_0, row_1, ... 순서대로 정렬
+    const sortedKeys = Object.keys(serializedData)
+      .filter(key => key.startsWith('row_'))
+      .sort((a, b) => {
+        const aIndex = parseInt(a.split('_')[1]);
+        const bIndex = parseInt(b.split('_')[1]);
+        return aIndex - bIndex;
+      });
+    
+    sortedKeys.forEach(key => {
+      rows.push(serializedData[key]);
+    });
+    
+    return rows;
+  }
+
+  // 청크 데이터를 Firestore 호환 형태로 변환
+  private serializeChunkData(chunkRows: string[][]): { serializedRows: { [key: string]: string[] }; rowCount: number } {
+    return {
+      serializedRows: this.serializeRowsForFirestore(chunkRows),
+      rowCount: chunkRows.length
+    };
+  }
+
+  // Firestore에서 청크 데이터를 역직렬화
+  private deserializeChunkData(chunkData: any): string[][] {
+    if (chunkData.serializedRows) {
+      return this.deserializeRowsFromFirestore(chunkData.serializedRows);
+    }
+    
+    // 레거시 데이터 호환성 (기존 rows 필드가 있는 경우)
+    if (chunkData.rows && Array.isArray(chunkData.rows)) {
+      return chunkData.rows;
+    }
+    
+    return [];
   }
 }
