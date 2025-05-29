@@ -8,6 +8,28 @@ export enum DataStorageType {
   ENCRYPTED = 'encrypted'
 }
 
+// 캐싱 전략을 위한 enum 추가
+export enum CacheStrategy {
+  NONE = 'none',
+  MEMORY = 'memory',
+  REDIS = 'redis'
+}
+
+// 청크 옵션 DTO
+export class ChunkOptionsDto {
+  @IsOptional()
+  @IsNumber()
+  chunkSize?: number = 100;
+
+  @IsOptional()
+  @IsEnum(CacheStrategy)
+  cacheStrategy?: CacheStrategy = CacheStrategy.MEMORY;
+
+  @IsOptional()
+  @IsBoolean()
+  enableCompression?: boolean = false;
+}
+
 export class SheetDataDto {
   @IsArray()
   @IsString({ each: true })
@@ -55,8 +77,9 @@ export class FormulaDto {
 }
 
 export class CreateSpreadsheetDto {
+  @IsOptional()
   @IsString()
-  chatId: string;
+  chatId?: string;
 
   @IsString()
   fileName: string;
@@ -67,16 +90,22 @@ export class CreateSpreadsheetDto {
   @IsNumber()
   fileSize: number;
 
-  @IsEnum(['xlsx', 'csv'])
-  fileType: 'xlsx' | 'csv';
+  @IsString()
+  fileType: string;
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => SheetMetadataDto)
-  sheets: SheetMetadataDto[];
+  @Type(() => SheetDto)
+  sheets: SheetDto[];
 
+  @IsOptional()
   @IsNumber()
-  activeSheetIndex: number;
+  activeSheetIndex?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChunkOptionsDto)
+  chunkOptions?: ChunkOptionsDto;
 
   @IsEnum(DataStorageType)
   dataStorageType: DataStorageType;
@@ -86,36 +115,31 @@ export class CreateSpreadsheetDto {
   dataPath?: string;
 }
 
-export class SheetMetadataDto {
+export class SheetDto {
   @IsString()
   sheetName: string;
 
   @IsNumber()
   sheetIndex: number;
 
+  @IsOptional()
   @IsArray()
-  @IsString({ each: true })
-  headers: string[];
+  headers?: string[];
 
-  @ValidateNested()
-  @Type(() => SheetDataDto)
   @IsOptional()
-  data?: SheetDataDto;
+  data?: {
+    headers?: string[];
+    rows?: string[][];
+    rawData?: string[][];
+  };
 
-  @ValidateNested()
-  @Type(() => DataReferenceDto)
   @IsOptional()
-  dataReference?: DataReferenceDto;
-
   @IsArray()
-  @IsOptional()
-  computedData?: string[][];
+  computedData?: any[];
 
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => FormulaDto)
   @IsOptional()
-  formulas?: FormulaDto[];
+  @IsArray()
+  formulas?: any[];
 }
 
 export class UpdateSheetDataDto {
@@ -125,18 +149,83 @@ export class UpdateSheetDataDto {
   @IsNumber()
   sheetIndex: number;
 
-  @ValidateNested()
-  @Type(() => SheetDataDto)
   @IsOptional()
-  data?: SheetDataDto;
+  data?: {
+    headers?: string[];
+    rows?: string[][];
+    rawData?: string[][];
+  };
 
-  @IsArray()
   @IsOptional()
-  computedData?: string[][];
+  @IsArray()
+  computedData?: any[];
+
+  @IsOptional()
+  @IsArray()
+  formulas?: any[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChunkOptionsDto)
+  chunkOptions?: ChunkOptionsDto;
+}
+
+// 배치 업데이트를 위한 DTO
+export class BatchUpdateSheetDto {
+  @IsString()
+  spreadsheetId: string;
 
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => FormulaDto)
+  @Type(() => UpdateSheetDataDto)
+  updates: UpdateSheetDataDto[];
+
   @IsOptional()
-  formulas?: FormulaDto[];
+  @IsString()
+  batchId?: string;
+}
+
+// 페이지네이션을 위한 DTO
+export class GetSheetDataDto {
+  @IsString()
+  spreadsheetId: string;
+
+  @IsNumber()
+  sheetIndex: number;
+
+  @IsOptional()
+  @IsNumber()
+  startRow?: number;
+
+  @IsOptional()
+  @IsNumber()
+  endRow?: number;
+
+  @IsOptional()
+  @IsNumber()
+  limit?: number = 100;
+
+  @IsOptional()
+  @IsNumber()
+  offset?: number = 0;
+
+  @IsOptional()
+  @IsBoolean()
+  useCache?: boolean = true;
+}
+
+// === 전체 스프레드시트 교체를 위한 DTO ===
+export class ReplaceSpreadsheetDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SheetDto)
+  sheets: SheetDto[];
+
+  @IsOptional()
+  @IsNumber()
+  activeSheetIndex?: number = 0;
+
+  @IsOptional()
+  @IsString()
+  description?: string = '전체 시트 데이터 교체';
 }

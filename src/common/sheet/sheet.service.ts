@@ -9,10 +9,13 @@ import * as crypto from 'crypto';
 export class SheetService {
     private readonly logger = new Logger(SheetService.name);
     private storage = getStorage();
+    
+    // 청크 크기 설정 (한 문서당 저장할 행 수)
+    private readonly CHUNK_SIZE = 100; // 100행씩 묶어서 저장
+    private readonly MAX_FIRESTORE_SIZE = 800 * 1024; // 800KB (1MB 한도의 80%)
 
     constructor(private firebaseService: FirebaseService) { }
 
-    // === 스프레드시트 생성 및 저장 ===
     // === 스프레드시트 생성 및 저장 ===
     async createSpreadsheet(userId: string, dto: CreateSpreadsheetDto): Promise<string> {
         try {
@@ -41,6 +44,9 @@ export class SheetService {
                         dataRange: this.calculateDataRange(sheet),
                         hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
                         lastModified: new Date(),
+                        // 청크 정보 추가
+                        chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / this.CHUNK_SIZE),
+                        chunkSize: this.CHUNK_SIZE
                     }
                     // 실제 데이터는 여기서 제외하고 별도 저장
                 })),
@@ -76,14 +82,20 @@ export class SheetService {
             throw error;
         }
     }
-    // === 데이터 크기에 따른 저장 전략 결정 ===
+
+    // === 데이터 크기에 따른 저장 전략 결정 (개선) ===
     private async determineStorageStrategy(dto: CreateSpreadsheetDto): Promise<{
         type: DataStorageType;
         path?: string;
     }> {
         const totalDataSize = this.calculateTotalDataSize(dto.sheets);
-
-        if (totalDataSize < 1024 * 1024) { // 1MB 미만
+        
+        // 청크 단위로 저장할 때의 예상 문서 수 계산
+        const totalRows = dto.sheets.reduce((sum, sheet) => sum + (sheet.data?.rows?.length || 0), 0);
+        const estimatedChunks = Math.ceil(totalRows / this.CHUNK_SIZE);
+        
+        // Firestore 한도 고려: 문서 크기 + 문서 수
+        if (totalDataSize < this.MAX_FIRESTORE_SIZE && estimatedChunks < 50) {
             return { type: DataStorageType.FIRESTORE };
         } else if (totalDataSize < 10 * 1024 * 1024) { // 10MB 미만
             return {
@@ -124,7 +136,6 @@ export class SheetService {
                 .doc(spreadsheetId)
                 .collection('sheets')
                 .doc(sheet.sheetIndex.toString());
-            
 
             // 기본 시트 메타데이터
             const sheetMetadata = {
@@ -143,7 +154,7 @@ export class SheetService {
             };
 
             if (storageStrategy.type === DataStorageType.FIRESTORE) {
-                // Firestore에 저장 시 데이터를 평면화
+                // Firestore에 청크 단위로 저장
                 const flattenedData = this.flattenSheetData(sheet);
 
                 await sheetRef.set({
@@ -151,9 +162,9 @@ export class SheetService {
                     ...flattenedData
                 });
 
-                // 행 데이터 별도 저장
+                // 행 데이터를 청크 단위로 저장
                 if (sheet.data?.rows && Array.isArray(sheet.data.rows)) {
-                    await this.saveSheetRows(spreadsheetId, sheet.sheetIndex, sheet.data.rows);
+                    await this.saveSheetRowsInChunks(spreadsheetId, sheet.sheetIndex, sheet.data.rows);
                 }
 
             } else {
@@ -197,6 +208,7 @@ export class SheetService {
             }
         }
     }
+
     // === 시트 데이터를 Firestore에 저장 가능한 형태로 평면화 ===
     private flattenSheetData(sheet: any): any {
         const result: any = {};
@@ -206,16 +218,17 @@ export class SheetService {
             result.headers = sheet.headers;
         }
 
-        // 행 데이터를 개별 문서로 분할하여 저장
+        // 행 데이터를 청크 단위로 분할하여 저장
         if (sheet.data?.rows && Array.isArray(sheet.data.rows)) {
             result.rowCount = sheet.data.rows.length;
             result.hasData = true;
-
-            // 실제 행 데이터는 별도 서브컬렉션에 저장될 예정
-            // 여기서는 메타데이터만 저장
+            result.chunkCount = Math.ceil(sheet.data.rows.length / this.CHUNK_SIZE);
+            result.chunkSize = this.CHUNK_SIZE;
         } else {
             result.rowCount = 0;
             result.hasData = false;
+            result.chunkCount = 0;
+            result.chunkSize = this.CHUNK_SIZE;
         }
 
         // 수식 정보
@@ -226,8 +239,8 @@ export class SheetService {
         return result;
     }
 
-    // === 행 데이터를 별도 서브컬렉션에 저장 ===
-    private async saveSheetRows(
+    // === 행 데이터를 청크 단위로 저장 (개선된 버전) ===
+    private async saveSheetRowsInChunks(
         spreadsheetId: string,
         sheetIndex: number,
         rows: string[][]
@@ -235,33 +248,47 @@ export class SheetService {
         if (!rows || rows.length === 0) return;
 
         const batch = this.firebaseService.firestore.batch();
-        const sheetRowsRef = this.firebaseService.firestore
-            .collection('spreadsheets')
-            .doc(spreadsheetId)
-            .collection('sheets')
-            .doc(sheetIndex.toString())
-            .collection('rows');
+        const sheetDataRef = this.firebaseService.firestore
+            .collection('spreadsheetData') // 별도 컬렉션으로 분리
+            .doc(`${spreadsheetId}_${sheetIndex}`);
 
-        // 배치로 행 데이터 저장 (최대 500개씩)
-        for (let i = 0; i < rows.length; i++) {
-            const rowRef = sheetRowsRef.doc(i.toString());
-            batch.set(rowRef, {
-                rowIndex: i,
-                data: rows[i] || [],
-                createdAt: new Date()
-            });
-
-            // Firestore 배치 제한 (500개)에 도달하면 커밋
-            if ((i + 1) % 500 === 0) {
-                await batch.commit();
-            }
+        // 청크 단위로 행 데이터 분할
+        const chunks: string[][][] = [];
+        for (let i = 0; i < rows.length; i += this.CHUNK_SIZE) {
+            chunks.push(rows.slice(i, i + this.CHUNK_SIZE));
         }
 
-        // 남은 데이터 커밋
+        // 각 청크를 별도 서브컬렉션에 저장
+        for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+            const chunkRef = sheetDataRef.collection('chunks').doc(chunkIndex.toString());
+            
+            const chunkData = {
+                chunkIndex,
+                startRowIndex: chunkIndex * this.CHUNK_SIZE,
+                endRowIndex: Math.min((chunkIndex + 1) * this.CHUNK_SIZE - 1, rows.length - 1),
+                rowCount: chunks[chunkIndex].length,
+                rows: chunks[chunkIndex],
+                createdAt: new Date(),
+                updatedAt: new Date()
+            };
+
+            batch.set(chunkRef, chunkData);
+        }
+
+        // 메타데이터 저장
+        batch.set(sheetDataRef, {
+            spreadsheetId,
+            sheetIndex,
+            totalRows: rows.length,
+            totalChunks: chunks.length,
+            chunkSize: this.CHUNK_SIZE,
+            createdAt: new Date(),
+            updatedAt: new Date()
+        });
+
         await batch.commit();
+        this.logger.log(`청크 단위 저장 완료: ${chunks.length}개 청크, 총 ${rows.length}행`);
     }
-
-
 
     // === Cloud Storage 저장 ===
     private async saveToCloudStorage(path: string, data: any): Promise<void> {
@@ -324,8 +351,8 @@ export class SheetService {
         };
     }
 
-    // === 시트 데이터 조회 ===
-    async getSheetData(spreadsheetId: string, sheetIndex: number): Promise<any> {
+    // === 시트 데이터 조회 (개선된 버전) ===
+    async getSheetData(spreadsheetId: string, sheetIndex: number, startRow?: number, endRow?: number): Promise<any> {
         try {
             const sheetDoc = await this.firebaseService.firestore
                 .collection('spreadsheets')
@@ -340,18 +367,92 @@ export class SheetService {
                 throw new Error('시트를 찾을 수 없습니다.');
             }
 
-            if (sheetData.data) {
-                // Firestore에 직접 저장된 경우
-                return sheetData;
-            } else if (sheetData.dataReference) {
+            if (sheetData.dataReference) {
                 // Cloud Storage에 저장된 경우
                 return await this.loadFromCloudStorage(sheetData.dataReference);
+            } else if (sheetData.hasData) {
+                // Firestore 청크에서 데이터 로드
+                return await this.loadSheetDataFromChunks(spreadsheetId, sheetIndex, startRow, endRow);
             }
 
-            throw new Error('시트 데이터를 찾을 수 없습니다.');
+            // 데이터가 없는 경우 기본 구조 반환
+            return {
+                sheetIndex,
+                sheetName: sheetData.sheetName,
+                headers: sheetData.headers || [],
+                rows: [],
+                rowCount: 0
+            };
 
         } catch (error) {
             this.logger.error('시트 데이터 조회 오류:', error);
+            throw error;
+        }
+    }
+
+    // === 청크에서 시트 데이터 로드 ===
+    private async loadSheetDataFromChunks(
+        spreadsheetId: string, 
+        sheetIndex: number, 
+        startRow?: number, 
+        endRow?: number
+    ): Promise<any> {
+        try {
+            const sheetDataRef = this.firebaseService.firestore
+                .collection('spreadsheetData')
+                .doc(`${spreadsheetId}_${sheetIndex}`);
+
+            const sheetMetaDoc = await sheetDataRef.get();
+            if (!sheetMetaDoc.exists) {
+                throw new Error('시트 데이터를 찾을 수 없습니다.');
+            }
+
+            const meta = sheetMetaDoc.data()!;
+            
+            // 필요한 청크 범위 계산
+            const requestedStartRow = startRow ?? 0;
+            const requestedEndRow = endRow ?? meta.totalRows - 1;
+            
+            const startChunk = Math.floor(requestedStartRow / this.CHUNK_SIZE);
+            const endChunk = Math.floor(requestedEndRow / this.CHUNK_SIZE);
+
+            // 필요한 청크들만 로드
+            const chunks: any[] = [];
+            for (let chunkIndex = startChunk; chunkIndex <= endChunk; chunkIndex++) {
+                const chunkDoc = await sheetDataRef.collection('chunks').doc(chunkIndex.toString()).get();
+                if (chunkDoc.exists) {
+                    const chunkData = chunkDoc.data();
+                    if (chunkData) {
+                        chunks.push(chunkData);
+                    }
+                }
+            }
+
+            // 청크들을 합쳐서 전체 행 데이터 구성
+            let allRows: string[][] = [];
+            chunks.forEach((chunk: any) => {
+                if (chunk && chunk.rows && Array.isArray(chunk.rows)) {
+                    allRows = allRows.concat(chunk.rows);
+                }
+            });
+
+            // 요청된 범위만 추출
+            const startIdx = requestedStartRow - (startChunk * this.CHUNK_SIZE);
+            const endIdx = startIdx + (requestedEndRow - requestedStartRow + 1);
+            const filteredRows = allRows.slice(startIdx, endIdx);
+
+            return {
+                spreadsheetId,
+                sheetIndex,
+                totalRows: meta.totalRows,
+                requestedRows: filteredRows.length,
+                startRow: requestedStartRow,
+                endRow: requestedEndRow,
+                rows: filteredRows
+            };
+
+        } catch (error) {
+            this.logger.error('청크에서 데이터 로드 오류:', error);
             throw error;
         }
     }
@@ -394,7 +495,7 @@ export class SheetService {
         return JSON.parse(decrypted);
     }
 
-    // === 시트 데이터 업데이트 ===
+    // === 시트 데이터 업데이트 (개선된 버전) ===
     async updateSheetData(userId: string, dto: UpdateSheetDataDto): Promise<void> {
         try {
             // 스프레드시트 소유권 확인
@@ -408,7 +509,7 @@ export class SheetService {
                 throw new Error('스프레드시트 접근 권한이 없습니다.');
             }
 
-            // 시트 데이터 업데이트
+            // 시트 메타데이터 업데이트
             const sheetRef = this.firebaseService.firestore
                 .collection('spreadsheets')
                 .doc(dto.spreadsheetId)
@@ -418,10 +519,6 @@ export class SheetService {
             const updateData: any = {
                 updatedAt: new Date()
             };
-
-            if (dto.data) {
-                updateData.data = dto.data;
-            }
 
             if (dto.computedData) {
                 updateData.computedData = dto.computedData;
@@ -433,6 +530,11 @@ export class SheetService {
 
             await sheetRef.update(updateData);
 
+            // 행 데이터 업데이트가 있는 경우
+            if (dto.data && dto.data.rows) {
+                await this.updateSheetRowsInChunks(dto.spreadsheetId, dto.sheetIndex, dto.data.rows);
+            }
+
             // 버전 히스토리 업데이트
             await this.updateVersionHistory(dto.spreadsheetId, 'AI 데이터 수정');
 
@@ -442,6 +544,32 @@ export class SheetService {
             this.logger.error('시트 데이터 업데이트 오류:', error);
             throw error;
         }
+    }
+
+    // === 청크 단위 행 데이터 업데이트 ===
+    private async updateSheetRowsInChunks(
+        spreadsheetId: string,
+        sheetIndex: number,
+        rows: string[][]
+    ): Promise<void> {
+        if (!rows || rows.length === 0) return;
+
+        const sheetDataRef = this.firebaseService.firestore
+            .collection('spreadsheetData')
+            .doc(`${spreadsheetId}_${sheetIndex}`);
+
+        // 기존 청크들 삭제
+        const existingChunksSnapshot = await sheetDataRef.collection('chunks').get();
+        const batch = this.firebaseService.firestore.batch();
+        
+        existingChunksSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+
+        await batch.commit();
+
+        // 새로운 청크들로 다시 저장
+        await this.saveSheetRowsInChunks(spreadsheetId, sheetIndex, rows);
     }
 
     // === 버전 히스토리 업데이트 ===
@@ -460,7 +588,7 @@ export class SheetService {
         });
     }
 
-    // === 스프레드시트 삭제 ===
+    // === 스프레드시트 삭제 (개선된 버전) ===
     async deleteSpreadsheet(userId: string, spreadsheetId: string): Promise<void> {
         try {
             // 소유권 확인
@@ -474,14 +602,14 @@ export class SheetService {
                 throw new Error('스프레드시트 접근 권한이 없습니다.');
             }
 
+            const batch = this.firebaseService.firestore.batch();
+
             // 모든 시트 데이터 삭제
             const sheetsSnapshot = await this.firebaseService.firestore
                 .collection('spreadsheets')
                 .doc(spreadsheetId)
                 .collection('sheets')
                 .get();
-
-            const batch = this.firebaseService.firestore.batch();
 
             sheetsSnapshot.docs.forEach(doc => {
                 batch.delete(doc.ref);
@@ -492,6 +620,12 @@ export class SheetService {
 
             await batch.commit();
 
+            // 별도 컬렉션의 시트 데이터들 삭제
+            for (const sheetDoc of sheetsSnapshot.docs) {
+                const sheetIndex = sheetDoc.data().sheetIndex;
+                await this.deleteSheetDataChunks(spreadsheetId, sheetIndex);
+            }
+
             this.logger.log(`스프레드시트 삭제 완료: ${spreadsheetId}`);
 
         } catch (error) {
@@ -499,6 +633,33 @@ export class SheetService {
             throw error;
         }
     }
+
+    // === 시트 데이터 청크들 삭제 ===
+    private async deleteSheetDataChunks(spreadsheetId: string, sheetIndex: number): Promise<void> {
+        try {
+            const sheetDataRef = this.firebaseService.firestore
+                .collection('spreadsheetData')
+                .doc(`${spreadsheetId}_${sheetIndex}`);
+
+            // 모든 청크 삭제
+            const chunksSnapshot = await sheetDataRef.collection('chunks').get();
+            const batch = this.firebaseService.firestore.batch();
+
+            chunksSnapshot.docs.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+
+            // 메타데이터 문서 삭제
+            batch.delete(sheetDataRef);
+
+            await batch.commit();
+
+        } catch (error) {
+            this.logger.error('시트 데이터 청크 삭제 오류:', error);
+            throw error;
+        }
+    }
+
     // === 스프레드시트 메타데이터 조회 ===
     async getSpreadsheetMetadata(spreadsheetId: string, userId: string): Promise<any> {
         try {
@@ -539,7 +700,7 @@ export class SheetService {
         }
     }
    
-   // === 시트 행 데이터 조회 (페이지네이션) ===
+   // === 시트 행 데이터 조회 (페이지네이션, 개선된 버전) ===
    async getSheetRows(
     spreadsheetId: string, 
     sheetIndex: number, 
@@ -564,30 +725,22 @@ export class SheetService {
       // 데이터 저장 타입에 따라 다르게 처리
       if (sheetData!.dataReference) {
         // Cloud Storage나 암호화된 데이터인 경우
-        return await this.loadFromCloudStorage(sheetData!.dataReference);
+        const fullData = await this.loadFromCloudStorage(sheetData!.dataReference);
+        return fullData.rows.slice(offset, offset + limit);
       } else if (sheetData!.hasData) {
-        // Firestore 서브컬렉션에서 행 데이터 조회
-        const rowsQuery = await this.firebaseService.firestore
-          .collection('spreadsheets')
-          .doc(spreadsheetId)
-          .collection('sheets')
-          .doc(sheetIndex.toString())
-          .collection('rows')
-          .orderBy('rowIndex')
-          .offset(offset)
-          .limit(limit)
-          .get();
-   
-        const rows: { rowIndex: number; data: any[] }[] = [];
-        rowsQuery.docs.forEach(doc => {
-          const rowData = doc.data();
-          rows.push({
-            rowIndex: rowData.rowIndex,
-            data: rowData.data || []
-          });
-        });
-   
-        return rows;
+        // Firestore 청크에서 행 데이터 조회
+        const endRow = offset + limit - 1;
+        const sheetDataResult = await this.loadSheetDataFromChunks(
+          spreadsheetId, 
+          sheetIndex, 
+          offset, 
+          endRow
+        );
+        
+        return sheetDataResult.rows.map((row: string[], index: number) => ({
+          rowIndex: offset + index,
+          data: row
+        }));
       } else {
         // 데이터가 없는 경우
         return [];
@@ -599,7 +752,7 @@ export class SheetService {
     }
    }
    
-   // === 전체 스프레드시트 조회 (메타데이터 + 모든 시트 데이터) ===
+   // === 전체 스프레드시트 조회 (메타데이터 + 모든 시트 데이터, 개선된 버전) ===
    async getFullSpreadsheet(spreadsheetId: string, userId: string): Promise<any> {
     try {
       // 메타데이터 조회
@@ -635,21 +788,13 @@ export class SheetService {
               formulas = storageData.formulas || [];
               computedData = storageData.computedData || [];
             } else if (sheetData!.hasData) {
-              // Firestore 서브컬렉션에서 모든 행 데이터 조회
-              const allRowsQuery = await this.firebaseService.firestore
-                .collection('spreadsheets')
-                .doc(spreadsheetId)
-                .collection('sheets')
-                .doc(sheetMetadata.sheetIndex.toString())
-                .collection('rows')
-                .orderBy('rowIndex')
-                .get();
-   
-              allRowsQuery.docs.forEach(doc => {
-                const rowData = doc.data();
-                rows.push(rowData.data || []);
-              });
-   
+              // Firestore 청크에서 모든 행 데이터 조회
+              const sheetDataResult = await this.loadSheetDataFromChunks(
+                spreadsheetId, 
+                sheetMetadata.sheetIndex
+              );
+              
+              rows = sheetDataResult.rows || [];
               formulas = sheetData!.formulas || [];
               computedData = sheetData!.computedData || [];
             }
@@ -827,6 +972,21 @@ export class SheetService {
    
     } catch (error) {
       this.logger.error('스프레드시트 검색 오류:', error);
+      throw error;
+    }
+   }
+
+   // === 전체 스프레드시트 교체 ===
+   async replaceFullSpreadsheet(userId: string, spreadsheetId: string, newSheetsData: any[]): Promise<void> {
+    try {
+      this.logger.log(`전체 스프레드시트 교체 시작: ${spreadsheetId}`);
+
+      // FirebaseService를 통해 전체 데이터 교체
+      await this.firebaseService.replaceSpreadsheetData(spreadsheetId, userId, newSheetsData);
+
+      this.logger.log(`전체 스프레드시트 교체 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('전체 스프레드시트 교체 오류:', error);
       throw error;
     }
    }

@@ -16,7 +16,7 @@ import {
   Logger
  } from '@nestjs/common';
  import { SheetService } from './sheet.service';
- import { CreateSpreadsheetDto, UpdateSheetDataDto, DataStorageType } from './dto/spreadsheet.dto';
+ import { CreateSpreadsheetDto, UpdateSheetDataDto, DataStorageType, ReplaceSpreadsheetDto } from './dto/spreadsheet.dto';
  
  @Controller('spreadsheet')
  export class SheetController {
@@ -310,6 +310,72 @@ import {
     } catch (error) {
       this.logger.error('스프레드시트 삭제 오류:', error);
       throw new BadRequestException('스프레드시트 삭제에 실패했습니다.');
+    }
+  }
+ 
+  @Put(':spreadsheetId/replace')
+  @HttpCode(HttpStatus.OK)
+  async replaceFullSpreadsheet(
+    @Param('spreadsheetId') spreadsheetId: string,
+    @Body() replaceData: ReplaceSpreadsheetDto,
+    @Query('userId') userId: string
+  ) {
+    try {
+      if (!userId) {
+        throw new BadRequestException('userId는 필수입니다.');
+      }
+
+      if (!replaceData.sheets || !Array.isArray(replaceData.sheets) || replaceData.sheets.length === 0) {
+        throw new BadRequestException('교체할 시트 데이터가 필요합니다.');
+      }
+
+      this.logger.log(`전체 스프레드시트 교체 요청: ${spreadsheetId}, 시트 개수: ${replaceData.sheets.length}`);
+
+      // 시트 데이터 검증 및 정리
+      const processedSheets = replaceData.sheets.map((sheet: any, index: number) => ({
+        sheetName: sheet.sheetName || `Sheet${index + 1}`,
+        sheetIndex: sheet.sheetIndex !== undefined ? sheet.sheetIndex : index,
+        headers: sheet.headers || [],
+        data: {
+          headers: sheet.headers || [],
+          rows: sheet.data?.rows || [],
+          rawData: sheet.data?.rawData || sheet.data?.rows || []
+        },
+        computedData: sheet.computedData || [],
+        formulas: sheet.formulas || []
+      }));
+
+      // 전체 스프레드시트 교체 실행
+      await this.sheetService.replaceFullSpreadsheet(userId, spreadsheetId, processedSheets);
+
+      this.logger.log(`전체 스프레드시트 교체 완료: ${spreadsheetId}`);
+
+      return {
+        success: true,
+        message: '스프레드시트가 성공적으로 교체되었습니다.',
+        spreadsheetId,
+        sheetsCount: processedSheets.length,
+        description: replaceData.description,
+        replacedAt: new Date().toISOString(),
+        sheets: processedSheets.map(sheet => ({
+          sheetIndex: sheet.sheetIndex,
+          sheetName: sheet.sheetName,
+          headers: sheet.headers,
+          rowCount: sheet.data?.rows?.length || 0,
+          columnCount: sheet.headers?.length || 0,
+          hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
+          hasComputedData: Boolean(sheet.computedData && sheet.computedData.length > 0)
+        }))
+      };
+
+    } catch (error) {
+      this.logger.error('전체 스프레드시트 교체 오류:', error);
+      
+      if (error instanceof BadRequestException || error instanceof UnauthorizedException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new BadRequestException(`스프레드시트 교체 중 오류가 발생했습니다: ${error.message}`);
     }
   }
  

@@ -25,15 +25,40 @@ export class FirebaseService {
 
   private initializeFirebase() {
     if (getApps().length === 0) {
+      const projectId = this.configService.get('FIREBASE_PROJECT_ID');
+      const clientEmail = this.configService.get('FIREBASE_CLIENT_EMAIL');
+      const privateKeyRaw = this.configService.get('FIREBASE_PRIVATE_KEY');
+      
+      if (!privateKeyRaw || !projectId || !clientEmail) {
+        throw new Error('Firebase configuration is incomplete. Please check your environment variables.');
+      }
+      
+      // Private key 처리
+      let privateKey = privateKeyRaw;
+      
+      // 따옴표 제거
+      if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+        privateKey = privateKey.slice(1, -1);
+      }
+      
+      // \n을 실제 개행으로 변환
+      privateKey = privateKey.replace(/\\n/g, '\n');
+
       const serviceAccount = {
-        projectId: this.configService.get('FIREBASE_PROJECT_ID'),
-        clientEmail: this.configService.get('FIREBASE_CLIENT_EMAIL'),
-        privateKey: this.configService.get('FIREBASE_PRIVATE_KEY')?.replace(/\\n/g, '\n'),
+        projectId,
+        clientEmail,
+        privateKey,
       };
 
-      initializeApp({
-        credential: cert(serviceAccount),
-      });
+      try {
+        initializeApp({
+          credential: cert(serviceAccount),
+        });
+        this.logger.log('Firebase 앱 초기화 성공');
+      } catch (error) {
+        this.logger.error('Firebase 초기화 에러:', error);
+        throw error;
+      }
     }
 
     this.db = getFirestore();
@@ -354,5 +379,238 @@ export class FirebaseService {
       this.logger.error('분석 카운터 업데이트 오류:', error);
       throw error;
     }
+  }
+
+  // === 스프레드시트 완전 교체 관련 메서드 ===
+  async replaceSpreadsheetData(spreadsheetId: string, userId: string, newSheetsData: any[]): Promise<void> {
+    try {
+      // 소유권 확인
+      const spreadsheetDoc = await this.db.collection('spreadsheets').doc(spreadsheetId).get();
+      const spreadsheetData = spreadsheetDoc.data();
+      
+      if (!spreadsheetDoc.exists || !spreadsheetData || spreadsheetData.userId !== userId) {
+        throw new Error('스프레드시트 접근 권한이 없습니다.');
+      }
+
+      // 기존 모든 시트 데이터 삭제
+      await this.deleteAllSheetData(spreadsheetId);
+
+      // 새로운 시트 데이터로 완전 교체
+      await this.createNewSheetData(spreadsheetId, newSheetsData);
+
+      // 스프레드시트 메타데이터 업데이트
+      await this.updateSpreadsheetAfterReplace(spreadsheetId, newSheetsData);
+
+      this.logger.log(`스프레드시트 완전 교체 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('스프레드시트 완전 교체 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 기존 모든 시트 데이터 삭제 ===
+  async deleteAllSheetData(spreadsheetId: string): Promise<void> {
+    try {
+      const batch = this.db.batch();
+
+      // 기존 sheets 서브컬렉션의 모든 문서 삭제
+      const sheetsSnapshot = await this.db
+        .collection('spreadsheets')
+        .doc(spreadsheetId)
+        .collection('sheets')
+        .get();
+
+      sheetsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+
+      // spreadsheetData 컬렉션의 모든 시트 데이터 삭제
+      const dataSnapshot = await this.db
+        .collection('spreadsheetData')
+        .where('spreadsheetId', '==', spreadsheetId)
+        .get();
+
+      if (!dataSnapshot.empty) {
+        const dataBatch = this.db.batch();
+        
+        for (const doc of dataSnapshot.docs) {
+          // 각 시트의 chunks 서브컬렉션 삭제
+          const chunksSnapshot = await doc.ref.collection('chunks').get();
+          chunksSnapshot.docs.forEach(chunkDoc => {
+            dataBatch.delete(chunkDoc.ref);
+          });
+          
+          // 시트 데이터 메타문서 삭제
+          dataBatch.delete(doc.ref);
+        }
+
+        await dataBatch.commit();
+      }
+
+      this.logger.log(`기존 시트 데이터 삭제 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('기존 시트 데이터 삭제 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 새로운 시트 데이터 생성 ===
+  async createNewSheetData(spreadsheetId: string, sheetsData: any[]): Promise<void> {
+    try {
+      const batch = this.db.batch();
+
+      for (const sheet of sheetsData) {
+        const sheetRef = this.db
+          .collection('spreadsheets')
+          .doc(spreadsheetId)
+          .collection('sheets')
+          .doc(sheet.sheetIndex.toString());
+
+        // 시트 메타데이터 생성
+        const sheetMetadata = {
+          sheetIndex: sheet.sheetIndex,
+          sheetName: sheet.sheetName,
+          spreadsheetId,
+          headers: sheet.headers || [],
+          rowCount: sheet.data?.rows?.length || 0,
+          hasData: Boolean(sheet.data?.rows && sheet.data.rows.length > 0),
+          chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / 100), // CHUNK_SIZE = 100
+          chunkSize: 100,
+          formulas: sheet.formulas || [],
+          computedData: sheet.computedData || [],
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          chatMetadata: {
+            messageCount: 0,
+            lastActivityAt: new Date(),
+            hasActiveFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
+            hasArtifacts: false
+          }
+        };
+
+        batch.set(sheetRef, sheetMetadata);
+      }
+
+      await batch.commit();
+
+      // 행 데이터를 청크 단위로 저장
+      for (const sheet of sheetsData) {
+        if (sheet.data?.rows && Array.isArray(sheet.data.rows) && sheet.data.rows.length > 0) {
+          await this.saveSheetRowsInChunks(spreadsheetId, sheet.sheetIndex, sheet.data.rows);
+        }
+      }
+
+      this.logger.log(`새로운 시트 데이터 생성 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('새로운 시트 데이터 생성 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 행 데이터를 청크 단위로 저장 (FirebaseService 버전) ===
+  async saveSheetRowsInChunks(spreadsheetId: string, sheetIndex: number, rows: string[][]): Promise<void> {
+    try {
+      if (!rows || rows.length === 0) return;
+
+      const CHUNK_SIZE = 100;
+      const batch = this.db.batch();
+      const sheetDataRef = this.db
+        .collection('spreadsheetData')
+        .doc(`${spreadsheetId}_${sheetIndex}`);
+
+      // 청크 단위로 행 데이터 분할
+      const chunks: string[][][] = [];
+      for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
+        chunks.push(rows.slice(i, i + CHUNK_SIZE));
+      }
+
+      // 각 청크를 별도 서브컬렉션에 저장
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunkRef = sheetDataRef.collection('chunks').doc(chunkIndex.toString());
+        
+        const chunkData = {
+          chunkIndex,
+          startRowIndex: chunkIndex * CHUNK_SIZE,
+          endRowIndex: Math.min((chunkIndex + 1) * CHUNK_SIZE - 1, rows.length - 1),
+          rowCount: chunks[chunkIndex].length,
+          rows: chunks[chunkIndex],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        batch.set(chunkRef, chunkData);
+      }
+
+      // 메타데이터 저장
+      batch.set(sheetDataRef, {
+        spreadsheetId,
+        sheetIndex,
+        totalRows: rows.length,
+        totalChunks: chunks.length,
+        chunkSize: CHUNK_SIZE,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      await batch.commit();
+      this.logger.log(`청크 단위 저장 완료: ${chunks.length}개 청크, 총 ${rows.length}행`);
+    } catch (error) {
+      this.logger.error('청크 단위 저장 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 스프레드시트 메타데이터 업데이트 (교체 후) ===
+  async updateSpreadsheetAfterReplace(spreadsheetId: string, newSheetsData: any[]): Promise<void> {
+    try {
+      const updateData = {
+        sheets: newSheetsData.map((sheet: any, index: number) => ({
+          sheetName: sheet.sheetName || `Sheet${index + 1}`,
+          sheetIndex: sheet.sheetIndex !== undefined ? sheet.sheetIndex : index,
+          headers: sheet.headers || [],
+          metadata: {
+            rowCount: sheet.data?.rows?.length || 0,
+            columnCount: sheet.headers?.length || 0,
+            headerRow: 0,
+            dataRange: this.calculateDataRange(sheet),
+            hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
+            lastModified: new Date(),
+            chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / 100),
+            chunkSize: 100
+          }
+        })),
+        version: FieldValue.increment(1),
+        versionHistory: FieldValue.arrayUnion({
+          version: Date.now(),
+          timestamp: new Date(),
+          changeDescription: '전체 시트 데이터 교체',
+          changedBy: 'user'
+        }),
+        updatedAt: new Date()
+      };
+
+      await this.db.collection('spreadsheets').doc(spreadsheetId).update(updateData);
+      this.logger.log(`스프레드시트 메타데이터 업데이트 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('스프레드시트 메타데이터 업데이트 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 데이터 범위 계산 헬퍼 함수 ===
+  private calculateDataRange(sheet: any) {
+    const rowCount = sheet.data?.rows?.length || 0;
+    const colCount = sheet.headers?.length || 0;
+
+    return {
+      startRow: 1,
+      endRow: rowCount,
+      startCol: 0,
+      endCol: Math.max(0, colCount - 1),
+      startColLetter: 'A',
+      endColLetter: colCount > 0 ? String.fromCharCode(65 + colCount - 1) : 'A'
+    };
   }
 }
