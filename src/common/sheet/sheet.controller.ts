@@ -16,7 +16,7 @@ import {
   Logger
  } from '@nestjs/common';
  import { SheetService } from './sheet.service';
- import { CreateSpreadsheetDto, UpdateSheetDataDto, DataStorageType } from '../dto/spreadsheet.dto';
+ import { CreateSpreadsheetDto, UpdateSheetDataDto, DataStorageType } from './dto/spreadsheet.dto';
  
  @Controller('spreadsheet')
  export class SheetController {

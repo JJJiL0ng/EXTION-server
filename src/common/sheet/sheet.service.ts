@@ -1,7 +1,7 @@
 // src/common/services/spreadsheet.service.ts - 스프레드시트 저장 서비스
 import { Injectable, Logger } from '@nestjs/common';
 import { FirebaseService } from '../firebase/firebase.service';
-import { CreateSpreadsheetDto, UpdateSheetDataDto, DataStorageType } from '../dto/spreadsheet.dto';
+import { CreateSpreadsheetDto, UpdateSheetDataDto, DataStorageType } from './dto/spreadsheet.dto';
 import { getStorage } from 'firebase-admin/storage';
 import * as crypto from 'crypto';
 
