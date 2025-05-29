@@ -2,122 +2,42 @@
 import { IsString, IsOptional, IsNotEmpty, MaxLength, ValidateNested, IsBoolean, IsUUID, IsArray, IsNumber } from 'class-validator';
 import { Type } from 'class-transformer';
 
-// 프론트엔드의 getDataForGPTAnalysis 반환 구조에 맞춘 DTO
-export class SheetMetadataDto {
+// 단순화된 시트 데이터 구조
+export class SimpleSheetData {
+  @IsString()
+  name: string;
+  
   @IsArray()
   @IsString({ each: true })
   headers: string[];
-
-  @IsNumber()
-  rowCount: number;
-
-  @IsNumber()
-  columnCount: number;
-
+  
   @IsArray()
-  fullData: string[][];
-
+  data: string[][];
+  
   @IsOptional()
-  @IsArray()
-  sampleData?: string[][];
-
   @IsNumber()
-  sheetIndex: number;
-
-  @IsOptional()
-  originalMetadata?: any;
+  sheetIndex?: number;
 }
 
-// ✅ 시트 데이터 아이템 - csv 필드를 선택사항으로 수정
-export class SheetDataItemDto {
-  @IsString()
-  name: string;
-
-  // ✅ csv 필드를 선택사항으로 변경
-  @IsOptional()
-  @IsString()
-  csv?: string;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetMetadataDto)
-  metadata?: SheetMetadataDto;
-}
-
-// 다중 시트 데이터 구조
-export class SheetsDataDto {
+// 스프레드시트 데이터 구조
+export class SpreadsheetData {
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => SheetDataItemDto)
-  sheets: SheetDataItemDto[];
-
+  @Type(() => SimpleSheetData)
+  sheets: SimpleSheetData[];
+  
   @IsString()
   activeSheet: string;
-
-  @IsOptional()
-  @IsNumber()
-  totalSheets?: number;
-
+  
   @IsOptional()
   @IsString()
   fileName?: string;
-
-  @IsOptional()
-  @IsNumber()
-  currentSheetIndex?: number;
+  
+  @IsString()
+  spreadsheetId: string;
 }
 
-// ExtendedSheetContext는 기존과 동일하게 유지
-export class HeaderInfoDto {
-  @IsString()
-  column: string;
-
-  @IsString()
-  name: string;
-}
-
-export class DataRangeDto {
-  @IsString()
-  startRow: string;
-
-  @IsString()
-  endRow: string;
-
-  @IsString()
-  startColumn: string;
-
-  @IsString()
-  endColumn: string;
-}
-
-export class ExtendedSheetContext {
-  @IsString()
-  sheetName: string;
-
-  @IsNumber()
-  sheetIndex: number;
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => HeaderInfoDto)
-  headers: HeaderInfoDto[];
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => DataRangeDto)
-  dataRange?: DataRangeDto;
-
-  @IsOptional()
-  sampleData?: Record<string, string>[];
-
-  @IsNumber()
-  totalSheets: number;
-
-  @IsArray()
-  sheetList: string[];
-}
-
-// 일반 채팅 요청 DTO 수정
+// 일반 채팅 요청 DTO
 export class NormalChatDto {
   @IsString()
   @IsNotEmpty()
@@ -137,20 +57,8 @@ export class NormalChatDto {
 
   @IsOptional()
   @ValidateNested()
-  @Type(() => ExtendedSheetContext)
-  extendedSheetContext?: ExtendedSheetContext;
-
-  // 새로운 sheetsData 구조
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetsDataDto)
-  sheetsData?: SheetsDataDto;
-
-  // 레거시 호환성을 위해 유지
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetsDataDto)
-  currentData?: SheetsDataDto;
+  @Type(() => SpreadsheetData)
+  spreadsheetData?: SpreadsheetData;
 
   @IsString()
   @IsOptional()
@@ -161,7 +69,7 @@ export class NormalChatDto {
   messageId?: string;
 }
 
-// 응답 DTO는 기존과 동일
+// 일반 채팅 응답 DTO
 export class NormalChatResponseDto {
   @IsBoolean()
   success: boolean;
@@ -186,7 +94,12 @@ export class NormalChatResponseDto {
   aiMessageId?: string;
 
   @IsOptional()
-  spreadsheetMetadata?: any;
+  spreadsheetMetadata?: {
+    fileName?: string;
+    totalSheets?: number;
+    activeSheetIndex?: number;
+    sheetNames?: string[];
+  };
 
   @IsString()
   @IsOptional()

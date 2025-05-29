@@ -11,13 +11,18 @@ import {
   SheetContext, 
   SheetsData 
 } from './dto/generate-data.dto';
+import { FirebaseService } from '../../common/firebase/firebase.service';
+import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 
 @Injectable()
 export class DataGenerationService {
   private readonly logger = new Logger(DataGenerationService.name);
   private readonly openai: OpenAI;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private firebaseService: FirebaseService,
+  ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
     });
@@ -26,6 +31,39 @@ export class DataGenerationService {
   async generateData(dto: GenerateDataDto): Promise<DataGenerationResponseDto> {
     try {
       this.logger.log(`데이터 생성 요청: ${dto.userInput}`);
+      this.logger.log(`사용자 ID: ${dto.userId}`);
+      this.logger.log(`채팅 ID: ${dto.chatId || '새 채팅'}`);
+
+      // === 1. 채팅 세션 처리 ===
+      let chatId = dto.chatId;
+
+      if (!chatId) {
+        // chatId가 전혀 없는 경우 - 새 채팅 생성
+        const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
+        chatId = await this.firebaseService.createChat(dto.userId, { title: chatTitle });
+        this.logger.log(`새 채팅 생성: ${chatId}`);
+      } else {
+        // 프론트에서 chatId를 보낸 경우
+        this.logger.log(`프론트에서 제공된 chatId: ${chatId}`);
+
+        // 기존 채팅 존재 확인
+        const existingChat = await this.firebaseService.getChat(chatId);
+
+        if (!existingChat) {
+          // Firebase에 해당 chatId로 채팅이 없으면 생성
+          this.logger.log(`Firebase에 채팅이 없어서 새로 생성: ${chatId}`);
+          const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
+
+          // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
+          await this.firebaseService.createChatWithId(dto.userId, chatId, { title: chatTitle });
+        } else {
+          // 기존 채팅 소유권 확인
+          if (existingChat.userId !== dto.userId) {
+            throw new BadRequestException('채팅 접근 권한이 없습니다.');
+          }
+          this.logger.log(`기존 채팅 사용: ${chatId}`);
+        }
+      }
 
       // 프론트엔드에서 받은 데이터 로깅
       this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
@@ -63,6 +101,19 @@ export class DataGenerationService {
       }
 
       this.logger.log('==================== 프론트엔드에서 받은 데이터 끝 ====================');
+
+      // === 2. 사용자 메시지 저장 ===
+      const sheetContext = this.createSheetContext(dto);
+      const userMessageDto: CreateMessageDto = {
+        content: dto.userInput,
+        role: MessageRole.USER,
+        type: MessageType.DATA_GENERATION,
+        mode: MessageMode.DATA_GENERATION,
+        ...(sheetContext && { sheetContext }),
+      };
+
+      const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
+      this.logger.log(`사용자 메시지 저장: ${userMessageId}`);
 
       // 데이터 컨텍스트 조회
       const dataContext = this.getDataContext(dto);
@@ -132,17 +183,67 @@ export class DataGenerationService {
       // 응답에서 데이터 추출
       const result = this.extractDataFromResponse(aiResponse, dto);
       
+      // === 3. 새로운 시트 Firebase에 저장 (성공한 경우에만) ===
+      let spreadsheetId: string | undefined;
+      if (result.success && result.editedData && dto.userId) {
+        try {
+          spreadsheetId = await this.saveNewSheetToFirebase(dto.userId, result.editedData, result.sheetIndex);
+        } catch (saveError) {
+          this.logger.error('시트 저장 오류 (응답은 유지):', saveError);
+          // 시트 저장 실패해도 응답은 반환
+        }
+      }
+
+      // === 4. AI 응답 메시지 저장 ===
+      const aiResponseMessage = result.success 
+        ? `데이터 생성이 완료되었습니다.\n\n${result.explanation || ''}`
+        : `데이터 생성 중 오류가 발생했습니다: ${result.error}`;
+
+      const aiMessageDto: CreateMessageDto = {
+        content: aiResponseMessage,
+        role: MessageRole.EXTION_AI,
+        type: MessageType.DATA_GENERATION,
+        mode: MessageMode.DATA_GENERATION,
+        ...(sheetContext && { sheetContext }),
+        ...(result.success && result.editedData && {
+          dataChangeInfo: {
+            changeType: 'generation' as const,
+            affectedSheets: [result.sheetIndex || 0],
+            rowsChanged: result.editedData.data.length,
+            columnsChanged: result.editedData.headers.length,
+            summary: `새 시트 "${result.editedData.sheetName}" 생성 (${result.editedData.data.length}행 ${result.editedData.headers.length}열)`
+          }
+        })
+      };
+
+      const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
+      this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);
+
+      // === 5. 응답에 채팅 정보 추가 ===
+      const finalResult: DataGenerationResponseDto = {
+        ...result,
+        chatId,
+        userMessageId,
+        aiMessageId,
+        timestamp: new Date().toISOString(),
+        ...(spreadsheetId && { spreadsheetId }),
+      };
+      
       // 전체 응답 데이터 로깅
       this.logger.log('==================== 프론트엔드 전송 응답 데이터 시작 ====================');
-      this.logger.log(`성공 여부: ${result.success}`);
-      this.logger.log(`시트명: ${result.editedData?.sheetName}`);
-      this.logger.log(`헤더 수: ${result.editedData?.headers?.length}`);
-      this.logger.log(`데이터 행 수: ${result.editedData?.data?.length}`);
-      this.logger.log(`시트 인덱스: ${result.sheetIndex}`);
-      this.logger.log(`설명: ${result.explanation}`);
+      this.logger.log(`성공 여부: ${finalResult.success}`);
+      this.logger.log(`채팅 ID: ${finalResult.chatId}`);
+      this.logger.log(`사용자 메시지 ID: ${finalResult.userMessageId}`);
+      this.logger.log(`AI 메시지 ID: ${finalResult.aiMessageId}`);
+      this.logger.log(`스프레드시트 ID: ${finalResult.spreadsheetId || '저장 안됨'}`);
+      this.logger.log(`시트명: ${finalResult.editedData?.sheetName}`);
+      this.logger.log(`헤더 수: ${finalResult.editedData?.headers?.length}`);
+      this.logger.log(`데이터 행 수: ${finalResult.editedData?.data?.length}`);
+      this.logger.log(`시트 인덱스: ${finalResult.sheetIndex}`);
+      this.logger.log(`설명: ${finalResult.explanation}`);
       this.logger.log('==================== 프론트엔드 전송 응답 데이터 끝 ====================');
       
-      return result;
+      return finalResult;
 
     } catch (error) {
       this.logger.error('데이터 생성 오류:', error);
@@ -154,6 +255,7 @@ export class DataGenerationService {
       const errorResult: DataGenerationResponseDto = {
         success: false,
         error: error.message || '데이터 생성 중 오류가 발생했습니다.',
+        timestamp: new Date().toISOString(),
       };
       
       this.logger.log('==================== 프론트엔드 전송 오류 응답 시작 ====================');
@@ -161,6 +263,78 @@ export class DataGenerationService {
       this.logger.log('==================== 프론트엔드 전송 오류 응답 끝 ====================');
       
       return errorResult;
+    }
+  }
+
+  // === 채팅 제목 자동 생성 ===
+  private generateChatTitle(userInput: string): string {
+    const title = userInput.length > 30 ? userInput.substring(0, 30) + '...' : userInput;
+    return title || '새로운 데이터 생성';
+  }
+
+  // === 시트 컨텍스트 생성 ===
+  private createSheetContext(dto: GenerateDataDto): any {
+    if (dto.extendedSheetContext) {
+      return {
+        sheetIndex: dto.extendedSheetContext.sheetIndex,
+        sheetName: dto.extendedSheetContext.sheetName,
+        affectedCells: [],
+        totalRows: 0,
+        totalColumns: dto.extendedSheetContext.headers?.length || 0,
+        headers: dto.extendedSheetContext.headers?.map(h => h.name) || []
+      };
+    }
+
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+      
+      if (activeSheet) {
+        return {
+          sheetIndex: activeSheet.metadata?.sheetIndex || 0,
+          sheetName: activeSheet.name,
+          affectedCells: [],
+          totalRows: activeSheet.metadata?.rowCount || 0,
+          totalColumns: activeSheet.metadata?.columnCount || 0,
+          headers: activeSheet.metadata?.headers || []
+        };
+      }
+    }
+
+    return null;
+  }
+
+  // === 새로운 시트를 Firebase에 저장 ===
+  private async saveNewSheetToFirebase(
+    userId: string, 
+    editedData: EditedDataDto, 
+    sheetIndex?: number
+  ): Promise<string | undefined> {
+    try {
+      this.logger.log(`Firebase에 새 시트 저장 시작: ${editedData.sheetName}`);
+
+      // 시트 데이터 구성
+      const sheetData = {
+        name: editedData.sheetName,
+        headers: editedData.headers,
+        data: editedData.data,
+        metadata: {
+          rowCount: editedData.data.length,
+          columnCount: editedData.headers.length,
+          sheetIndex: sheetIndex || 0,
+          createdAt: new Date().toISOString(),
+          source: 'data_generation'
+        }
+      };
+
+      // Firebase에 시트 저장
+      const spreadsheetId = await this.firebaseService.saveSheet(userId, sheetData);
+      
+      this.logger.log(`Firebase 시트 저장 완료: ${editedData.sheetName}`);
+      return spreadsheetId;
+    } catch (error) {
+      this.logger.error('Firebase 시트 저장 실패:', error);
+      throw error;
     }
   }
 
@@ -221,32 +395,42 @@ export class DataGenerationService {
     
     return `당신은 스프레드시트 데이터 생성 및 가공 전문가입니다.
 
-## 임무
-사용자의 요청에 따라 아래 두 가지 작업 중 하나를 수행해야 합니다:
-1. 새 스프레드시트 데이터를 생성합니다.
-2. 기존 스프레드시트 데이터를 수정/변환합니다.
+## 주요 역할
+사용자가 다음과 같은 상황에서 도움을 요청할 때 엑셀/스프레드시트 형태의 데이터를 생성해주는 것이 목표입니다:
+
+1. **비정형 데이터를 엑셀 형태로 변환**: 텍스트, 이미지, PDF 등에서 추출한 정보를 정리된 표 형태로 만들기
+2. **목업 데이터 생성**: 개발이나 테스트용 샘플 데이터 제작
+3. **수동 입력 대신 자동 생성**: 반복적이고 규칙적인 데이터를 수작업 대신 자동으로 생성
+4. **데이터 구조화**: 흩어져 있는 정보를 체계적인 표 형태로 정리
+5. **템플릿 생성**: 특정 목적에 맞는 데이터 양식 및 예시 데이터 제작
 
 ## 응답 형식
 JSON 형식으로 응답해야 합니다:
 
 \`\`\`json
 {
-  "sheetName": "데이터가 저장될 시트명",
+  "sheetName": "생성할 데이터의 목적에 맞는 시트명",
   "headers": ["열1", "열2", "열3", ...],
   "data": [
     ["행1-열1값", "행1-열2값", "행1-열3값", ...],
     ["행2-열1값", "행2-열2값", "행2-열3값", ...],
     ...
   ],
-  "sheetIndex": 시트 인덱스 (기존 시트 수정 시 기존 인덱스, 아니면 null),
-  "explanation": "생성된 데이터에 대한 설명",
+  "sheetIndex": null,
+  "explanation": "생성된 데이터에 대한 설명과 활용 방법",
   "changeLog": [
-    {"type": "create", "description": "새 시트 생성"},
-    {"type": "add", "row": 1, "column": 0, "after": "값", "description": "새 데이터 추가"},
-    {"type": "update", "row": 2, "column": 1, "before": "이전값", "after": "새값", "description": "데이터 업데이트"}
+    {"type": "create", "description": "새 데이터 시트 생성"},
+    {"type": "add", "row": 1, "column": 0, "after": "값", "description": "데이터 항목 추가"}
   ]
 }
 \`\`\`
+
+## 데이터 생성 원칙
+1. **실용성**: 실제 사용 가능한 현실적인 데이터 생성
+2. **일관성**: 각 열의 데이터 형식과 패턴을 일관되게 유지
+3. **완성도**: 최소 10-20개 이상의 의미 있는 데이터 행 제공
+4. **한국어 우선**: 모든 텍스트는 한국어로 작성 (특별한 요청이 없는 한)
+5. **형식 표준화**: 날짜(YYYY-MM-DD), 전화번호, 이메일 등 표준 형식 사용
 
 ## 중요 규칙
 1. 모든 텍스트는 한국어로 작성하세요.
@@ -260,13 +444,10 @@ JSON 형식으로 응답해야 합니다:
 9. 시트 이름은 의미 있고 간결하게 지정하세요.
 10. 헤더 이름은 명확하고 식별 가능하게 작성하세요.
 11. 변경 로그는 상세하게 기록하세요.
-12. ✅ 기존 데이터가 있다면 실제 제공된 CSV 데이터를 분석하여 패턴을 파악하세요
-13. ✅ 실제 데이터의 값 범위, 형식, 패턴을 기반으로 새 데이터를 생성하세요
-14. ✅ 전체 데이터를 기준으로 작업하세요 (샘플 데이터가 아닌)
 
-## 기존 데이터 컨텍스트
+## 현재 상황 컨텍스트
 ${hasExistingData ? `
-이미 존재하는 실제 데이터가 있습니다:
+기존에 업로드된 데이터가 있습니다:
 ${isMultiSheet ? `
 - 다중 시트 환경
 - 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
@@ -275,10 +456,10 @@ ${isMultiSheet ? `
 - 단일 시트 환경
 - 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
 `}
-- ✅ 실제 CSV 데이터가 제공되어 정밀한 패턴 분석이 가능합니다
-- ✅ 기존 데이터의 패턴을 분석하여 일관된 새 데이터를 생성하세요
+기존 데이터의 패턴을 분석하여 요청에 맞게 수정하거나 새로운 데이터를 추가 생성하세요.
 ` : `
-기존 데이터가 없습니다. 사용자 요청에 따라 새 데이터를 생성해야 합니다.
+현재 업로드된 시트가 없습니다. 사용자의 요청에 따라 새로운 데이터를 처음부터 생성해야 합니다.
+사용자가 원하는 데이터의 구조와 내용을 파악하여 완전히 새로운 스프레드시트 데이터를 만들어주세요.
 `}
 `;
   }
@@ -300,48 +481,56 @@ ${isMultiSheet ? `
     // ✅ CSV 데이터 추출 및 제한
     const csvData = this.extractCsvData(dto);
     
-    return `사용자 요청: "${userInput}"
+    return `**사용자 요청**: "${userInput}"
 
 ${hasExistingData ? `
-## 현재 데이터 정보:
+## 기존 데이터 참고 정보:
 ${context ? `
 - **시트명**: ${context.sheetName || '알 수 없음'}
 - **컬럼**: ${headers.length > 0 ? headers.join(', ') : '없음'}
-- **전체 데이터 행 수**: ${context.rowCount || (context.data ? context.data.length - 1 : 0)}
-- **전체 데이터 열 수**: ${context.columnCount || headers.length}
-
-${fullDataInfo ? `
-## 전체 데이터 정보:
-${fullDataInfo}
-` : ''}
+- **데이터 행 수**: ${context.rowCount || (context.data ? context.data.length - 1 : 0)}
+- **데이터 열 수**: ${context.columnCount || headers.length}
 
 ${csvData ? `
-## ✅ 실제 데이터 (CSV 형식):
+## 참고할 기존 데이터:
 \`\`\`
 ${csvData}
 \`\`\`
 
-**중요**: 위의 실제 데이터를 바탕으로 패턴 분석을 수행해주세요.
-- 각 열의 데이터 유형과 값 범위를 파악하세요
-- 기존 데이터의 패턴, 형식, 명명 규칙을 분석하세요
-- 새 데이터 생성 시 기존 패턴과 일관성 있게 만드세요
-- 실제 값들의 분포와 특성을 고려하세요
+**참고사항**: 위 데이터의 패턴과 구조를 참고하여 새로운 요청을 처리하세요.
 ` : ''}
-` : '현재 데이터 정보를 추출할 수 없습니다.'}
-` : '## 현재 데이터가 없습니다. 새 데이터를 생성하세요.'}
+` : '기존 데이터 정보를 추출할 수 없습니다.'}
+` : `
+## 새로운 데이터 생성 요청
+현재 업로드된 시트가 없으므로, 사용자의 요청에 따라 완전히 새로운 데이터를 생성해야 합니다.
+`}
 
-## 요청 분석
-사용자의 요청을 분석한 후, 다음 중 하나를 수행하세요:
+## 작업 안내
+사용자의 요청을 분석하여 다음 중 적절한 작업을 수행하세요:
 
-1. **데이터 생성**: 새로운 스프레드시트 데이터 생성
-2. **데이터 수정**: 기존 **실제 전체 데이터**를 변환하거나 업데이트
+${hasExistingData ? `
+### 기존 데이터 활용 시나리오:
+- **데이터 확장**: 기존 패턴을 따라 더 많은 데이터 생성
+- **데이터 변환**: 기존 데이터를 다른 형태로 재구성
+- **데이터 수정**: 특정 조건에 따라 기존 데이터 업데이트
+- **새 시트 추가**: 기존 데이터와 관련된 새로운 시트 생성
+` : `
+### 새로운 데이터 생성 시나리오:
+- **비정형 → 정형**: 텍스트나 이미지에서 추출한 정보를 표 형태로 정리
+- **목업 데이터**: 개발/테스트용 샘플 데이터 생성 (고객 목록, 제품 정보, 주문 데이터 등)
+- **템플릿 제작**: 특정 업무용 양식과 예시 데이터 생성
+- **자동 생성**: 규칙적인 패턴의 대량 데이터 생성 (시간표, 좌석 배치, 일정표 등)
+- **데이터 구조화**: 흩어진 정보를 체계적으로 정리
+`}
 
-**중요**: 기존 데이터가 있다면 샘플 데이터가 아닌 실제 전체 데이터를 기준으로 작업하세요.
+## 생성 가이드라인
+1. **헤더 설계**: 명확하고 의미 있는 열 이름 사용
+2. **데이터 품질**: 현실적이고 일관된 데이터 생성
+3. **충분한 양**: 최소 10-20개 행의 의미 있는 데이터 제공
+4. **한국 환경**: 한국 이름, 한국 주소, 한국 전화번호 등 현지화된 데이터
+5. **표준 형식**: 날짜, 시간, 전화번호, 이메일 등 표준 형식 준수
 
-시트 이름, 헤더, 그리고 최소 5개 이상의 행을 포함한 데이터를 JSON 형식으로 반환하세요.
-변경사항에 대한 설명도 포함해주세요.
-
-반드시 표준 JSON 형식으로 응답하고, 추가 설명이나 마크다운은 포함하지 마세요.`;
+반드시 JSON 형식으로 응답하고, 생성된 데이터의 목적과 활용 방법을 설명에 포함해주세요.`;
   }
 
   // ✅ CSV 데이터 추출 메서드 추가

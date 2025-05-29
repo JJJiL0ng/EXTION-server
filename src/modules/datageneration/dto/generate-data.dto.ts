@@ -84,7 +84,8 @@ export class SheetDataItemMetadata {
 
   // ✅ 새로 추가: 원본 메타데이터
   @IsOptional()
-  originalMetadata?: any;
+  @IsArray()
+  originalMetadata?: any[];
 }
 
 // 시트 데이터 아이템 수정 - ✅ csv 필드를 선택사항으로 변경
@@ -178,6 +179,19 @@ export class GenerateDataDto {
   @MaxLength(1000)
   userInput: string;
 
+  // ✅ 채팅 관련 필드 추가
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
+  @IsString()
+  @IsOptional()
+  chatId?: string;
+
+  @IsString()
+  @IsOptional()
+  chatTitle?: string;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => ExtendedSheetContext)
@@ -266,4 +280,26 @@ export class DataGenerationResponseDto {
   @IsOptional()
   @IsString()
   error?: string;
+
+  // ✅ 채팅 관련 응답 필드 추가
+  @IsOptional()
+  @IsString()
+  chatId?: string;
+
+  @IsOptional()
+  @IsString()
+  userMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  aiMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  timestamp?: string;
+
+  // ✅ 저장된 스프레드시트 ID 추가
+  @IsOptional()
+  @IsString()
+  spreadsheetId?: string;
 }

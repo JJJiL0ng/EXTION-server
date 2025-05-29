@@ -60,50 +60,43 @@ export class NormalChatService {
         }
       }
 
-      // === 2. 프론트엔드에서 전송된 스프레드시트 데이터 사용 ===
+      // === 2. 스프레드시트 데이터 처리 ===
       let spreadsheetMetadata: any = null;
       let activeSheetData: any = null;
 
-      // src/modules/normalchat/normalchat.service.ts의 주요 수정 부분
-
-      // === 2. 프론트엔드에서 전송된 스프레드시트 데이터 사용 === 부분을 수정
-      // currentData 또는 sheetsData 필드를 확인
-      const sheetsData = dto.currentData || dto.sheetsData;
-      
-      if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      if (dto.spreadsheetData && dto.spreadsheetData.sheets.length > 0) {
         this.logger.log('프론트엔드에서 전송된 스프레드시트 데이터 사용');
-        this.logger.log(`활성 시트: ${sheetsData.activeSheet}`);
-        this.logger.log(`전체 시트 수: ${sheetsData.sheets?.length || 0}`);
+        this.logger.log(`활성 시트: ${dto.spreadsheetData.activeSheet}`);
+        this.logger.log(`전체 시트 수: ${dto.spreadsheetData.sheets.length}`);
 
         // 현재 활성 시트의 데이터 가져오기
-        const currentSheetIndex = sheetsData.currentSheetIndex || 0;
-        const currentSheet = sheetsData.sheets?.[0]; // 프론트엔드에서 현재 시트만 보내므로 첫 번째 시트
+        const currentSheet = dto.spreadsheetData.sheets[0]; // 프론트엔드에서 현재 시트만 보내므로 첫 번째 시트
 
-        if (currentSheet && currentSheet.metadata) {
+        if (currentSheet) {
           this.logger.log(`현재 시트명: ${currentSheet.name}`);
-          this.logger.log(`데이터 행 수: ${currentSheet.metadata.rowCount || 0}`);
-          this.logger.log(`데이터 열 수: ${currentSheet.metadata.columnCount || 0}`);
+          this.logger.log(`데이터 행 수: ${currentSheet.data.length}`);
+          this.logger.log(`데이터 열 수: ${currentSheet.headers.length}`);
 
           // spreadsheetMetadata 구성
           spreadsheetMetadata = {
-            fileName: sheetsData.fileName || currentSheet.name,
+            fileName: dto.spreadsheetData.fileName || currentSheet.name,
             sheets: [{
               sheetName: currentSheet.name,
-              sheetIndex: currentSheet.metadata.sheetIndex || 0,
-              headers: currentSheet.metadata.headers || []
+              sheetIndex: currentSheet.sheetIndex || 0,
+              headers: currentSheet.headers
             }],
-            activeSheetIndex: 0, // 현재 시트만 전송되므로 항상 0
-            totalSheets: sheetsData.totalSheets || 1
+            activeSheetIndex: 0,
+            totalSheets: dto.spreadsheetData.sheets.length
           };
 
           // activeSheetData 구성
           activeSheetData = {
             data: {
-              rows: currentSheet.metadata.fullData || []
+              rows: currentSheet.data
             },
-            rowCount: currentSheet.metadata.rowCount || 0,
-            columnCount: currentSheet.metadata.columnCount || 0,
-            headers: currentSheet.metadata.headers || []
+            rowCount: currentSheet.data.length,
+            columnCount: currentSheet.headers.length,
+            headers: currentSheet.headers
           };
 
           this.logger.log(`변환 완료 - 시트명: ${spreadsheetMetadata.sheets[0].sheetName}`);
@@ -111,8 +104,6 @@ export class NormalChatService {
         }
       } else {
         this.logger.log('프론트엔드에서 스프레드시트 데이터를 보내지 않았습니다.');
-        this.logger.log(`dto.currentData: ${JSON.stringify(dto.currentData, null, 2)}`);
-        this.logger.log(`dto.sheetsData: ${JSON.stringify(dto.sheetsData, null, 2)}`);
       }
 
       // === 3. 사용자 메시지 저장 ===
@@ -179,13 +170,12 @@ export class NormalChatService {
   }
 
   // === 시트 컨텍스트 생성 ===
-  // === 시트 컨텍스트 생성 === 함수 수정
   private createSheetContext(spreadsheetMetadata: any, activeSheetData: any): any {
     if (!spreadsheetMetadata || !activeSheetData) {
       return null;
     }
 
-    const activeSheet = spreadsheetMetadata.sheets?.[0]; // 현재 시트만 전송되므로 첫 번째 시트
+    const activeSheet = spreadsheetMetadata.sheets?.[0];
 
     if (!activeSheet) {
       return null;
@@ -194,13 +184,13 @@ export class NormalChatService {
     return {
       sheetIndex: activeSheet.sheetIndex || 0,
       sheetName: activeSheet.sheetName,
-      affectedCells: [], // 필요시 구체적인 셀 범위 지정
-      // 추가 정보
+      affectedCells: [],
       totalRows: activeSheetData.rowCount || 0,
       totalColumns: activeSheetData.columnCount || 0,
       headers: activeSheetData.headers || []
     };
   }
+
   // === 스프레드시트 메타데이터 응답 생성 ===
   private buildSpreadsheetMetadataResponse(spreadsheetMetadata: any): any {
     if (!spreadsheetMetadata) {
@@ -223,7 +213,7 @@ export class NormalChatService {
     };
   }
 
-  // === AI 응답 생성 로직 수정 ===
+  // === AI 응답 생성 로직 ===
   private async generateAIResponse(
     dto: NormalChatDto,
     activeSheetData: any,
@@ -330,7 +320,7 @@ ${isMultiSheet ? `
 `;
 
     if (hasData) {
-      const activeSheet = spreadsheetMetadata.sheets[0]; // 현재 시트만 전송되므로 첫 번째 시트
+      const activeSheet = spreadsheetMetadata.sheets[0];
 
       promptContent += `## 현재 데이터 정보:
 - **스프레드시트**: ${spreadsheetMetadata.fileName}
@@ -373,6 +363,7 @@ ${limitedRows}
 
     return promptContent;
   }
+
   // === 프롬프트용 데이터 제한 ===
   private limitDataForPrompt(rows: string[][], headers: string[]): string {
     const maxRows = 100; // 최대 100행까지만 포함

@@ -672,4 +672,96 @@ export class FirebaseService {
     
     return [];
   }
+
+  // === 새로운 시트를 저장 (데이터 생성용) ===
+  async saveSheet(userId: string, sheetData: any): Promise<string> {
+    try {
+      // 스프레드시트 ID 생성 (사용자별 고유 ID)
+      const spreadsheetId = `${userId}_${Date.now()}`;
+      
+      this.logger.log(`새 시트 저장 시작: ${sheetData.name} (${spreadsheetId})`);
+
+      // 1. 스프레드시트 메타데이터 생성
+      const spreadsheetRef = this.db.collection('spreadsheets').doc(spreadsheetId);
+      const spreadsheetMetadata = {
+        userId,
+        fileName: sheetData.name,
+        totalSheets: 1,
+        activeSheetIndex: 0,
+        sheets: [{
+          sheetName: sheetData.name,
+          sheetIndex: sheetData.metadata?.sheetIndex || 0,
+          headers: sheetData.headers || [],
+          metadata: {
+            rowCount: sheetData.data?.length || 0,
+            columnCount: sheetData.headers?.length || 0,
+            headerRow: 0,
+            dataRange: this.calculateDataRange({
+              data: { rows: sheetData.data },
+              headers: sheetData.headers
+            }),
+            hasFormulas: false,
+            lastModified: new Date(),
+            chunkCount: Math.ceil((sheetData.data?.length || 0) / 100),
+            chunkSize: 100
+          }
+        }],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        source: sheetData.metadata?.source || 'data_generation',
+        version: 1,
+        versionHistory: [{
+          version: 1,
+          timestamp: new Date(),
+          changeDescription: '데이터 생성으로 시트 생성',
+          changedBy: 'data_generation'
+        }]
+      };
+
+      await spreadsheetRef.set(spreadsheetMetadata);
+
+      // 2. 시트 세부 메타데이터 생성
+      const sheetRef = this.db
+        .collection('spreadsheets')
+        .doc(spreadsheetId)
+        .collection('sheets')
+        .doc('0'); // 첫 번째 시트
+
+      const sheetDetailMetadata = {
+        sheetIndex: 0,
+        sheetName: sheetData.name,
+        spreadsheetId,
+        headers: sheetData.headers || [],
+        rowCount: sheetData.data?.length || 0,
+        hasData: Boolean(sheetData.data && sheetData.data.length > 0),
+        chunkCount: Math.ceil((sheetData.data?.length || 0) / 100),
+        chunkSize: 100,
+        formulas: [],
+        computedData: [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        source: sheetData.metadata?.source || 'data_generation',
+        chatMetadata: {
+          messageCount: 0,
+          lastActivityAt: new Date(),
+          hasActiveFormulas: false,
+          hasArtifacts: false
+        }
+      };
+
+      await sheetRef.set(sheetDetailMetadata);
+
+      // 3. 데이터 행 저장 (청크 단위로)
+      if (sheetData.data && Array.isArray(sheetData.data) && sheetData.data.length > 0) {
+        await this.saveSheetRowsInChunks(spreadsheetId, 0, sheetData.data);
+      }
+
+      this.logger.log(`새 시트 저장 완료: ${sheetData.name} (${spreadsheetId})`);
+      return spreadsheetId;
+
+    } catch (error) {
+      this.logger.error('새 시트 저장 오류:', error);
+      throw error;
+    }
+  }
 }

@@ -39,39 +39,21 @@ export class NormalChatController {
     this.logger.log(`Message ID: ${normalChatDto.messageId || 'N/A'}`);
     this.logger.log(`Language: ${normalChatDto.language || 'ko'}`);
 
-    // 스프레드시트 컨텍스트 로깅
-    this.logger.log(`Has extendedSheetContext: ${!!normalChatDto.extendedSheetContext}`);
-    this.logger.log(`Has sheetsData: ${!!normalChatDto.sheetsData}`);
-    this.logger.log(`Has currentData (legacy): ${!!normalChatDto.currentData}`);
-
-    if (normalChatDto.extendedSheetContext) {
-      this.logger.log(`Extended SheetContext:`, JSON.stringify({
-        sheetName: normalChatDto.extendedSheetContext.sheetName,
-        sheetIndex: normalChatDto.extendedSheetContext.sheetIndex,
-        totalSheets: normalChatDto.extendedSheetContext.totalSheets,
-        headerCount: normalChatDto.extendedSheetContext.headers?.length || 0
-      }, null, 2));
+    // 스프레드시트 데이터 로깅
+    if (normalChatDto.spreadsheetData) {
+      this.logger.log('=== Spreadsheet Data ===');
+      this.logger.log(`File Name: ${normalChatDto.spreadsheetData.fileName || 'N/A'}`);
+      this.logger.log(`Active Sheet: ${normalChatDto.spreadsheetData.activeSheet}`);
+      this.logger.log(`Total Sheets: ${normalChatDto.spreadsheetData.sheets?.length || 0}`);
+      
+      if (normalChatDto.spreadsheetData.sheets?.length > 0) {
+        const firstSheet = normalChatDto.spreadsheetData.sheets[0];
+        this.logger.log(`First Sheet Name: ${firstSheet.name}`);
+        this.logger.log(`Headers Count: ${firstSheet.headers?.length || 0}`);
+        this.logger.log(`Data Rows Count: ${firstSheet.data?.length || 0}`);
+      }
     }
 
-    // 새로운 sheetsData 로깅
-    // === Controller의 로깅 부분 수정 ===
-    // 새로운 sheetsData 로깅
-    if (normalChatDto.sheetsData) {
-      this.logger.log(`SheetsData Info:`, JSON.stringify({
-        totalSheets: normalChatDto.sheetsData.totalSheets || 0,
-        activeSheet: normalChatDto.sheetsData.activeSheet,
-        currentSheetIndex: normalChatDto.sheetsData.currentSheetIndex,
-        fileName: normalChatDto.sheetsData.fileName,
-        sheetsInfo: normalChatDto.sheetsData.sheets?.map(sheet => ({
-          name: sheet.name,
-          rowCount: sheet.metadata?.rowCount || 0,
-          columnCount: sheet.metadata?.columnCount || 0,
-          hasFullData: !!(sheet.metadata?.fullData && sheet.metadata.fullData.length > 0),
-          hasCsvData: !!sheet.csv,
-          csvSize: sheet.csv?.length || 0
-        })) || []
-      }, null, 2));
-    }
     // 필수 필드 검증
     if (!normalChatDto.userId) {
       this.logger.error('Missing required field: userId');
@@ -102,8 +84,7 @@ export class NormalChatController {
       this.logger.log(`User Message ID: ${result.userMessageId}`);
       this.logger.log(`AI Message ID: ${result.aiMessageId}`);
       this.logger.log(`Response Length: ${result.message?.length || 0} characters`);
-      this.logger.log(`Has Spreadsheet Metadata: ${!!result.spreadsheetMetadata}`);
-
+      
       if (result.spreadsheetMetadata) {
         this.logger.log(`Spreadsheet Metadata:`, JSON.stringify({
           fileName: result.spreadsheetMetadata.fileName,

@@ -1,5 +1,5 @@
 // src/modules/artifact/dto/generate-artifact.dto.ts - 수정된 버전
-import { IsString, IsArray, IsOptional, IsEnum, IsNotEmpty, MaxLength, ValidateNested, IsNumber } from 'class-validator';
+import { IsString, IsArray, IsOptional, IsEnum, IsNotEmpty, MaxLength, ValidateNested, IsNumber, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum ArtifactType {
@@ -198,13 +198,47 @@ export class SheetContext {
   sampleData?: Record<string, string>[];
 }
 
+// 단순화된 시트 데이터 구조
+export class SimpleSheetData {
+  @IsString()
+  name: string;
+  
+  @IsArray()
+  @IsString({ each: true })
+  headers: string[];
+  
+  @IsArray()
+  data: string[][];
+  
+  @IsOptional()
+  @IsNumber()
+  sheetIndex?: number;
+}
+
+// 스프레드시트 데이터 구조
+export class SpreadsheetData {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SimpleSheetData)
+  sheets: SimpleSheetData[];
+  
+  @IsString()
+  activeSheet: string;
+  
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+  
+  @IsString()
+  spreadsheetId: string;
+}
+
 export class GenerateArtifactDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(1000)
   userInput: string;
 
-  // ✅ Firebase 저장을 위한 필드 추가
   @IsString()
   @IsNotEmpty()
   userId: string;
@@ -219,35 +253,24 @@ export class GenerateArtifactDto {
 
   @IsOptional()
   @ValidateNested()
-  @Type(() => SheetContext)
-  sheetContext?: SheetContext;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ExtendedSheetContext)
-  extendedSheetContext?: ExtendedSheetContext;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetsData)
-  sheetsData?: SheetsData;
-
-  // ✅ 프론트엔드에서 currentData로 보내는 데이터를 받기 위한 필드 추가
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetsData)
-  currentData?: SheetsData;
+  @Type(() => SpreadsheetData)
+  spreadsheetData?: SpreadsheetData;
 
   @IsString()
   @IsOptional()
   language?: string = 'ko';
+
+  @IsString()
+  @IsOptional()
+  messageId?: string;
 }
 
 export class ArtifactResponseDto {
+  @IsBoolean()
   success: boolean;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   code?: string;
 
   @IsOptional()
@@ -264,26 +287,31 @@ export class ArtifactResponseDto {
   @IsString()
   title?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   error?: string;
 
-  @IsOptional()
-  timestamp?: Date;
-
-  // ✅ Firebase 저장 결과를 위한 필드 추가
-  @IsOptional()
   @IsString()
+  @IsOptional()
+  timestamp?: string;
+
+  @IsString()
+  @IsOptional()
   chatId?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   userMessageId?: string;
 
-  @IsOptional()
   @IsString()
+  @IsOptional()
   aiMessageId?: string;
 
   @IsOptional()
-  spreadsheetMetadata?: any;
+  spreadsheetMetadata?: {
+    fileName?: string;
+    totalSheets?: number;
+    activeSheetIndex?: number;
+    sheetNames?: string[];
+  };
 }
