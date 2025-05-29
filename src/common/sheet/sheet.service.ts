@@ -17,7 +17,16 @@ export class SheetService {
     constructor(private firebaseService: FirebaseService) { }
 
     // === 스프레드시트 생성 및 저장 ===
-    async createSpreadsheet(userId: string, dto: CreateSpreadsheetDto): Promise<string> {
+    async createSpreadsheet(userId: string, dto: CreateSpreadsheetDto): Promise<{
+        spreadsheetId: string;
+        sheets: Array<{
+            sheetId: string;
+            sheetIndex: number;
+            sheetName: string;
+            headers: string[];
+            rowCount: number;
+        }>;
+    }> {
         try {
             const spreadsheetRef = this.firebaseService.firestore.collection('spreadsheets').doc();
 
@@ -72,10 +81,14 @@ export class SheetService {
             await spreadsheetRef.set(spreadsheetData);
 
             // 실제 시트 데이터 저장 (별도 컬렉션에)
-            await this.saveSheetData(spreadsheetRef.id, dto.sheets, storageStrategy);
+            const sheetInfos = await this.saveSheetData(spreadsheetRef.id, dto.sheets, storageStrategy);
 
             this.logger.log(`스프레드시트 생성 완료: ${spreadsheetRef.id}`);
-            return spreadsheetRef.id;
+            
+            return {
+                spreadsheetId: spreadsheetRef.id,
+                sheets: sheetInfos
+            };
 
         } catch (error) {
             this.logger.error('스프레드시트 생성 오류:', error);
@@ -128,7 +141,20 @@ export class SheetService {
         spreadsheetId: string,
         sheets: any[],
         storageStrategy: { type: DataStorageType; path?: string }
-    ): Promise<void> {
+    ): Promise<Array<{
+        sheetId: string;
+        sheetIndex: number;
+        sheetName: string;
+        headers: string[];
+        rowCount: number;
+    }>> {
+        const sheetInfos: Array<{
+            sheetId: string;
+            sheetIndex: number;
+            sheetName: string;
+            headers: string[];
+            rowCount: number;
+        }> = [];
 
         for (const sheet of sheets) {
             const sheetRef = this.firebaseService.firestore
@@ -206,7 +232,17 @@ export class SheetService {
                     });
                 }
             }
+
+            sheetInfos.push({
+                sheetId: sheetRef.id,
+                sheetIndex: sheet.sheetIndex,
+                sheetName: sheet.sheetName,
+                headers: sheet.headers || [],
+                rowCount: sheet.data?.rows?.length || 0
+            });
         }
+
+        return sheetInfos;
     }
 
     // === 시트 데이터를 Firestore에 저장 가능한 형태로 평면화 ===
@@ -990,16 +1026,130 @@ export class SheetService {
    }
 
    // === 전체 스프레드시트 교체 ===
-   async replaceFullSpreadsheet(userId: string, spreadsheetId: string, newSheetsData: any[]): Promise<void> {
+   async replaceFullSpreadsheet(userId: string, spreadsheetId: string, newSheetsData: any[]): Promise<Array<{
+        sheetId: string;
+        sheetIndex: number;
+        sheetName: string;
+        headers: string[];
+        rowCount: number;
+    }>> {
     try {
       this.logger.log(`전체 스프레드시트 교체 시작: ${spreadsheetId}`);
 
-      // FirebaseService를 통해 전체 데이터 교체
-      await this.firebaseService.replaceSpreadsheetData(spreadsheetId, userId, newSheetsData);
+      // 소유권 확인
+      const spreadsheetDoc = await this.firebaseService.firestore
+        .collection('spreadsheets')
+        .doc(spreadsheetId)
+        .get();
+
+      const spreadsheetData = spreadsheetDoc.data();
+      if (!spreadsheetDoc.exists || !spreadsheetData || spreadsheetData.userId !== userId) {
+        throw new Error('스프레드시트 접근 권한이 없습니다.');
+      }
+
+      // 기존 모든 시트 데이터 삭제
+      await this.deleteAllSheetDataForReplace(spreadsheetId);
+
+      // 새로운 시트 데이터 저장
+      const storageStrategy = { type: DataStorageType.FIRESTORE }; // 기본값으로 설정
+      const sheetInfos = await this.saveSheetData(spreadsheetId, newSheetsData, storageStrategy);
+
+      // 스프레드시트 메타데이터 업데이트
+      await this.updateSpreadsheetMetadataAfterReplace(spreadsheetId, newSheetsData);
 
       this.logger.log(`전체 스프레드시트 교체 완료: ${spreadsheetId}`);
+      return sheetInfos;
     } catch (error) {
       this.logger.error('전체 스프레드시트 교체 오류:', error);
+      throw error;
+    }
+   }
+
+   // === 교체를 위한 기존 시트 데이터 삭제 ===
+   private async deleteAllSheetDataForReplace(spreadsheetId: string): Promise<void> {
+    try {
+      const batch = this.firebaseService.firestore.batch();
+
+      // 기존 sheets 서브컬렉션의 모든 문서 삭제
+      const sheetsSnapshot = await this.firebaseService.firestore
+        .collection('spreadsheets')
+        .doc(spreadsheetId)
+        .collection('sheets')
+        .get();
+
+      sheetsSnapshot.docs.forEach(doc => {
+        batch.delete(doc.ref);
+      });
+
+      await batch.commit();
+
+      // spreadsheetData 컬렉션의 시트 데이터들 삭제
+      const dataSnapshot = await this.firebaseService.firestore
+        .collection('spreadsheetData')
+        .where('spreadsheetId', '==', spreadsheetId)
+        .get();
+
+      if (!dataSnapshot.empty) {
+        const dataBatch = this.firebaseService.firestore.batch();
+        
+        for (const doc of dataSnapshot.docs) {
+          // 각 시트의 chunks 서브컬렉션 삭제
+          const chunksSnapshot = await doc.ref.collection('chunks').get();
+          chunksSnapshot.docs.forEach(chunkDoc => {
+            dataBatch.delete(chunkDoc.ref);
+          });
+          
+          // 시트 데이터 메타문서 삭제
+          dataBatch.delete(doc.ref);
+        }
+
+        await dataBatch.commit();
+      }
+
+      this.logger.log(`기존 시트 데이터 삭제 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('기존 시트 데이터 삭제 오류:', error);
+      throw error;
+    }
+   }
+
+   // === 교체 후 스프레드시트 메타데이터 업데이트 ===
+   private async updateSpreadsheetMetadataAfterReplace(spreadsheetId: string, newSheetsData: any[]): Promise<void> {
+    try {
+      const updateData = {
+        sheets: newSheetsData.map((sheet: any, index: number) => ({
+          sheetName: sheet.sheetName || `Sheet${index + 1}`,
+          sheetIndex: sheet.sheetIndex !== undefined ? sheet.sheetIndex : index,
+          headers: sheet.headers || [],
+          metadata: {
+            rowCount: sheet.data?.rows?.length || 0,
+            columnCount: sheet.headers?.length || 0,
+            headerRow: 0,
+            dataRange: this.calculateDataRange(sheet),
+            hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
+            lastModified: new Date(),
+            chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / this.CHUNK_SIZE),
+            chunkSize: this.CHUNK_SIZE
+          }
+        })),
+        version: this.firebaseService.FieldValue.increment(1),
+        versionHistory: this.firebaseService.FieldValue.arrayUnion({
+          version: Date.now(),
+          timestamp: new Date(),
+          changeDescription: '전체 시트 데이터 교체',
+          changedBy: 'ai'
+        }),
+        updatedAt: new Date()
+      };
+
+      await this.firebaseService.firestore
+        .collection('spreadsheets')
+        .doc(spreadsheetId)
+        .update(updateData);
+
+      this.logger.log(`스프레드시트 메타데이터 업데이트 완료: ${spreadsheetId}`);
+    } catch (error) {
+      this.logger.error('스프레드시트 메타데이터 업데이트 오류:', error);
       throw error;
     }
    }

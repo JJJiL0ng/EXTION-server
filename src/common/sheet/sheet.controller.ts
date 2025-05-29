@@ -70,22 +70,17 @@ import {
       };
  
       // 스프레드시트 저장
-      const spreadsheetId = await this.sheetService.createSpreadsheet(userId, createDto);
- 
-      this.logger.log(`스프레드시트 저장 완료: ${spreadsheetId}`);
- 
+      const result = await this.sheetService.createSpreadsheet(userId, createDto);
+
+      this.logger.log(`스프레드시트 저장 완료: ${result.spreadsheetId}`);
+
       return {
         success: true,
         message: '스프레드시트가 성공적으로 저장되었습니다.',
-        spreadsheetId,
+        spreadsheetId: result.spreadsheetId,
         chatId: createDto.chatId,
         fileName: createDto.fileName,
-        sheets: createDto.sheets.map(sheet => ({
-          sheetIndex: sheet.sheetIndex,
-          sheetName: sheet.sheetName,
-          headers: sheet.headers,
-          rowCount: sheet.data?.rows?.length || 0
-        }))
+        sheets: result.sheets
       };
  
     } catch (error) {
@@ -346,7 +341,7 @@ import {
       }));
 
       // 전체 스프레드시트 교체 실행
-      await this.sheetService.replaceFullSpreadsheet(userId, spreadsheetId, processedSheets);
+      const sheetInfos = await this.sheetService.replaceFullSpreadsheet(userId, spreadsheetId, processedSheets);
 
       this.logger.log(`전체 스프레드시트 교체 완료: ${spreadsheetId}`);
 
@@ -357,14 +352,17 @@ import {
         sheetsCount: processedSheets.length,
         description: replaceData.description,
         replacedAt: new Date().toISOString(),
-        sheets: processedSheets.map(sheet => ({
-          sheetIndex: sheet.sheetIndex,
-          sheetName: sheet.sheetName,
-          headers: sheet.headers,
-          rowCount: sheet.data?.rows?.length || 0,
-          columnCount: sheet.headers?.length || 0,
-          hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
-          hasComputedData: Boolean(sheet.computedData && sheet.computedData.length > 0)
+        sheets: sheetInfos.map(sheetInfo => ({
+          sheetId: sheetInfo.sheetId,
+          sheetIndex: sheetInfo.sheetIndex,
+          sheetName: sheetInfo.sheetName,
+          headers: sheetInfo.headers,
+          rowCount: sheetInfo.rowCount,
+          columnCount: sheetInfo.headers?.length || 0,
+          hasFormulas: Boolean(processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.formulas && 
+                              processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.formulas.length > 0),
+          hasComputedData: Boolean(processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.computedData && 
+                                  processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.computedData.length > 0)
         }))
       };
 

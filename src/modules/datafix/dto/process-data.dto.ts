@@ -81,7 +81,7 @@ export class SheetDataItemMetadata {
   @IsNumber()
   sheetIndex?: number;
   
-  // ✅ 새로 추가: 원본 메타데이터
+  // ✅ originalMetadata 필드의 검증을 제거하여 선택사항으로 만듦
   @IsOptional()
   originalMetadata?: any;
 }
@@ -120,6 +120,11 @@ export class SheetsData {
   @IsOptional()
   @IsString()
   fileName?: string;
+  
+  // ✅ 새로 추가: 스프레드시트 ID
+  @IsOptional()
+  @IsString()
+  spreadsheetId: string;
 }
 
 // 확장된 시트 컨텍스트
@@ -149,6 +154,11 @@ export class ExtendedSheetContext {
   @IsArray()
   @IsString({ each: true })
   sheetList: string[];
+  
+  // ✅ 새로 추가: 스프레드시트 ID
+  @IsOptional()
+  @IsString()
+  spreadsheetId?: string;
 }
 
 // ✅ 데이터 수정 요청 DTO 수정
@@ -178,6 +188,24 @@ export class ProcessDataDto {
   @IsString()
   @IsOptional()
   language?: string = 'ko';
+  
+  // ✅ 새로 추가: 사용자 ID
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  // ✅ 새로 추가: Firebase 채팅 관련 필드
+  @IsOptional()
+  @IsString()
+  chatId?: string;
+
+  @IsOptional()
+  @IsString()
+  chatTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  messageId?: string;
 }
 
 // 데이터 수정 결과 DTO
@@ -229,4 +257,30 @@ export class DataFixResponseDto {
   @IsOptional()
   @IsString()
   error?: string;
+
+  // ✅ Firebase 관련 필드 추가
+  @IsOptional()
+  @IsString()
+  chatId?: string;
+
+  @IsOptional()
+  @IsString()
+  userMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  aiMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  messageId?: string;
+
+  // ✅ 스프레드시트 메타데이터 추가
+  @IsOptional()
+  spreadsheetMetadata?: {
+    fileName?: string;
+    totalSheets?: number;
+    activeSheetIndex?: number;
+    sheetNames?: string[];
+  };
 }

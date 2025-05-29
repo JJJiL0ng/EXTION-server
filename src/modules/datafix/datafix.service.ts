@@ -1,6 +1,10 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
+import { FirebaseService } from '../../common/firebase/firebase.service';
+import { SheetService } from '../../common/sheet/sheet.service';
+import { UpdateSheetDataDto } from '../../common/sheet/dto/spreadsheet.dto';
+import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 import { 
   ProcessDataDto, 
   DataFixResponseDto, 
@@ -15,7 +19,11 @@ export class DataFixService {
   private readonly logger = new Logger(DataFixService.name);
   private readonly openai: OpenAI;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private firebaseService: FirebaseService,
+    private sheetService: SheetService
+  ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
     });
@@ -24,7 +32,40 @@ export class DataFixService {
   async processData(dto: ProcessDataDto): Promise<DataFixResponseDto> {
     try {
       this.logger.log(`데이터 수정 요청: ${dto.userInput}`);
+      this.logger.log(`사용자 ID: ${dto.userId}`);
+      this.logger.log(`채팅 ID: ${dto.chatId || '새 채팅'}`);
       
+      // === 1. 채팅 세션 처리 (Normal Chat과 동일) ===
+      let chatId = dto.chatId;
+
+      if (!chatId) {
+        // chatId가 전혀 없는 경우 - 새 채팅 생성
+        const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
+        chatId = await this.firebaseService.createChat(dto.userId!, { title: chatTitle });
+        this.logger.log(`새 채팅 생성: ${chatId}`);
+      } else {
+        // 프론트에서 chatId를 보낸 경우
+        this.logger.log(`프론트에서 제공된 chatId: ${chatId}`);
+
+        // 기존 채팅 존재 확인
+        const existingChat = await this.firebaseService.getChat(chatId);
+
+        if (!existingChat) {
+          // Firebase에 해당 chatId로 채팅이 없으면 생성
+          this.logger.log(`Firebase에 채팅이 없어서 새로 생성: ${chatId}`);
+          const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
+
+          // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
+          await this.firebaseService.createChatWithId(dto.userId!, chatId, { title: chatTitle });
+        } else {
+          // 기존 채팅 소유권 확인
+          if (existingChat.userId !== dto.userId) {
+            throw new BadRequestException('채팅 접근 권한이 없습니다.');
+          }
+          this.logger.log(`기존 채팅 사용: ${chatId}`);
+        }
+      }
+
       // 프론트엔드에서 받은 데이터 로깅
       this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
       this.logger.log(`사용자 입력: ${dto.userInput}`);
@@ -42,11 +83,15 @@ export class DataFixService {
       
       // ✅ sheetsData 우선 처리
       const sheetsData = dto.sheetsData || dto.currentData;
+      let spreadsheetMetadata: any = null;
+      let activeSheetData: any = null;
+
       if (sheetsData) {
         this.logger.log('시트 데이터:');
         this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
         this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
         this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
+        this.logger.log(`- 스프레드시트 ID: ${sheetsData.spreadsheetId || '없음'}`);
         
         if (sheetsData.sheets) {
           sheetsData.sheets.forEach((sheet, index) => {
@@ -58,9 +103,51 @@ export class DataFixService {
             this.logger.log(`  * CSV 데이터 크기: ${sheet.csv?.length || 0} 문자`);
           });
         }
+
+        // === 2. 스프레드시트 메타데이터 구성 (Normal Chat과 동일) ===
+        if (sheetsData.sheets && sheetsData.sheets.length > 0) {
+          const currentSheet = sheetsData.sheets[0]; // 현재 시트만 전송되므로 첫 번째 시트
+
+          if (currentSheet && currentSheet.metadata) {
+            // spreadsheetMetadata 구성
+            spreadsheetMetadata = {
+              fileName: sheetsData.fileName || currentSheet.name,
+              sheets: [{
+                sheetName: currentSheet.name,
+                sheetIndex: currentSheet.metadata.sheetIndex || 0,
+                headers: currentSheet.metadata.headers || []
+              }],
+              activeSheetIndex: 0,
+              totalSheets: sheetsData.totalSheets || 1
+            };
+
+            // activeSheetData 구성
+            activeSheetData = {
+              data: {
+                rows: currentSheet.metadata.fullData || []
+              },
+              rowCount: currentSheet.metadata.rowCount || 0,
+              columnCount: currentSheet.metadata.columnCount || 0,
+              headers: currentSheet.metadata.headers || []
+            };
+          }
+        }
       }
       
       this.logger.log('==================== 프론트엔드에서 받은 데이터 끝 ====================');
+
+      // === 3. 사용자 메시지 저장 ===
+      const sheetContext = this.createSheetContext(spreadsheetMetadata, activeSheetData);
+      const userMessageDto: CreateMessageDto = {
+        content: dto.userInput,
+        role: MessageRole.USER,
+        type: MessageType.TEXT,
+        mode: MessageMode.DATA_FIX,
+        ...(sheetContext && { sheetContext }),
+      };
+
+      const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
+      this.logger.log(`사용자 메시지 저장: ${userMessageId}`);
 
       // 데이터 컨텍스트 조회
       const dataContext = this.getDataContext(dto);
@@ -146,7 +233,53 @@ export class DataFixService {
       
       this.logger.log('==================== 프론트엔드 전송 응답 데이터 끝 ====================');
       
-      return result;
+      // === 4. AI 응답 메시지 저장 ===
+      const aiResponseContent = this.formatAIResponseForMessage(result);
+      const aiMessageDto: CreateMessageDto = {
+        content: aiResponseContent,
+        role: MessageRole.EXTION_AI,
+        type: MessageType.DATA_FIX,
+        mode: MessageMode.DATA_FIX,
+        ...(sheetContext && { sheetContext }),
+        // 데이터 수정 결과 메타데이터 추가
+        metadata: {
+          success: result.success,
+          sheetIndex: result.sheetIndex,
+          changes: result.changes,
+          editedDataSummary: result.editedData ? {
+            sheetName: result.editedData.sheetName,
+            headerCount: result.editedData.headers?.length || 0,
+            dataRowCount: result.editedData.data?.length || 0
+          } : null
+        }
+      };
+
+      const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
+      this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);
+
+      // === 5. 응답에 Firebase 정보 추가 ===
+      const finalResult: DataFixResponseDto = {
+        ...result,
+        chatId,
+        userMessageId,
+        aiMessageId,
+        spreadsheetMetadata: this.buildSpreadsheetMetadataResponse(spreadsheetMetadata)
+      };
+      
+      // ✅ 프론트엔드 응답 후 백엔드에서 Firebase DB에 데이터 저장
+      if (result.success && result.editedData && dto.userId) {
+        this.saveEditedDataToFirebase(dto, result).catch(error => {
+          this.logger.error('Firebase 저장 중 오류 (비동기):', error);
+        });
+      }
+      
+      this.logger.log('==================== Firebase 저장 완료 ====================');
+      this.logger.log(`채팅 ID: ${chatId}`);
+      this.logger.log(`사용자 메시지 ID: ${userMessageId}`);
+      this.logger.log(`AI 메시지 ID: ${aiMessageId}`);
+      this.logger.log('==================== 응답 전송 ====================');
+
+      return finalResult;
 
     } catch (error) {
       this.logger.error('데이터 수정 오류:', error);
@@ -166,6 +299,77 @@ export class DataFixService {
       
       return errorResult;
     }
+  }
+
+  // === 채팅 제목 자동 생성 ===
+  private generateChatTitle(userInput: string): string {
+    const title = userInput.length > 30 ? userInput.substring(0, 30) + '...' : userInput;
+    return title || '데이터 수정';
+  }
+
+  // === 시트 컨텍스트 생성 ===
+  private createSheetContext(spreadsheetMetadata: any, activeSheetData: any): any {
+    if (!spreadsheetMetadata || !activeSheetData) {
+      return null;
+    }
+
+    const activeSheet = spreadsheetMetadata.sheets?.[0];
+
+    if (!activeSheet) {
+      return null;
+    }
+
+    return {
+      sheetIndex: activeSheet.sheetIndex || 0,
+      sheetName: activeSheet.sheetName,
+      affectedCells: [],
+      totalRows: activeSheetData.rowCount || 0,
+      totalColumns: activeSheetData.columnCount || 0,
+      headers: activeSheetData.headers || []
+    };
+  }
+
+  // === 스프레드시트 메타데이터 응답 생성 ===
+  private buildSpreadsheetMetadataResponse(spreadsheetMetadata: any): any {
+    if (!spreadsheetMetadata) {
+      return {
+        fileName: undefined,
+        totalSheets: undefined,
+        activeSheetIndex: undefined,
+        sheetNames: undefined
+      };
+    }
+
+    return {
+      fileName: spreadsheetMetadata.fileName,
+      totalSheets: spreadsheetMetadata.totalSheets || spreadsheetMetadata.sheets?.length || 0,
+      activeSheetIndex: spreadsheetMetadata.activeSheetIndex || 0,
+      sheetNames: spreadsheetMetadata.sheets?.map(sheet => sheet.sheetName) || []
+    };
+  }
+
+  // === AI 응답을 메시지 저장용으로 포맷팅 ===
+  private formatAIResponseForMessage(result: DataFixResponseDto): string {
+    let content = '';
+
+    if (result.success && result.editedData) {
+      content += `데이터 수정이 완료되었습니다.\n\n`;
+      content += `시트명: ${result.editedData.sheetName}\n`;
+      content += `수정된 데이터: ${result.editedData.data?.length || 0}행, ${result.editedData.headers?.length || 0}열\n`;
+      
+      if (result.changes) {
+        content += `변경 유형: ${result.changes.type}\n`;
+        content += `변경 내용: ${result.changes.details}\n`;
+      }
+      
+      if (result.explanation) {
+        content += `\n설명:\n${result.explanation}`;
+      }
+    } else {
+      content = result.error || '데이터 수정 중 오류가 발생했습니다.';
+    }
+
+    return content;
   }
 
   // ✅ getDataContext 메서드 수정 - fullData 우선 사용
@@ -541,5 +745,114 @@ ${csvData}
       this.logger.error('응답 데이터 추출 오류:', error);
       throw new InternalServerErrorException(`데이터 추출 실패: ${error.message}`);
     }
+  }
+
+  // ✅ Firebase DB에 변경된 시트 데이터 저장
+  private async saveEditedDataToFirebase(dto: ProcessDataDto, result: DataFixResponseDto): Promise<void> {
+    try {
+      this.logger.log('==================== Firebase DB 저장 시작 ====================');
+      
+      // 필수 데이터 확인
+      if (!dto.userId) {
+        this.logger.warn('사용자 ID가 없어 Firebase 저장을 건너뜁니다.');
+        return;
+      }
+      
+      if (!result.editedData || !result.editedData.data) {
+        this.logger.warn('변경된 데이터가 없어 Firebase 저장을 건너뜁니다.');
+        return;
+      }
+
+      // 스프레드시트 ID 추출
+      const spreadsheetId = this.extractSpreadsheetId(dto);
+      if (!spreadsheetId) {
+        this.logger.warn('스프레드시트 ID가 없어 Firebase 저장을 건너뜁니다.');
+        return;
+      }
+
+      // 시트 인덱스 추출
+      const sheetIndex = this.extractSheetIndex(dto, result);
+      if (sheetIndex === null || sheetIndex === undefined) {
+        this.logger.warn('시트 인덱스가 없어 Firebase 저장을 건너뜁니다.');
+        return;
+      }
+
+      this.logger.log(`Firebase 저장 정보:`);
+      this.logger.log(`- 사용자 ID: ${dto.userId}`);
+      this.logger.log(`- 스프레드시트 ID: ${spreadsheetId}`);
+      this.logger.log(`- 시트 인덱스: ${sheetIndex}`);
+      this.logger.log(`- 시트명: ${result.editedData.sheetName}`);
+      this.logger.log(`- 헤더 수: ${result.editedData.headers.length}`);
+      this.logger.log(`- 데이터 행 수: ${result.editedData.data.length}`);
+
+      // UpdateSheetDataDto 구성
+      const updateDto: UpdateSheetDataDto = {
+        spreadsheetId,
+        sheetIndex,
+        data: {
+          headers: result.editedData.headers,
+          rows: result.editedData.data,
+          rawData: result.editedData.data // rawData와 rows 동일하게 설정
+        },
+        // 기존 formulas와 computedData는 유지 (선택사항)
+        formulas: undefined,
+        computedData: undefined
+      };
+
+      // SheetService를 통해 시트 데이터 업데이트
+      await this.sheetService.updateSheetData(dto.userId, updateDto);
+
+      this.logger.log('✅ Firebase DB 저장 완료');
+      this.logger.log('==================== Firebase DB 저장 끝 ====================');
+
+    } catch (error) {
+      this.logger.error('Firebase DB 저장 오류:', error);
+      throw error;
+    }
+  }
+
+  // 스프레드시트 ID 추출 헬퍼 메서드
+  private extractSpreadsheetId(dto: ProcessDataDto): string | null {
+    // 우선순위: extendedSheetContext > sheetsData > currentData
+    if (dto.extendedSheetContext?.spreadsheetId) {
+      return dto.extendedSheetContext.spreadsheetId;
+    }
+    
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData?.spreadsheetId) {
+      return sheetsData.spreadsheetId;
+    }
+    
+    return null;
+  }
+
+  // 시트 인덱스 추출 헬퍼 메서드
+  private extractSheetIndex(dto: ProcessDataDto, result: DataFixResponseDto): number | null {
+    // 결과에서 시트 인덱스가 명시된 경우 우선 사용
+    if (result.sheetIndex !== undefined && result.sheetIndex !== null) {
+      return result.sheetIndex;
+    }
+    
+    // extendedSheetContext에서 추출
+    if (dto.extendedSheetContext?.sheetIndex !== undefined) {
+      return dto.extendedSheetContext.sheetIndex;
+    }
+    
+    // sheetsData에서 활성 시트의 인덱스 찾기
+    const sheetsData = dto.sheetsData || dto.currentData;
+    if (sheetsData?.sheets && sheetsData.activeSheet) {
+      const activeSheetIndex = sheetsData.sheets.findIndex(
+        sheet => sheet.name === sheetsData.activeSheet
+      );
+      
+      if (activeSheetIndex >= 0) {
+        // 메타데이터에서 sheetIndex가 있으면 사용, 없으면 배열 인덱스 사용
+        const activeSheet = sheetsData.sheets[activeSheetIndex];
+        return activeSheet.metadata?.sheetIndex ?? activeSheetIndex;
+      }
+    }
+    
+    // 기본값: 0 (첫 번째 시트)
+    return 0;
   }
 }
