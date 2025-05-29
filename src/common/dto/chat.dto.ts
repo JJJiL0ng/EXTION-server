@@ -29,7 +29,8 @@ export enum MessageMode {
 // 시트 컨텍스트 DTO
 export class SheetContextDto {
   @IsNumber()
-  sheetIndex: number;
+  @IsOptional()
+  sheetIndex?: number;
 
   @IsString()
   sheetName: string;
@@ -38,6 +39,19 @@ export class SheetContextDto {
   @IsString({ each: true })
   @IsOptional()
   affectedCells?: string[];
+
+  @IsNumber()
+  @IsOptional()
+  totalRows?: number;
+
+  @IsNumber()
+  @IsOptional()
+  totalColumns?: number;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  headers?: string[];
 }
 
 // 수식 데이터 DTO
@@ -49,10 +63,36 @@ export class FormulaDataDto {
   cellAddress: string;
 
   @IsString()
-  explanation: string;
+  @IsOptional()
+  functionType?: string;
+
+  @IsOptional()
+  explanation?: {
+    korean?: string;
+    english?: string;
+  } | string; // 하위 호환성을 위해 string도 허용
+
+  @IsOptional()
+  examples?: Array<{
+    range: string;
+    formula: string;
+    description: string;
+  }>;
+
+  @IsOptional()
+  alternatives?: Array<{
+    formula: string;
+    reason: string;
+    complexity?: number;
+  }>;
+
+  @IsString()
+  @IsOptional()
+  warning?: string;
 
   @IsNumber()
-  sheetIndex: number;
+  @IsOptional()
+  sheetIndex?: number;
 
   @IsBoolean()
   @IsOptional()

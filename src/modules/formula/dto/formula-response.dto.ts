@@ -1,3 +1,4 @@
+// src/modules/formula/dto/formula-response.dto.ts
 import {
   IsNotEmpty,
   IsString,
@@ -83,4 +84,31 @@ export class FormulaResponseDto {
   @IsOptional()
   @IsString()
   requestId?: string; // 요청 추적을 위한 ID
+
+  // 채팅 관련 필드 추가
+  @IsOptional()
+  @IsString()
+  chatId?: string; // 채팅 ID
+
+  @IsOptional()
+  @IsString()
+  userMessageId?: string; // 사용자 메시지 ID
+
+  @IsOptional()
+  @IsString()
+  aiMessageId?: string; // AI 메시지 ID
+
+  @IsOptional()
+  @IsString()
+  timestamp?: string; // 타임스탬프
+
+  @IsOptional()
+  spreadsheetMetadata?: {
+    hasSpreadsheet?: boolean;
+    fileName?: string;
+    totalSheets?: number;
+    activeSheetIndex?: number;
+    sheetNames?: string[];
+    lastModifiedAt?: Date;
+  };
 }

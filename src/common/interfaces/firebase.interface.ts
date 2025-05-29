@@ -57,15 +57,33 @@ export interface FirebaseUser {
     type: 'text' | 'file_upload' | 'formula' | 'artifact' | 'data_generation' | 'data_fix';
     mode?: 'normal' | 'formula' | 'artifact' | 'datageneration' | 'datafix';
     sheetContext?: {
-      sheetIndex: number;
+      sheetIndex?: number;
       sheetName: string;
       affectedCells?: string[];
+      totalRows?: number;
+      totalColumns?: number;
+      headers?: string[];
     };
     formulaData?: {
       formula: string;
       cellAddress: string;
-      explanation: string;
-      sheetIndex: number;
+      functionType?: string;
+      explanation?: {
+        korean?: string;
+        english?: string;
+      } | string;
+      examples?: Array<{
+        range: string;
+        formula: string;
+        description: string;
+      }>;
+      alternatives?: Array<{
+        formula: string;
+        reason: string;
+        complexity?: number;
+      }>;
+      warning?: string;
+      sheetIndex?: number;
       crossSheetReference?: boolean;
     };
     artifactData?: {

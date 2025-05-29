@@ -157,22 +157,99 @@ export class FirebaseService {
   // === 메시지 관련 메서드 ===
   async createMessage(chatId: string, messageDto: CreateMessageDto): Promise<string> {
     try {
+      this.logger.log(`=== Firebase 메시지 생성 시작 ===`);
+      this.logger.log(`채팅 ID: ${chatId}`);
+      this.logger.log(`메시지 타입: ${messageDto.type}`);
+      this.logger.log(`메시지 모드: ${messageDto.mode}`);
+      this.logger.log(`메시지 역할: ${messageDto.role}`);
+      this.logger.log(`메시지 내용 길이: ${messageDto.content?.length || 0} 문자`);
+      
+      // Firebase 연결 상태 확인
+      if (!this.db) {
+        this.logger.error('Firebase Firestore 인스턴스가 초기화되지 않음');
+        throw new Error('Firebase가 초기화되지 않았습니다.');
+      }
+      
       const messageRef = this.db.collection('chats').doc(chatId).collection('messages').doc();
+      this.logger.log(`메시지 레퍼런스 생성: ${messageRef.path}`);
+      
       const messageData: Omit<FirebaseMessage, 'id'> = {
         chatId,
         ...messageDto,
         timestamp: new Date(),
       };
 
+      // 각 필드별 상세 로깅
+      this.logger.log(`=== 저장할 메시지 데이터 상세 분석 ===`);
+      this.logger.log(`chatId: ${messageData.chatId}`);
+      this.logger.log(`role: ${messageData.role}`);
+      this.logger.log(`type: ${messageData.type}`);
+      this.logger.log(`mode: ${messageData.mode || 'undefined'}`);
+      this.logger.log(`content 길이: ${messageData.content.length}`);
+      this.logger.log(`timestamp: ${messageData.timestamp}`);
+      
+      if (messageData.sheetContext) {
+        this.logger.log(`sheetContext 존재:`, JSON.stringify({
+          sheetIndex: messageData.sheetContext.sheetIndex,
+          sheetName: messageData.sheetContext.sheetName,
+          affectedCells: messageData.sheetContext.affectedCells?.length || 0,
+          totalRows: messageData.sheetContext.totalRows,
+          totalColumns: messageData.sheetContext.totalColumns,
+          headers: messageData.sheetContext.headers?.length || 0
+        }));
+      }
+      
+      if (messageData.formulaData) {
+        this.logger.log(`formulaData 존재:`, JSON.stringify({
+          formula: messageData.formulaData.formula,
+          cellAddress: messageData.formulaData.cellAddress,
+          functionType: messageData.formulaData.functionType,
+          hasExplanation: !!messageData.formulaData.explanation,
+          explanationType: typeof messageData.formulaData.explanation,
+          hasExamples: !!messageData.formulaData.examples,
+          hasAlternatives: !!messageData.formulaData.alternatives,
+          hasWarning: !!messageData.formulaData.warning
+        }));
+        
+        // explanation 필드 상세 분석
+        if (messageData.formulaData.explanation) {
+          this.logger.log(`explanation 내용:`, JSON.stringify(messageData.formulaData.explanation));
+        }
+      }
+
+      this.logger.log(`메시지 문서 저장 시작...`);
       await messageRef.set(messageData);
+      this.logger.log(`✅ 메시지 문서 저장 성공: ${messageRef.id}`);
 
       // 채팅 문서의 lastMessage와 messageCount 업데이트
+      this.logger.log(`채팅 마지막 메시지 업데이트 시작...`);
       await this.updateChatLastMessage(chatId, messageData);
+      this.logger.log(`✅ 채팅 마지막 메시지 업데이트 성공`);
 
-      this.logger.log(`메시지 생성: ${messageRef.id}`);
+      this.logger.log(`✅ 메시지 생성 완료: ${messageRef.id}`);
       return messageRef.id;
     } catch (error) {
-      this.logger.error('메시지 생성 오류:', error);
+      this.logger.error('❌ Firebase 메시지 생성 오류:', error);
+      this.logger.error(`오류 타입: ${error.constructor.name}`);
+      this.logger.error(`오류 메시지: ${error.message}`);
+      this.logger.error(`오류 코드: ${error.code || 'N/A'}`);
+      this.logger.error(`오류 스택:`, error.stack);
+      this.logger.error(`채팅 ID: ${chatId}`);
+      
+      // 메시지 DTO의 문제가 있는 필드들 상세 분석
+      this.logger.error(`=== 오류 발생 시 메시지 DTO 분석 ===`);
+      this.logger.error(`메시지 DTO 타입:`, typeof messageDto);
+      this.logger.error(`메시지 DTO 키들:`, Object.keys(messageDto));
+      
+      if (messageDto.formulaData) {
+        this.logger.error(`formulaData 키들:`, Object.keys(messageDto.formulaData));
+        this.logger.error(`formulaData:`, JSON.stringify(messageDto.formulaData, null, 2));
+      }
+      
+      if (messageDto.sheetContext) {
+        this.logger.error(`sheetContext:`, JSON.stringify(messageDto.sheetContext, null, 2));
+      }
+      
       throw error;
     }
   }

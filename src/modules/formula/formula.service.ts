@@ -1,15 +1,20 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { ProcessFormulaDto } from './dto/process-formula.dto';
 import { FormulaResponseDto } from './dto/formula-response.dto';
+import { FirebaseService } from '../../common/firebase/firebase.service';
+import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 
 @Injectable()
 export class FormulaService {
   private readonly logger = new Logger(FormulaService.name);
   private readonly openai: OpenAI;
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    private firebaseService: FirebaseService,
+  ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     
     if (!apiKey) {
@@ -25,7 +30,150 @@ export class FormulaService {
   async generateFormula(processFormulaDto: ProcessFormulaDto): Promise<FormulaResponseDto> {
     try {
       this.logger.log(`함수 생성 요청: ${processFormulaDto.userInput}`);
+      this.logger.log(`사용자 ID: ${processFormulaDto.userId}`);
+      this.logger.log(`채팅 ID: ${processFormulaDto.chatId || '새 채팅'}`);
 
+      // === 1. 채팅 세션 처리 ===
+      let chatId = processFormulaDto.chatId;
+
+      if (!chatId) {
+        // chatId가 전혀 없는 경우 - 새 채팅 생성
+        const chatTitle = processFormulaDto.chatTitle || this.generateChatTitle(processFormulaDto.userInput);
+        chatId = await this.firebaseService.createChat(processFormulaDto.userId, { title: chatTitle });
+        this.logger.log(`새 채팅 생성: ${chatId}`);
+      } else {
+        // 프론트에서 chatId를 보낸 경우
+        this.logger.log(`프론트에서 제공된 chatId: ${chatId}`);
+
+        // 기존 채팅 존재 확인
+        const existingChat = await this.firebaseService.getChat(chatId);
+
+        if (!existingChat) {
+          // Firebase에 해당 chatId로 채팅이 없으면 생성
+          this.logger.log(`Firebase에 채팅이 없어서 새로 생성: ${chatId}`);
+          const chatTitle = processFormulaDto.chatTitle || this.generateChatTitle(processFormulaDto.userInput);
+
+          // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
+          await this.firebaseService.createChatWithId(processFormulaDto.userId, chatId, { title: chatTitle });
+        } else {
+          // 기존 채팅 소유권 확인
+          if (existingChat.userId !== processFormulaDto.userId) {
+            throw new BadRequestException('채팅 접근 권한이 없습니다.');
+          }
+          this.logger.log(`기존 채팅 사용: ${chatId}`);
+        }
+      }
+
+      // === 2. 스프레드시트 데이터 처리 ===
+      let spreadsheetMetadata: any = null;
+      let sheetContext: any = null;
+
+      if (processFormulaDto.spreadsheetData?.sheets && processFormulaDto.spreadsheetData.sheets.length > 0) {
+        this.logger.log('프론트엔드에서 전송된 스프레드시트 데이터 사용');
+        this.logger.log(`활성 시트: ${processFormulaDto.spreadsheetData?.activeSheet}`);
+        this.logger.log(`전체 시트 수: ${processFormulaDto.spreadsheetData?.sheets?.length || 0}`);
+
+        // 현재 활성 시트의 데이터 가져오기
+        const currentSheet = processFormulaDto.spreadsheetData?.sheets?.[0]; // 프론트엔드에서 현재 시트만 보내므로 첫 번째 시트
+
+        if (currentSheet) {
+          this.logger.log(`현재 시트명: ${currentSheet.name}`);
+          this.logger.log(`데이터 행 수: ${currentSheet.data?.length || 0}`);
+          this.logger.log(`데이터 열 수: ${currentSheet.headers?.length || 0}`);
+
+          // spreadsheetMetadata 구성
+          spreadsheetMetadata = {
+            hasSpreadsheet: true,
+            fileName: processFormulaDto.spreadsheetData?.fileName || currentSheet.name,
+            totalSheets: processFormulaDto.spreadsheetData?.sheets?.length || 0,
+            activeSheetIndex: 0,
+            sheetNames: [currentSheet.name],
+            lastModifiedAt: new Date(),
+          };
+
+          // sheetContext 구성 (Firebase 메시지 저장용)
+          sheetContext = {
+            sheetIndex: currentSheet.sheetIndex || 0,
+            sheetName: currentSheet.name,
+            affectedCells: [],
+            totalRows: currentSheet.data?.length || 0,
+            totalColumns: currentSheet.headers?.length || 0,
+            headers: currentSheet.headers || []
+          };
+
+          this.logger.log(`변환 완료 - 시트명: ${currentSheet.name}`);
+        }
+      } else if (processFormulaDto.sheetContext) {
+        // 하위 호환성을 위한 기존 sheetContext 처리
+        this.logger.log('기존 sheetContext 사용 (하위 호환성)');
+        
+        sheetContext = {
+          sheetIndex: 0,
+          sheetName: processFormulaDto.sheetContext.sheetName,
+          affectedCells: [],
+          totalRows: 0,
+          totalColumns: processFormulaDto.sheetContext.headers?.length || 0,
+          headers: processFormulaDto.sheetContext.headers?.map(h => h.name) || []
+        };
+
+        spreadsheetMetadata = {
+          hasSpreadsheet: true,
+          fileName: processFormulaDto.sheetContext.sheetName,
+          totalSheets: 1,
+          activeSheetIndex: 0,
+          sheetNames: [processFormulaDto.sheetContext.sheetName],
+          lastModifiedAt: new Date(),
+        };
+      } else {
+        this.logger.log('스프레드시트 데이터가 없습니다.');
+        spreadsheetMetadata = {
+          hasSpreadsheet: false,
+          totalSheets: 0,
+          activeSheetIndex: 0,
+          sheetNames: [],
+          lastModifiedAt: new Date(),
+        };
+      }
+
+      // === 3. 사용자 메시지 저장 ===
+      this.logger.log('=== 사용자 메시지 Firebase 저장 시작 ===');
+      const userMessageDto: CreateMessageDto = {
+        content: processFormulaDto.userInput,
+        role: MessageRole.USER,
+        type: MessageType.FORMULA,
+        mode: MessageMode.FORMULA,
+        ...(sheetContext && { sheetContext }),
+      };
+
+      this.logger.log(`저장할 사용자 메시지 데이터:`, JSON.stringify({
+        content: userMessageDto.content,
+        role: userMessageDto.role,
+        type: userMessageDto.type,
+        mode: userMessageDto.mode,
+        hasSheetContext: !!userMessageDto.sheetContext
+      }, null, 2));
+
+      let userMessageId: string;
+      try {
+        // Firebase 연결 상태 확인
+        this.logger.log(`Firebase 연결 상태 확인 중...`);
+        this.logger.log(`채팅 ID: ${chatId}`);
+        this.logger.log(`채팅 컬렉션 경로: chats/${chatId}/messages`);
+        
+        userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
+        this.logger.log(`✅ 사용자 메시지 Firebase 저장 성공: ${userMessageId}`);
+        this.logger.log(`채팅 ID: ${chatId}, 메시지 ID: ${userMessageId}`);
+      } catch (error) {
+        this.logger.error(`❌ 사용자 메시지 Firebase 저장 실패:`, error);
+        this.logger.error(`오류 타입: ${error.constructor.name}`);
+        this.logger.error(`오류 메시지: ${error.message}`);
+        this.logger.error(`오류 스택:`, error.stack);
+        this.logger.error(`채팅 ID: ${chatId}`);
+        this.logger.error(`사용자 메시지 DTO:`, JSON.stringify(userMessageDto, null, 2));
+        throw new InternalServerErrorException('사용자 메시지 저장에 실패했습니다.');
+      }
+
+      // === 4. 기존 함수 생성 로직 ===
       // 시트 컨텍스트를 문자열로 변환
       const contextString = this.buildContextString(processFormulaDto);
       
@@ -47,38 +195,177 @@ export class FormulaService {
       const gptAnswer = gptResponse.choices[0]?.message?.content;
       
       if (!gptAnswer) {
-        throw new Error('GPT에서 응답을 받지 못했습니다.');
+        throw new InternalServerErrorException('AI 응답을 받을 수 없습니다.');
       }
 
       // GPT 응답 파싱
       const parsedResponse = this.parseGptResponse(gptAnswer);
       
-      this.logger.log(`함수 생성 완료: ${parsedResponse.formula}`);
+      if (!parsedResponse.success) {
+        throw new InternalServerErrorException(parsedResponse.error || '함수 생성에 실패했습니다.');
+      }
+
+      // === 5. AI 응답 메시지 저장 ===
+      this.logger.log('=== AI 응답 메시지 Firebase 저장 시작 ===');
+      const aiContent = `생성된 함수: \`${parsedResponse.formula}\`\n\n${parsedResponse.explanation?.korean || '함수가 생성되었습니다.'}`;
       
-      return parsedResponse;
+      // formulaData에서 undefined 값들을 필터링
+      const formulaData: any = {};
+      if (parsedResponse.formula) formulaData.formula = parsedResponse.formula;
+      if (parsedResponse.cellAddress) formulaData.cellAddress = parsedResponse.cellAddress;
+      if (parsedResponse.functionType) formulaData.functionType = parsedResponse.functionType;
+      if (parsedResponse.explanation) formulaData.explanation = parsedResponse.explanation;
+      if (parsedResponse.examples) formulaData.examples = parsedResponse.examples;
+      if (parsedResponse.alternatives) formulaData.alternatives = parsedResponse.alternatives;
+      if (parsedResponse.warning) formulaData.warning = parsedResponse.warning;
+      
+      const aiMessageDto: CreateMessageDto = {
+        content: aiContent,
+        role: MessageRole.EXTION_AI,
+        type: MessageType.FORMULA,
+        mode: MessageMode.FORMULA,
+        ...(sheetContext && { sheetContext }),
+        formulaData,
+      };
+
+      this.logger.log(`저장할 AI 메시지 데이터:`, JSON.stringify({
+        content: aiMessageDto.content.substring(0, 100) + '...',
+        role: aiMessageDto.role,
+        type: aiMessageDto.type,
+        mode: aiMessageDto.mode,
+        hasSheetContext: !!aiMessageDto.sheetContext,
+        hasFormulaData: !!aiMessageDto.formulaData,
+        formula: parsedResponse.formula
+      }, null, 2));
+
+      let aiMessageId: string;
+      try {
+        // Firebase 연결 상태 확인
+        this.logger.log(`AI 메시지 Firebase 저장 준비 중...`);
+        this.logger.log(`채팅 ID: ${chatId}`);
+        this.logger.log(`AI 메시지 길이: ${aiContent.length} 문자`);
+        
+        aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
+        this.logger.log(`✅ AI 응답 메시지 Firebase 저장 성공: ${aiMessageId}`);
+        this.logger.log(`채팅 ID: ${chatId}, 메시지 ID: ${aiMessageId}`);
+
+        // === 6. 분석 카운터 증가 ===
+        try {
+          await this.firebaseService.incrementAnalyticsCounter(chatId, 'formulaCount');
+          this.logger.log(`✅ 분석 카운터 증가 성공`);
+        } catch (counterError) {
+          this.logger.error(`❌ 분석 카운터 증가 실패:`, counterError);
+          // 카운터 실패는 전체 프로세스를 중단하지 않음
+        }
+        
+        this.logger.log(`함수 생성 완료: ${parsedResponse.formula}`);
+        
+        // === 7. 응답 반환 ===
+        const result: FormulaResponseDto = {
+          ...parsedResponse,
+          chatId,
+          userMessageId,
+          aiMessageId,
+          timestamp: new Date().toISOString(),
+          spreadsheetMetadata,
+        };
+
+        // Firebase 저장 완료 로그
+        this.logger.log('==================== Firebase 채팅 로그 저장 완료 ====================');
+        this.logger.log(`✅ 채팅 ID: ${chatId}`);
+        this.logger.log(`✅ 사용자 메시지 ID: ${userMessageId}`);
+        this.logger.log(`✅ AI 메시지 ID: ${aiMessageId}`);
+        this.logger.log(`✅ 함수: ${result.formula || 'N/A'}`);
+        this.logger.log(`✅ 타임스탬프: ${result.timestamp}`);
+        this.logger.log('==================== 프론트엔드 응답 전송 ====================');
+        
+        return result;
+
+      } catch (error) {
+        this.logger.error(`❌ AI 응답 메시지 Firebase 저장 실패:`, error);
+        this.logger.error(`오류 타입: ${error.constructor.name}`);
+        this.logger.error(`오류 메시지: ${error.message}`);
+        this.logger.error(`오류 스택:`, error.stack);
+        this.logger.error(`채팅 ID: ${chatId}`);
+        this.logger.error(`AI 메시지 DTO:`, JSON.stringify({
+          ...aiMessageDto,
+          content: aiMessageDto.content.substring(0, 200) + '...'
+        }, null, 2));
+        throw new InternalServerErrorException('AI 응답 메시지 저장에 실패했습니다.');
+      }
 
     } catch (error) {
       this.logger.error('함수 생성 중 오류 발생:', error);
       
-      return {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      const errorResult: FormulaResponseDto = {
         success: false,
-        error: '함수 생성 중 오류가 발생했습니다. 다시 시도해주세요.',
+        error: error.message || '함수 생성 중 오류가 발생했습니다.',
+        timestamp: new Date().toISOString()
       };
+      
+      this.logger.log('==================== 프론트엔드 전송 오류 응답 시작 ====================');
+      this.logger.log(JSON.stringify(errorResult, null, 2));
+      this.logger.log('==================== 프론트엔드 전송 오류 응답 끝 ====================');
+      
+      return errorResult;
     }
   }
 
+  // === 채팅 제목 자동 생성 ===
+  private generateChatTitle(userInput: string): string {
+    const title = userInput.length > 30 ? userInput.substring(0, 30) + '...' : userInput;
+    return title || '새로운 함수 채팅';
+  }
+
   private buildContextString(dto: ProcessFormulaDto): string {
+    // 새로운 spreadsheetData가 있으면 우선 사용
+    if (dto.spreadsheetData?.sheets && dto.spreadsheetData.sheets.length > 0) {
+      const currentSheet = dto.spreadsheetData?.sheets?.[0];
+      
+      if (!currentSheet) {
+        return '시트 정보가 없습니다.';
+      }
+      
+      let context = `시트 이름: ${currentSheet.name}\n\n`;
+      context += `헤더 정보:\n`;
+      
+      currentSheet.headers?.forEach((header, index) => {
+        const column = String.fromCharCode(65 + index); // A, B, C...
+        context += `- ${column}열: ${header}\n`;
+      });
+      
+      context += `\n데이터 행 수: ${currentSheet.data?.length || 0}\n`;
+      context += `데이터 열 수: ${currentSheet.headers?.length || 0}\n`;
+      
+      if (currentSheet.data && currentSheet.data.length > 0) {
+        context += `\n샘플 데이터:\n`;
+        currentSheet.data.slice(0, 3).forEach((row, index) => {
+          context += `${index + 1}. [${row.join(', ')}]\n`;
+        });
+      }
+      
+      return context;
+    }
+    
+    // 하위 호환성을 위한 기존 sheetContext 처리
     const { sheetContext } = dto;
+    
+    if (!sheetContext) {
+      return '시트 정보가 없습니다.';
+    }
     
     let context = `시트 이름: ${sheetContext.sheetName}\n\n`;
     context += `헤더 정보:\n`;
     
-    sheetContext.headers.forEach(header => {
-      context += `- ${header.column}열: ${header.name}`;
-      context += `\n`;
+    sheetContext.headers?.forEach(header => {
+      context += `- ${header.column}열: ${header.name}\n`;
     });
     
-    context += `\n데이터 범위: ${sheetContext.dataRange.startRow}행부터 ${sheetContext.dataRange.endRow}행까지\n`;
+    context += `\n데이터 범위: ${sheetContext.dataRange?.startRow}행부터 ${sheetContext.dataRange?.endRow}행까지\n`;
     
     if (sheetContext.sampleData && sheetContext.sampleData.length > 0) {
       context += `\n샘플 데이터:\n`;
@@ -152,14 +439,22 @@ ${context}
 
       const parsed = JSON.parse(jsonMatch[0]);
       
+      // explanation 필드를 안전하게 처리
+      let explanation;
+      if (typeof parsed.explanation === 'string') {
+        explanation = { korean: parsed.explanation };
+      } else if (parsed.explanation && typeof parsed.explanation === 'object') {
+        explanation = parsed.explanation;
+      } else {
+        explanation = { korean: '함수를 생성했습니다.' };
+      }
+      
       return {
         success: true,
-        formula: parsed.formula,
-        explanation: {
-          korean: parsed.explanation,
-        },
+        formula: parsed.formula || '',
+        explanation,
         cellAddress: parsed.cellAddress || this.suggestCellAddress(),
-        functionType: this.extractFunctionType(parsed.formula),
+        functionType: this.extractFunctionType(parsed.formula || ''),
       };
       
     } catch (error) {
