@@ -167,7 +167,87 @@ export class FirebaseService {
         ...doc.data(),
       })) as FirebaseMessage[];
     } catch (error) {
-      this.logger.error('채팅 메시지 조회 오료:', error);
+      this.logger.error('채팅 메시지 조회 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 채팅 메시지를 시간순으로 조회 (가장 오래된 것부터) ===
+  async getChatMessagesAsc(chatId: string, limit = 50): Promise<FirebaseMessage[]> {
+    try {
+      const messagesSnapshot = await this.db
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .orderBy('timestamp', 'asc')
+        .limit(limit)
+        .get();
+
+      return messagesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as FirebaseMessage[];
+    } catch (error) {
+      this.logger.error('채팅 메시지 순차 조회 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 특정 타입/모드의 메시지만 조회 ===
+  async getChatMessagesByType(
+    chatId: string, 
+    messageType?: string, 
+    messageMode?: string, 
+    limit = 50
+  ): Promise<FirebaseMessage[]> {
+    try {
+      let query: any = this.db
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages');
+
+      if (messageType) {
+        query = query.where('type', '==', messageType);
+      }
+
+      if (messageMode) {
+        query = query.where('mode', '==', messageMode);
+      }
+
+      const messagesSnapshot = await query
+        .orderBy('timestamp', 'desc')
+        .limit(limit)
+        .get();
+
+      return messagesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as FirebaseMessage[];
+    } catch (error) {
+      this.logger.error('타입별 채팅 메시지 조회 오류:', error);
+      throw error;
+    }
+  }
+
+  // === Artifact 메시지만 조회 ===
+  async getArtifactMessages(chatId: string, limit = 50): Promise<FirebaseMessage[]> {
+    try {
+      const messagesSnapshot = await this.db
+        .collection('chats')
+        .doc(chatId)
+        .collection('messages')
+        .where('type', '==', 'artifact')
+        .where('mode', '==', 'artifact')
+        .orderBy('timestamp', 'desc')
+        .limit(limit)
+        .get();
+
+      return messagesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as FirebaseMessage[];
+    } catch (error) {
+      this.logger.error('아티팩트 메시지 조회 오류:', error);
       throw error;
     }
   }

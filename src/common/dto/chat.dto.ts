@@ -73,6 +73,13 @@ export class ArtifactDataDto {
 
   @IsString()
   artifactId: string;
+
+  @IsString()
+  code: string;
+
+  @IsString()
+  @IsOptional()
+  explanation?: string;
 }
 
 // 데이터 변경 정보 DTO

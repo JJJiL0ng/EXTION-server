@@ -164,7 +164,7 @@ export class DataGenerationService {
     }
   }
 
-  // ✅ getDataContext 메서드 수정 - CSV 데이터 포함
+  // ✅ getDataContext 메서드 수정 - fullData 우선 사용
   private getDataContext(dto: GenerateDataDto): any {
     // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
@@ -183,10 +183,11 @@ export class DataGenerationService {
             column: String.fromCharCode(65 + index),
             name
           })) || [],
-          // ✅ 전체 데이터 우선 사용, 없으면 CSV 파싱
-          data: activeSheet.metadata?.fullData || this.parseCsvToArray(activeSheet.csv),
-          // ✅ 원본 CSV 데이터 추가
-          csvData: activeSheet.csv,
+          // ✅ fullData 우선 사용, 없으면 CSV 파싱, 둘 다 없으면 빈 배열
+          data: activeSheet.metadata?.fullData || 
+                (activeSheet.csv ? this.parseCsvToArray(activeSheet.csv) : []),
+          // ✅ 원본 CSV 데이터 (있는 경우에만)
+          csvData: activeSheet.csv || '',
           // ✅ 추가 메타데이터
           rowCount: activeSheet.metadata?.rowCount || 0,
           columnCount: activeSheet.metadata?.columnCount || 0,
@@ -419,7 +420,7 @@ ${csvData}
         const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
         
         if (activeSheet) {
-          // ✅ 전체 데이터가 있으면 전체 데이터에서 샘플 추출
+          // ✅ fullData 우선 사용, 없으면 CSV 파싱
           if (activeSheet.metadata?.fullData) {
             sampleData = activeSheet.metadata.fullData.slice(0, 3);
           } else if (activeSheet.csv) {

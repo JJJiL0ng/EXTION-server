@@ -5,6 +5,7 @@ import { Type } from 'class-transformer';
 // 프론트엔드의 getDataForGPTAnalysis 반환 구조에 맞춘 DTO
 export class SheetMetadataDto {
   @IsArray()
+  @IsString({ each: true })
   headers: string[];
 
   @IsNumber()
@@ -16,8 +17,9 @@ export class SheetMetadataDto {
   @IsArray()
   fullData: string[][];
 
+  @IsOptional()
   @IsArray()
-  sampleData: string[][];
+  sampleData?: string[][];
 
   @IsNumber()
   sheetIndex: number;
@@ -26,12 +28,15 @@ export class SheetMetadataDto {
   originalMetadata?: any;
 }
 
-export class SheetDto {
+// ✅ 시트 데이터 아이템 - csv 필드를 선택사항으로 수정
+export class SheetDataItemDto {
   @IsString()
   name: string;
 
+  // ✅ csv 필드를 선택사항으로 변경
+  @IsOptional()
   @IsString()
-  csv: string;
+  csv?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -39,18 +44,15 @@ export class SheetDto {
   metadata?: SheetMetadataDto;
 }
 
+// 다중 시트 데이터 구조
 export class SheetsDataDto {
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => SheetDto)
-  sheets: SheetDto[];
+  @Type(() => SheetDataItemDto)
+  sheets: SheetDataItemDto[];
 
   @IsString()
   activeSheet: string;
-
-  @IsOptional()
-  @IsNumber()
-  currentSheetIndex?: number;
 
   @IsOptional()
   @IsNumber()
@@ -59,6 +61,10 @@ export class SheetsDataDto {
   @IsOptional()
   @IsString()
   fileName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  currentSheetIndex?: number;
 }
 
 // ExtendedSheetContext는 기존과 동일하게 유지

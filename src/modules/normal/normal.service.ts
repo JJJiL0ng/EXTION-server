@@ -67,14 +67,17 @@ export class NormalChatService {
       // src/modules/normalchat/normalchat.service.ts의 주요 수정 부분
 
       // === 2. 프론트엔드에서 전송된 스프레드시트 데이터 사용 === 부분을 수정
-      if (dto.extendedSheetContext && dto.sheetsData) {
+      // currentData 또는 sheetsData 필드를 확인
+      const sheetsData = dto.currentData || dto.sheetsData;
+      
+      if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
         this.logger.log('프론트엔드에서 전송된 스프레드시트 데이터 사용');
-        this.logger.log(`활성 시트: ${dto.sheetsData.activeSheet}`);
-        this.logger.log(`전체 시트 수: ${dto.sheetsData.sheets?.length || 0}`);
+        this.logger.log(`활성 시트: ${sheetsData.activeSheet}`);
+        this.logger.log(`전체 시트 수: ${sheetsData.sheets?.length || 0}`);
 
         // 현재 활성 시트의 데이터 가져오기
-        const currentSheetIndex = dto.sheetsData.currentSheetIndex || 0;
-        const currentSheet = dto.sheetsData.sheets?.[0]; // 프론트엔드에서 현재 시트만 보내므로 첫 번째 시트
+        const currentSheetIndex = sheetsData.currentSheetIndex || 0;
+        const currentSheet = sheetsData.sheets?.[0]; // 프론트엔드에서 현재 시트만 보내므로 첫 번째 시트
 
         if (currentSheet && currentSheet.metadata) {
           this.logger.log(`현재 시트명: ${currentSheet.name}`);
@@ -83,14 +86,14 @@ export class NormalChatService {
 
           // spreadsheetMetadata 구성
           spreadsheetMetadata = {
-            fileName: dto.sheetsData.fileName || dto.extendedSheetContext.sheetName,
+            fileName: sheetsData.fileName || currentSheet.name,
             sheets: [{
               sheetName: currentSheet.name,
               sheetIndex: currentSheet.metadata.sheetIndex || 0,
-              headers: currentSheet.metadata.headers || dto.extendedSheetContext.headers?.map(h => h.name) || []
+              headers: currentSheet.metadata.headers || []
             }],
             activeSheetIndex: 0, // 현재 시트만 전송되므로 항상 0
-            totalSheets: dto.sheetsData.totalSheets || 1
+            totalSheets: sheetsData.totalSheets || 1
           };
 
           // activeSheetData 구성
@@ -108,6 +111,8 @@ export class NormalChatService {
         }
       } else {
         this.logger.log('프론트엔드에서 스프레드시트 데이터를 보내지 않았습니다.');
+        this.logger.log(`dto.currentData: ${JSON.stringify(dto.currentData, null, 2)}`);
+        this.logger.log(`dto.sheetsData: ${JSON.stringify(dto.sheetsData, null, 2)}`);
       }
 
       // === 3. 사용자 메시지 저장 ===
@@ -245,7 +250,7 @@ export class NormalChatService {
 
     // OpenAI API 호출
     const completion = await this.openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }

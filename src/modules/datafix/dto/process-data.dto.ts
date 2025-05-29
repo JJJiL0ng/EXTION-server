@@ -86,13 +86,15 @@ export class SheetDataItemMetadata {
   originalMetadata?: any;
 }
 
-// 시트 데이터 아이템 수정
+// 시트 데이터 아이템 수정 - ✅ csv 필드를 선택사항으로 변경
 export class SheetDataItem {
   @IsString()
   name: string;
   
+  // ✅ csv 필드를 선택사항으로 변경 (fullData가 있으면 csv는 불필요)
+  @IsOptional()
   @IsString()
-  csv: string;
+  csv?: string;
   
   @IsOptional()
   @ValidateNested()

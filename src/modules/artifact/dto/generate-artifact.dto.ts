@@ -88,6 +88,7 @@ export class SheetDataItemMetadata {
 
   // ✅ 새로 추가: 원본 메타데이터
   @IsOptional()
+  @IsArray()
   originalMetadata?: any;
 }
 
@@ -138,13 +139,15 @@ export class ExtendedSheetContext {
   sheetList: string[];
 }
 
-// 시트 데이터 아이템 수정
+// 시트 데이터 아이템 수정 - ✅ csv 필드를 선택사항으로 변경
 export class SheetDataItem {
   @IsString()
   name: string;
 
+  // ✅ csv 필드를 선택사항으로 변경 (fullData가 있으면 csv는 불필요)
+  @IsOptional()
   @IsString()
-  csv: string;
+  csv?: string;
 
   @IsOptional()
   @ValidateNested()
@@ -170,6 +173,10 @@ export class SheetsData {
   @IsOptional()
   @IsString()
   fileName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  currentSheetIndex?: number;
 }
 
 // 기존 SheetContext는 하위 호환성을 위해 유지
@@ -197,6 +204,19 @@ export class GenerateArtifactDto {
   @MaxLength(1000)
   userInput: string;
 
+  // ✅ Firebase 저장을 위한 필드 추가
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
+  @IsString()
+  @IsOptional()
+  chatId?: string;
+
+  @IsString()
+  @IsOptional()
+  chatTitle?: string;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => SheetContext)
@@ -211,6 +231,12 @@ export class GenerateArtifactDto {
   @ValidateNested()
   @Type(() => SheetsData)
   sheetsData?: SheetsData;
+
+  // ✅ 프론트엔드에서 currentData로 보내는 데이터를 받기 위한 필드 추가
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SheetsData)
+  currentData?: SheetsData;
 
   @IsString()
   @IsOptional()
@@ -244,4 +270,20 @@ export class ArtifactResponseDto {
 
   @IsOptional()
   timestamp?: Date;
+
+  // ✅ Firebase 저장 결과를 위한 필드 추가
+  @IsOptional()
+  @IsString()
+  chatId?: string;
+
+  @IsOptional()
+  @IsString()
+  userMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  aiMessageId?: string;
+
+  @IsOptional()
+  spreadsheetMetadata?: any;
 }

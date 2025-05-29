@@ -168,7 +168,7 @@ export class DataFixService {
     }
   }
 
-  // ✅ getDataContext 메서드 수정 - CSV 데이터 포함
+  // ✅ getDataContext 메서드 수정 - fullData 우선 사용
   private getDataContext(dto: ProcessDataDto): any {
     // 우선순위: extendedSheetContext > sheetsData > currentData
     if (dto.extendedSheetContext) {
@@ -187,10 +187,11 @@ export class DataFixService {
             column: String.fromCharCode(65 + index),
             name
           })) || [],
-          // ✅ 전체 데이터 우선 사용, 없으면 CSV 파싱
-          data: activeSheet.metadata?.fullData || this.parseCsvToArray(activeSheet.csv),
-          // ✅ 원본 CSV 데이터 추가
-          csvData: activeSheet.csv,
+          // ✅ fullData 우선 사용, 없으면 CSV 파싱, 둘 다 없으면 빈 배열
+          data: activeSheet.metadata?.fullData || 
+                (activeSheet.csv ? this.parseCsvToArray(activeSheet.csv) : []),
+          // ✅ 원본 CSV 데이터 (있는 경우에만)
+          csvData: activeSheet.csv || '',
           // ✅ 추가 메타데이터
           rowCount: activeSheet.metadata?.rowCount || 0,
           columnCount: activeSheet.metadata?.columnCount || 0,
@@ -353,17 +354,29 @@ ${csvData}
 반드시 표준 JSON 형식으로 응답하고, 마크다운이나 추가 설명은 포함하지 마세요.`;
   }
 
-  // ✅ CSV 데이터 추출 메서드 추가
+  // ✅ CSV 데이터 추출 메서드 수정 - fullData 우선 처리
   private extractCsvData(dto: ProcessDataDto): string {
     const sheetsData = dto.sheetsData || dto.currentData;
     
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
-      if (activeSheet && activeSheet.csv) {
+      if (activeSheet) {
+        let csvData = '';
+        
+        // ✅ fullData 우선 사용, CSV로 변환
+        if (activeSheet.metadata?.fullData) {
+          const headers = activeSheet.metadata.headers || [];
+          csvData = headers.join(',') + '\n';
+          csvData += activeSheet.metadata.fullData.map(row => row.join(',')).join('\n');
+        } else if (activeSheet.csv) {
+          csvData = activeSheet.csv;
+        } else {
+          return '';
+        }
+        
         // ✅ CSV 데이터 크기 제한 (너무 큰 경우 잘라내기)
         const maxCsvLength = 50000; // 최대 50,000 문자
-        let csvData = activeSheet.csv;
         
         if (csvData.length > maxCsvLength) {
           // 헤더는 유지하고 데이터 행만 제한
