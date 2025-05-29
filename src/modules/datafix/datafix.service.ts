@@ -10,8 +10,7 @@ import {
   DataFixResponseDto, 
   EditedDataDto, 
   ChangesDto,
-  ExtendedSheetContext, 
-  SheetsData 
+  SpreadsheetData 
 } from './dto/process-data.dto';
 
 @Injectable()
@@ -34,6 +33,7 @@ export class DataFixService {
       this.logger.log(`데이터 수정 요청: ${dto.userInput}`);
       this.logger.log(`사용자 ID: ${dto.userId}`);
       this.logger.log(`채팅 ID: ${dto.chatId || '새 채팅'}`);
+      this.logger.log(`스프레드시트 ID: ${dto.spreadsheetData?.spreadsheetId || '없음'}`);
       
       // === 1. 채팅 세션 처리 (Normal Chat과 동일) ===
       let chatId = dto.chatId;
@@ -69,66 +69,55 @@ export class DataFixService {
       // 프론트엔드에서 받은 데이터 로깅
       this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
       this.logger.log(`사용자 입력: ${dto.userInput}`);
+      this.logger.log(`사용자 ID: ${dto.userId}`);
+      this.logger.log(`채팅 ID: ${dto.chatId}`);
+      this.logger.log(`스프레드시트 ID: ${dto.spreadsheetData?.spreadsheetId || '없음'}`);
+      this.logger.log(`타겟 시트 인덱스: ${dto.targetSheetIndex !== undefined ? dto.targetSheetIndex : '없음'}`);
       
-      if (dto.extendedSheetContext) {
-        this.logger.log('확장 시트 컨텍스트:');
-        this.logger.log(`- 시트명: ${dto.extendedSheetContext.sheetName}`);
-        this.logger.log(`- 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
-        this.logger.log(`- 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
-        this.logger.log(`- 헤더 수: ${dto.extendedSheetContext.headers?.length || 0}`);
-        if (dto.extendedSheetContext.sampleData) {
-          this.logger.log(`- 샘플 데이터 행 수: ${dto.extendedSheetContext.sampleData.length}`);
-        }
-      }
-      
-      // ✅ sheetsData 우선 처리
-      const sheetsData = dto.sheetsData || dto.currentData;
+      const spreadsheetData = dto.spreadsheetData;
       let spreadsheetMetadata: any = null;
       let activeSheetData: any = null;
 
-      if (sheetsData) {
-        this.logger.log('시트 데이터:');
-        this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
-        this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
-        this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
-        this.logger.log(`- 스프레드시트 ID: ${sheetsData.spreadsheetId || '없음'}`);
+      if (spreadsheetData) {
+        this.logger.log('스프레드시트 데이터:');
+        this.logger.log(`- 전체 시트 수: ${spreadsheetData.sheets?.length || 0}`);
+        this.logger.log(`- 활성 시트: ${spreadsheetData.activeSheet || '없음'}`);
+        this.logger.log(`- 파일명: ${spreadsheetData.fileName || '없음'}`);
+        this.logger.log(`- 스프레드시트 ID: ${dto.spreadsheetData?.spreadsheetId || '없음'}`);
         
-        if (sheetsData.sheets) {
-          sheetsData.sheets.forEach((sheet, index) => {
+        if (spreadsheetData.sheets) {
+          spreadsheetData.sheets.forEach((sheet, index) => {
             this.logger.log(`- 시트 ${index}: ${sheet.name}`);
-            this.logger.log(`  * 행 수: ${sheet.metadata?.rowCount || 0}`);
-            this.logger.log(`  * 열 수: ${sheet.metadata?.columnCount || 0}`);
-            this.logger.log(`  * 전체 데이터 존재: ${!!sheet.metadata?.fullData}`);
-            this.logger.log(`  * 샘플 데이터 행 수: ${sheet.metadata?.sampleData?.length || 0}`);
-            this.logger.log(`  * CSV 데이터 크기: ${sheet.csv?.length || 0} 문자`);
+            this.logger.log(`  * 행 수: ${sheet.data?.length || 0}`);
+            this.logger.log(`  * 열 수: ${sheet.headers?.length || 0}`);
           });
         }
 
-        // === 2. 스프레드시트 메타데이터 구성 (Normal Chat과 동일) ===
-        if (sheetsData.sheets && sheetsData.sheets.length > 0) {
-          const currentSheet = sheetsData.sheets[0]; // 현재 시트만 전송되므로 첫 번째 시트
+        // === 2. 스프레드시트 메타데이터 구성 ===
+        if (spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
+          const currentSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
 
-          if (currentSheet && currentSheet.metadata) {
+          if (currentSheet) {
             // spreadsheetMetadata 구성
             spreadsheetMetadata = {
-              fileName: sheetsData.fileName || currentSheet.name,
+              fileName: spreadsheetData.fileName || currentSheet.name,
               sheets: [{
                 sheetName: currentSheet.name,
-                sheetIndex: currentSheet.metadata.sheetIndex || 0,
-                headers: currentSheet.metadata.headers || []
+                sheetIndex: currentSheet.sheetIndex || 0,
+                headers: currentSheet.headers || []
               }],
-              activeSheetIndex: 0,
-              totalSheets: sheetsData.totalSheets || 1
+              activeSheetIndex: currentSheet.sheetIndex || 0,
+              totalSheets: spreadsheetData.sheets.length
             };
 
             // activeSheetData 구성
             activeSheetData = {
               data: {
-                rows: currentSheet.metadata.fullData || []
+                rows: currentSheet.data || []
               },
-              rowCount: currentSheet.metadata.rowCount || 0,
-              columnCount: currentSheet.metadata.columnCount || 0,
-              headers: currentSheet.metadata.headers || []
+              rowCount: currentSheet.data?.length || 0,
+              columnCount: currentSheet.headers?.length || 0,
+              headers: currentSheet.headers || []
             };
           }
         }
@@ -156,24 +145,13 @@ export class DataFixService {
       this.logger.debug('=== 데이터 컨텍스트 디버그 정보 ===');
       this.logger.debug(`컨텍스트 유형: ${this.getContextType(dto)}`);
       
-      if (dto.extendedSheetContext) {
-        this.logger.debug(`확장 컨텍스트 - 시트명: ${dto.extendedSheetContext.sheetName}`);
-        this.logger.debug(`확장 컨텍스트 - 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
-        this.logger.debug(`확장 컨텍스트 - 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
-        this.logger.debug(`확장 컨텍스트 - 헤더: ${JSON.stringify(dto.extendedSheetContext.headers)}`);
-      }
-      
-      if (sheetsData) {
-        this.logger.debug(`시트 데이터 - 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
-        this.logger.debug(`시트 데이터 - 활성 시트: ${sheetsData.activeSheet}`);
-        sheetsData.sheets?.forEach((sheet, index) => {
-          this.logger.debug(`시트 ${index}: ${sheet.name} (${sheet.metadata?.rowCount || 0} 행)`);
-          // ✅ 전체 데이터 존재 여부 확인
-          if (sheet.metadata?.fullData) {
-            this.logger.debug(`  * 전체 데이터 행 수: ${sheet.metadata.fullData.length}`);
-          }
-          if (sheet.csv) {
-            this.logger.debug(`  * CSV 데이터 크기: ${sheet.csv.length} 문자`);
+      if (spreadsheetData) {
+        this.logger.debug(`시트 데이터 - 전체 시트 수: ${spreadsheetData.sheets?.length || 0}`);
+        this.logger.debug(`시트 데이터 - 활성 시트: ${spreadsheetData.activeSheet}`);
+        spreadsheetData.sheets?.forEach((sheet, index) => {
+          this.logger.debug(`시트 ${index}: ${sheet.name} (${sheet.data?.length || 0} 행)`);
+          if (sheet.data) {
+            this.logger.debug(`  * 전체 데이터 행 수: ${sheet.data.length}`);
           }
         });
       }
@@ -374,32 +352,20 @@ export class DataFixService {
 
   // ✅ getDataContext 메서드 수정 - fullData 우선 사용
   private getDataContext(dto: ProcessDataDto): any {
-    // 우선순위: extendedSheetContext > sheetsData > currentData
-    if (dto.extendedSheetContext) {
-      return dto.extendedSheetContext;
-    }
+    const spreadsheetData = dto.spreadsheetData;
     
-    const sheetsData = dto.sheetsData || dto.currentData;
-    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+    if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
       // 활성 시트 찾기
-      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+      const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet);
       
       if (activeSheet) {
         return {
           sheetName: activeSheet.name,
-          headers: activeSheet.metadata?.headers?.map((name, index) => ({
-            column: String.fromCharCode(65 + index),
-            name
-          })) || [],
-          // ✅ fullData 우선 사용, 없으면 CSV 파싱, 둘 다 없으면 빈 배열
-          data: activeSheet.metadata?.fullData || 
-                (activeSheet.csv ? this.parseCsvToArray(activeSheet.csv) : []),
-          // ✅ 원본 CSV 데이터 (있는 경우에만)
-          csvData: activeSheet.csv || '',
-          // ✅ 추가 메타데이터
-          rowCount: activeSheet.metadata?.rowCount || 0,
-          columnCount: activeSheet.metadata?.columnCount || 0,
-          sheetIndex: activeSheet.metadata?.sheetIndex || 0
+          headers: activeSheet.headers || [],
+          data: activeSheet.data || [],
+          rowCount: activeSheet.data?.length || 0,
+          columnCount: activeSheet.headers?.length || 0,
+          sheetIndex: activeSheet.sheetIndex || 0
         };
       }
     }
@@ -416,16 +382,14 @@ export class DataFixService {
 
   // ✅ getContextType 메서드 수정
   private getContextType(dto: ProcessDataDto): string {
-    if (dto.extendedSheetContext) return 'ExtendedSheetContext';
-    if (dto.sheetsData) return 'SheetsData';
-    if (dto.currentData) return 'CurrentData (Legacy)';
+    if (dto.spreadsheetData) return 'SpreadsheetData';
     return 'None';
   }
 
   private createSystemPrompt(dto: ProcessDataDto): string {
-    const sheetsData = dto.sheetsData || dto.currentData;
-    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData && sheetsData.sheets.length > 0));
-    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (sheetsData?.sheets?.length || 0) > 1;
+    const spreadsheetData = dto.spreadsheetData;
+    const hasExistingData = !!(spreadsheetData && spreadsheetData.sheets.length > 0);
+    const isMultiSheet = (spreadsheetData?.sheets?.length || 0) > 1;
     
     return `당신은 스프레드시트 데이터 수정, 정렬, 필터링, 변환 전문가입니다.
 
@@ -467,9 +431,9 @@ JSON 형식으로 응답해야 합니다:
 7. 변경 유형은 'sort', 'filter', 'modify', 'transform' 중 하나여야 합니다.
 8. 날짜 형식은 YYYY-MM-DD로 통일하세요.
 9. 정렬의 경우 입력받는 모든 값을 정렬해서 반환하세요
-10. ✅ 제공된 실제 CSV 데이터를 기준으로 작업하세요
-11. ✅ 실제 데이터의 값들을 정확히 확인하고 처리하세요
-12. ✅ 전체 데이터를 기준으로 작업하세요 (샘플 데이터가 아닌)
+10. 제공된 실제 데이터를 기준으로 작업하세요
+11. 실제 데이터의 값들을 정확히 확인하고 처리하세요
+12. 전체 데이터를 기준으로 작업하세요
 
 ## 변경 유형 설명
 1. sort: 데이터 정렬 (특정 열 기준 오름차순/내림차순)
@@ -482,14 +446,14 @@ ${hasExistingData ? `
 이미 존재하는 실제 데이터가 있습니다:
 ${isMultiSheet ? `
 - 다중 시트 환경
-- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
-- 활성 시트: ${dto.extendedSheetContext?.sheetName || sheetsData?.activeSheet || '없음'}
+- 총 시트 수: ${spreadsheetData?.sheets?.length || 0}
+- 활성 시트: ${spreadsheetData?.activeSheet || '없음'}
 ` : `
 - 단일 시트 환경
-- 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
+- 시트명: ${spreadsheetData?.sheets?.[0]?.name || '없음'}
 `}
-- ✅ 실제 CSV 데이터가 제공되어 정밀한 처리가 가능합니다
-- ✅ 모든 행을 대상으로 정확한 데이터 조작을 수행하세요
+- 실제 데이터가 제공되어 정밀한 처리가 가능합니다
+- 모든 행을 대상으로 정확한 데이터 조작을 수행하세요
 ` : `
 데이터가 없습니다. 사용자에게 먼저 데이터를 업로드하도록 안내해야 합니다.
 `}
@@ -499,82 +463,75 @@ ${isMultiSheet ? `
   // ✅ createUserPrompt 메서드 수정 - CSV 데이터 포함
   private createUserPrompt(userInput: string, dto: ProcessDataDto): string {
     const context = this.getDataContext(dto);
-    
-    // 전체 데이터 정보 추출
     const fullDataInfo = this.extractFullDataInfo(dto);
-    
-    // 헤더 정보 안전하게 추출
     const headers = this.extractHeaders(dto);
     
     // 데이터 존재 여부
-    const sheetsData = dto.sheetsData || dto.currentData;
-    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData?.sheets && sheetsData.sheets.length > 0));
+    const spreadsheetData = dto.spreadsheetData;
+    const hasExistingData = !!(spreadsheetData && spreadsheetData.sheets.length > 0);
     
     // ✅ CSV 데이터 추출 및 제한
     const csvData = this.extractCsvData(dto);
     
-    return `사용자 요청: "${userInput}"
-
-${hasExistingData ? `
-## 현재 데이터 정보:
-${context ? `
-- **시트명**: ${context.sheetName || '알 수 없음'}
-- **컬럼**: ${headers.length > 0 ? headers.join(', ') : '없음'}
-- **전체 데이터 행 수**: ${context.rowCount || (context.data ? context.data.length - 1 : 0)}
-- **전체 데이터 열 수**: ${context.columnCount || headers.length}
-
-${fullDataInfo ? `
-## 전체 데이터 정보:
-${fullDataInfo}
-` : ''}
-
-${csvData ? `
-## ✅ 실제 데이터 (CSV 형식):
-\`\`\`
-${csvData}
-\`\`\`
-
-**중요**: 위의 실제 데이터를 바탕으로 정확한 데이터 처리를 수행해주세요.
-- 각 행과 열의 실제 값들을 확인하여 작업하세요
-- 정렬, 필터링, 수정 시 실제 데이터 값을 기준으로 하세요
-- 중복 데이터나 특정 조건을 확인할 때 실제 값을 참조하세요
-` : ''}
-` : '현재 데이터 정보를 추출할 수 없습니다.'}
-` : '## 현재 데이터가 없습니다. 데이터를 먼저 생성하도록 사용자에게 안내해주세요.'}
-
-## 요청 분석
-사용자의 요청에 따라 **실제 제공된 전체 데이터**를 대상으로 수정, 정렬, 필터링 또는 변환하세요.
-다음 네 가지 작업 중 하나를 수행해야 합니다:
-
-1. 정렬(sort): 특정 열을 기준으로 데이터 정렬
-2. 필터링(filter): 조건에 맞는 데이터만 선택
-3. 수정(modify): 데이터 값을 변경하거나 열/행 추가/삭제
-4. 변환(transform): 데이터 구조나 형식 변환
-
-**중요**: 샘플 데이터가 아닌 실제 전체 데이터를 기준으로 작업하세요.
-
-수정된 시트 이름, 헤더, 데이터 배열, 변경 유형(type), 그리고 세부 내용(details)을 포함한 JSON을 반환하세요.
-
-반드시 표준 JSON 형식으로 응답하고, 마크다운이나 추가 설명은 포함하지 마세요.`;
+    let prompt = `사용자 요청: "${userInput}"\n\n`;
+    
+    if (hasExistingData) {
+      prompt += `## 현재 데이터 정보:\n`;
+      
+      if (context) {
+        prompt += `- **시트명**: ${context.sheetName || '알 수 없음'}\n`;
+        prompt += `- **컬럼**: ${headers.length > 0 ? headers.join(', ') : '없음'}\n`;
+        prompt += `- **전체 데이터 행 수**: ${context.rowCount || (context.data ? context.data.length - 1 : 0)}\n`;
+        prompt += `- **전체 데이터 열 수**: ${context.columnCount || headers.length}\n\n`;
+        
+        if (fullDataInfo) {
+          prompt += `## 전체 데이터 정보:\n${fullDataInfo}\n\n`;
+        }
+        
+        if (csvData) {
+          prompt += `## ✅ 실제 데이터 (CSV 형식):\n\`\`\`\n${csvData}\n\`\`\`\n\n`;
+          prompt += `**중요**: 위의 실제 데이터를 바탕으로 정확한 데이터 처리를 수행해주세요.\n`;
+          prompt += `- 각 행과 열의 실제 값들을 확인하여 작업하세요\n`;
+          prompt += `- 정렬, 필터링, 수정 시 실제 데이터 값을 기준으로 하세요\n`;
+          prompt += `- 중복 데이터나 특정 조건을 확인할 때 실제 값을 참조하세요\n\n`;
+        } else {
+          prompt += `현재 데이터 정보를 추출할 수 없습니다.\n\n`;
+        }
+      } else {
+        prompt += `현재 데이터 정보를 추출할 수 없습니다.\n\n`;
+      }
+    } else {
+      prompt += `## 현재 데이터가 없습니다. 데이터를 먼저 생성하도록 사용자에게 안내해주세요.\n\n`;
+    }
+    
+    prompt += `## 요청 분석\n`;
+    prompt += `사용자의 요청에 따라 **실제 제공된 전체 데이터**를 대상으로 수정, 정렬, 필터링 또는 변환하세요.\n`;
+    prompt += `다음 네 가지 작업 중 하나를 수행해야 합니다:\n\n`;
+    prompt += `1. 정렬(sort): 특정 열을 기준으로 데이터 정렬\n`;
+    prompt += `2. 필터링(filter): 조건에 맞는 데이터만 선택\n`;
+    prompt += `3. 수정(modify): 데이터 값을 변경하거나 열/행 추가/삭제\n`;
+    prompt += `4. 변환(transform): 데이터 구조나 형식 변환\n\n`;
+    prompt += `**중요**: 샘플 데이터가 아닌 실제 전체 데이터를 기준으로 작업하세요.\n\n`;
+    prompt += `수정된 시트 이름, 헤더, 데이터 배열, 변경 유형(type), 그리고 세부 내용(details)을 포함한 JSON을 반환하세요.\n\n`;
+    prompt += `반드시 표준 JSON 형식으로 응답하고, 마크다운이나 추가 설명은 포함하지 마세요.`;
+    
+    return prompt;
   }
 
   // ✅ CSV 데이터 추출 메서드 수정 - fullData 우선 처리
   private extractCsvData(dto: ProcessDataDto): string {
-    const sheetsData = dto.sheetsData || dto.currentData;
+    const spreadsheetData = dto.spreadsheetData;
     
-    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
-      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+    if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
+      const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
       
       if (activeSheet) {
         let csvData = '';
         
         // ✅ fullData 우선 사용, CSV로 변환
-        if (activeSheet.metadata?.fullData) {
-          const headers = activeSheet.metadata.headers || [];
-          csvData = headers.join(',') + '\n';
-          csvData += activeSheet.metadata.fullData.map(row => row.join(',')).join('\n');
-        } else if (activeSheet.csv) {
-          csvData = activeSheet.csv;
+        if (activeSheet.data && activeSheet.headers) {
+          csvData = activeSheet.headers.join(',') + '\n';
+          csvData += activeSheet.data.map(row => row.join(',')).join('\n');
         } else {
           return '';
         }
@@ -614,19 +571,18 @@ ${csvData}
 
   // ✅ 전체 데이터 정보 추출 메서드 수정
   private extractFullDataInfo(dto: ProcessDataDto): string {
-    const sheetsData = dto.sheetsData || dto.currentData;
+    const spreadsheetData = dto.spreadsheetData;
     
-    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
-      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+    if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
+      const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
       
       if (activeSheet) {
-        const hasFullData = activeSheet.metadata?.fullData;
-        const hasCsvData = !!activeSheet.csv;
-        const rowCount = activeSheet.metadata?.rowCount || 0;
+        const hasFullData = activeSheet.data && activeSheet.data.length > 0;
+        const rowCount = activeSheet.data ? activeSheet.data.length : 0;
         
         return `- **전체 데이터 행 수**: ${rowCount}
-- **전체 데이터 사용 가능**: ${hasFullData || hasCsvData ? '예' : '아니오'}
-- **CSV 데이터 제공**: ${hasCsvData ? '예' : '아니오'}
+- **전체 데이터 사용 가능**: ${hasFullData ? '예' : '아니오'}
+- **CSV 데이터 제공**: ${hasFullData ? '예' : '아니오'}
 - **데이터 처리 범위**: ${rowCount > 1000 ? '대용량 데이터 (1000행 이상)' : '일반 데이터'}`;
       }
     }
@@ -636,27 +592,13 @@ ${csvData}
 
   // ✅ extractHeaders 메서드 수정
   private extractHeaders(dto: ProcessDataDto): string[] {
-    if (dto.extendedSheetContext) {
-      return dto.extendedSheetContext.headers.map(h => h.name || h.column);
-    }
+    const spreadsheetData = dto.spreadsheetData;
     
-    const sheetsData = dto.sheetsData || dto.currentData;
-    if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
-      const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
+    if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
+      const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
       
-      if (activeSheet) {
-        // 메타데이터의 헤더 우선 사용
-        if (activeSheet.metadata?.headers) {
-          return activeSheet.metadata.headers;
-        }
-        
-        // CSV에서 헤더 추출
-        if (activeSheet.csv) {
-          const firstLine = activeSheet.csv.split('\n')[0];
-          if (firstLine) {
-            return firstLine.split(',').map(header => header.trim());
-          }
-        }
+      if (activeSheet && activeSheet.headers) {
+        return activeSheet.headers;
       }
     }
     
@@ -725,9 +667,9 @@ ${csvData}
         };
       
       // 시트 인덱스 결정
-      const sheetIndex = parsedData.sheetIndex !== undefined 
+      const sheetIndex = typeof parsedData.sheetIndex === 'number' 
         ? parsedData.sheetIndex 
-        : dto.extendedSheetContext?.sheetIndex;
+        : null;
       
       return {
         success: true,
@@ -777,13 +719,23 @@ ${csvData}
         return;
       }
 
-      this.logger.log(`Firebase 저장 정보:`);
-      this.logger.log(`- 사용자 ID: ${dto.userId}`);
-      this.logger.log(`- 스프레드시트 ID: ${spreadsheetId}`);
-      this.logger.log(`- 시트 인덱스: ${sheetIndex}`);
-      this.logger.log(`- 시트명: ${result.editedData.sheetName}`);
-      this.logger.log(`- 헤더 수: ${result.editedData.headers.length}`);
-      this.logger.log(`- 데이터 행 수: ${result.editedData.data.length}`);
+      // ✅ 프론트에서 보낸 정보와 실제 사용 정보 비교 로그
+      this.logger.log(`==================== Firebase 저장 정보 분석 ====================`);
+      this.logger.log(`📤 프론트에서 전송한 정보:`);
+      this.logger.log(`  - spreadsheetId: ${dto.spreadsheetData?.fileName || '없음'}`);
+      
+      this.logger.log(`📍 실제 사용될 정보:`);
+      this.logger.log(`  - 사용자 ID: ${dto.userId}`);
+      this.logger.log(`  - 스프레드시트 ID: ${spreadsheetId}`);
+      this.logger.log(`  - 시트 인덱스: ${sheetIndex}`);
+      this.logger.log(`  - 시트명: ${result.editedData.sheetName}`);
+      this.logger.log(`  - 헤더 수: ${result.editedData.headers.length}`);
+      this.logger.log(`  - 데이터 행 수: ${result.editedData.data.length}`);
+      
+      // ✅ 일치성 검증
+      if (dto.spreadsheetData?.fileName && dto.spreadsheetData.fileName !== spreadsheetId) {
+        this.logger.warn(`⚠️ 스프레드시트 ID 불일치: 프론트(${dto.spreadsheetData.fileName}) ≠ 사용(${spreadsheetId})`);
+      }
 
       // UpdateSheetDataDto 구성
       const updateDto: UpdateSheetDataDto = {
@@ -813,46 +765,24 @@ ${csvData}
 
   // 스프레드시트 ID 추출 헬퍼 메서드
   private extractSpreadsheetId(dto: ProcessDataDto): string | null {
-    // 우선순위: extendedSheetContext > sheetsData > currentData
-    if (dto.extendedSheetContext?.spreadsheetId) {
-      return dto.extendedSheetContext.spreadsheetId;
-    }
-    
-    const sheetsData = dto.sheetsData || dto.currentData;
-    if (sheetsData?.spreadsheetId) {
-      return sheetsData.spreadsheetId;
-    }
-    
-    return null;
+    return dto.spreadsheetData?.spreadsheetId || null;
   }
 
   // 시트 인덱스 추출 헬퍼 메서드
   private extractSheetIndex(dto: ProcessDataDto, result: DataFixResponseDto): number | null {
-    // 결과에서 시트 인덱스가 명시된 경우 우선 사용
-    if (result.sheetIndex !== undefined && result.sheetIndex !== null) {
+    if (result && typeof result.sheetIndex === 'number') {
       return result.sheetIndex;
     }
     
-    // extendedSheetContext에서 추출
-    if (dto.extendedSheetContext?.sheetIndex !== undefined) {
-      return dto.extendedSheetContext.sheetIndex;
-    }
-    
-    // sheetsData에서 활성 시트의 인덱스 찾기
-    const sheetsData = dto.sheetsData || dto.currentData;
-    if (sheetsData?.sheets && sheetsData.activeSheet) {
-      const activeSheetIndex = sheetsData.sheets.findIndex(
-        sheet => sheet.name === sheetsData.activeSheet
-      );
-      
-      if (activeSheetIndex >= 0) {
-        // 메타데이터에서 sheetIndex가 있으면 사용, 없으면 배열 인덱스 사용
-        const activeSheet = sheetsData.sheets[activeSheetIndex];
-        return activeSheet.metadata?.sheetIndex ?? activeSheetIndex;
+    // 스프레드시트 데이터에서 활성 시트의 인덱스 찾기
+    if (dto.spreadsheetData?.sheets) {
+      const activeSheetName = dto.spreadsheetData.activeSheet || result?.editedData?.sheetName;
+      if (activeSheetName) {
+        const sheetIndex = dto.spreadsheetData.sheets.findIndex(sheet => sheet.name === activeSheetName);
+        return sheetIndex >= 0 ? sheetIndex : 0;
       }
     }
     
-    // 기본값: 0 (첫 번째 시트)
-    return 0;
+    return 0; // 기본값
   }
 }
