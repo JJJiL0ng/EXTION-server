@@ -11,7 +11,7 @@ export class SheetService {
     private storage = getStorage();
     
     // 청크 크기 설정 (한 문서당 저장할 행 수)
-    private readonly CHUNK_SIZE = 100; // 100행씩 묶어서 저장
+    private readonly CHUNK_SIZE = 500; // 500행씩 묶어서 저장
     private readonly MAX_FIRESTORE_SIZE = 800 * 1024; // 800KB (1MB 한도의 80%)
 
     constructor(private firebaseService: FirebaseService) { }

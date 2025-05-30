@@ -553,8 +553,8 @@ export class FirebaseService {
           headers: sheet.headers || [],
           rowCount: sheet.data?.rows?.length || 0,
           hasData: Boolean(sheet.data?.rows && sheet.data.rows.length > 0),
-          chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / 100), // CHUNK_SIZE = 100
-          chunkSize: 100,
+          chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / 500), // CHUNK_SIZE = 500
+          chunkSize: 500,
           formulas: sheet.formulas || [],
           computedData: sheet.computedData || [],
           createdAt: new Date(),
@@ -591,7 +591,7 @@ export class FirebaseService {
     try {
       if (!rows || rows.length === 0) return;
 
-      const CHUNK_SIZE = 100;
+      const CHUNK_SIZE = 500;
       const batch = this.db.batch();
       const sheetDataRef = this.db
         .collection('spreadsheetData')
