@@ -2,6 +2,46 @@
 import { IsString, IsArray, IsOptional, IsNotEmpty, MaxLength, ValidateNested, IsNumber, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
+// === 프론트엔드 호환 구조 추가 ===
+
+// 프론트엔드 SimpleSheetData 구조와 호환
+export class SimpleSheetData {
+  @IsString()
+  name: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  headers: string[];
+
+  @IsArray()
+  data: string[][];
+
+  @IsOptional()
+  @IsNumber()
+  sheetIndex?: number;
+}
+
+// 프론트엔드 SpreadsheetData 구조와 호환
+export class SpreadsheetData {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SimpleSheetData)
+  sheets: SimpleSheetData[];
+  
+  @IsString()
+  activeSheet: string;
+  
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+  
+  @IsOptional()
+  @IsString()
+  spreadsheetId?: string;
+}
+
+// === 기존 구조 유지 (하위 호환성) ===
+
 // 헤더 정보 인터페이스
 export class HeaderInfo {
   @IsString()
@@ -172,7 +212,7 @@ export class SheetContext {
   sampleData?: Record<string, string>[];
 }
 
-// ✅ 데이터 생성 요청 DTO 수정
+// ✅ 데이터 생성 요청 DTO 수정 - 프론트엔드 호환성 추가
 export class GenerateDataDto {
   @IsString()
   @IsNotEmpty()
@@ -192,6 +232,13 @@ export class GenerateDataDto {
   @IsOptional()
   chatTitle?: string;
 
+  // === 프론트엔드 호환 필드 (새로 추가) ===
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SpreadsheetData)
+  spreadsheetData?: SpreadsheetData;
+
+  // === 기존 필드들 (하위 호환성 유지) ===
   @IsOptional()
   @ValidateNested()
   @Type(() => ExtendedSheetContext)
@@ -212,10 +259,6 @@ export class GenerateDataDto {
   @IsString()
   @IsOptional()
   language?: string = 'ko';
-
-  @IsString()
-  @IsOptional()
-  spreadsheetId?: string; // 스프레드시트와의 양방향 참조를 위한 필드 추가
 }
 
 // 데이터 생성 결과 DTO

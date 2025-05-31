@@ -33,6 +33,7 @@ export class FormulaService {
       this.logger.log(`사용자 ID: ${processFormulaDto.userId}`);
       this.logger.log(`채팅 ID: ${processFormulaDto.chatId || '새 채팅'}`);
       this.logger.log(`스프레드시트 ID: ${processFormulaDto.spreadsheetId || '없음'}`);
+      this.logger.log(`스프레드시트 데이터 내 ID: ${processFormulaDto.spreadsheetData?.spreadsheetId || '없음'}`);
 
       // === 1. 채팅 세션 처리 ===
       let chatId = processFormulaDto.chatId;
@@ -42,9 +43,13 @@ export class FormulaService {
         const chatTitle = processFormulaDto.chatTitle || this.generateChatTitle(processFormulaDto.userInput);
         chatId = await this.firebaseService.createChat(processFormulaDto.userId, { 
           title: chatTitle,
-          spreadsheetId: processFormulaDto.spreadsheetId // 스프레드시트 ID 포함
+          spreadsheetId: processFormulaDto.spreadsheetId || processFormulaDto.spreadsheetData?.spreadsheetId // 스프레드시트 ID 포함
         });
         this.logger.log(`새 채팅 생성: ${chatId}`);
+        
+        // 생성된 채팅에서 spreadsheetId 확인
+        const createdChat = await this.firebaseService.getChat(chatId);
+        this.logger.log(`✅ 새 채팅 spreadsheetId 저장 확인: ${createdChat?.spreadsheetId || '없음'}`);
       } else {
         // 프론트에서 chatId를 보낸 경우
         this.logger.log(`프론트에서 제공된 chatId: ${chatId}`);
@@ -60,8 +65,12 @@ export class FormulaService {
           // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
           await this.firebaseService.createChatWithId(processFormulaDto.userId, chatId, { 
             title: chatTitle,
-            spreadsheetId: processFormulaDto.spreadsheetId // 스프레드시트 ID 포함
+            spreadsheetId: processFormulaDto.spreadsheetId || processFormulaDto.spreadsheetData?.spreadsheetId // 스프레드시트 ID 포함
           });
+          
+          // 생성된 채팅에서 spreadsheetId 확인
+          const createdChatWithId = await this.firebaseService.getChat(chatId);
+          this.logger.log(`✅ 특정 ID 채팅 spreadsheetId 저장 확인: ${createdChatWithId?.spreadsheetId || '없음'}`);
         } else {
           // 기존 채팅 소유권 확인
           if (existingChat.userId !== processFormulaDto.userId) {
@@ -70,9 +79,14 @@ export class FormulaService {
           this.logger.log(`기존 채팅 사용: ${chatId}`);
           
           // 기존 채팅에 스프레드시트 ID가 없고 새로 전달된 경우 업데이트
-          if (!existingChat.spreadsheetId && processFormulaDto.spreadsheetId) {
-            await this.firebaseService.updateChatSpreadsheetId(chatId, processFormulaDto.spreadsheetId);
-            this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${processFormulaDto.spreadsheetId}`);
+          const newSpreadsheetId = processFormulaDto.spreadsheetId || processFormulaDto.spreadsheetData?.spreadsheetId;
+          if (!existingChat.spreadsheetId && newSpreadsheetId) {
+            await this.firebaseService.updateChatSpreadsheetId(chatId, newSpreadsheetId);
+            this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${newSpreadsheetId}`);
+            
+            // 업데이트된 채팅에서 spreadsheetId 확인
+            const updatedChat = await this.firebaseService.getChat(chatId);
+            this.logger.log(`✅ 기존 채팅 spreadsheetId 업데이트 확인: ${updatedChat?.spreadsheetId || '없음'}`);
           }
         }
       }
@@ -98,7 +112,7 @@ export class FormulaService {
           spreadsheetMetadata = {
             hasSpreadsheet: true,
             fileName: processFormulaDto.spreadsheetData?.fileName || currentSheet.name,
-            spreadsheetId: processFormulaDto.spreadsheetId, // 스프레드시트 ID 포함
+            spreadsheetId: processFormulaDto.spreadsheetData?.spreadsheetId, // 스프레드시트 데이터 내 ID 사용
             totalSheets: processFormulaDto.spreadsheetData?.sheets?.length || 0,
             activeSheetIndex: 0,
             sheetNames: [currentSheet.name],
@@ -118,11 +132,17 @@ export class FormulaService {
           this.logger.log(`변환 완료 - 시트명: ${currentSheet.name}`);
 
           // 채팅에 스프레드시트 ID가 연결되지 않은 경우 연결
-          if (processFormulaDto.spreadsheetId) {
+          if (processFormulaDto.spreadsheetData?.spreadsheetId) {
             const existingChat = await this.firebaseService.getChat(chatId);
             if (existingChat && !existingChat.spreadsheetId) {
-              await this.firebaseService.updateChatSpreadsheetId(chatId, processFormulaDto.spreadsheetId);
-              this.logger.log(`채팅에 스프레드시트 ID 연결: ${processFormulaDto.spreadsheetId}`);
+              await this.firebaseService.updateChatSpreadsheetId(chatId, processFormulaDto.spreadsheetData.spreadsheetId);
+              this.logger.log(`채팅에 스프레드시트 ID 연결: ${processFormulaDto.spreadsheetData.spreadsheetId}`);
+              
+              // 연결 후 실제 저장 확인
+              const finalChat = await this.firebaseService.getChat(chatId);
+              this.logger.log(`✅ 최종 채팅 spreadsheetId 연결 확인: ${finalChat?.spreadsheetId || '없음'}`);
+            } else if (existingChat?.spreadsheetId) {
+              this.logger.log(`✅ 채팅에 이미 spreadsheetId 존재: ${existingChat.spreadsheetId}`);
             }
           }
         }
@@ -282,8 +302,8 @@ export class FormulaService {
         }
 
         // === 스프레드시트 메타데이터 업데이트 (양방향 참조) ===
-        if (processFormulaDto.spreadsheetId && spreadsheetMetadata) {
-          this.updateSpreadsheetMetadata(chatId, processFormulaDto.spreadsheetId, spreadsheetMetadata, parsedResponse).catch(error => {
+        if (processFormulaDto.spreadsheetData?.spreadsheetId && spreadsheetMetadata) {
+          this.updateSpreadsheetMetadata(chatId, processFormulaDto.spreadsheetData.spreadsheetId, spreadsheetMetadata, parsedResponse).catch(error => {
             this.logger.error('스프레드시트 메타데이터 업데이트 중 오류 (비동기):', error);
           });
         }

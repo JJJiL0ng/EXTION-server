@@ -33,7 +33,6 @@ export class DataGenerationService {
       this.logger.log(`데이터 생성 요청: ${dto.userInput}`);
       this.logger.log(`사용자 ID: ${dto.userId}`);
       this.logger.log(`채팅 ID: ${dto.chatId || '새 채팅'}`);
-      this.logger.log(`스프레드시트 ID: ${dto.spreadsheetId || '없음'}`);
 
       // === 1. 채팅 세션 처리 ===
       let chatId = dto.chatId;
@@ -42,8 +41,7 @@ export class DataGenerationService {
         // chatId가 전혀 없는 경우 - 새 채팅 생성
         const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
         chatId = await this.firebaseService.createChat(dto.userId, { 
-          title: chatTitle,
-          spreadsheetId: dto.spreadsheetId // 스프레드시트 ID 포함
+          title: chatTitle
         });
         this.logger.log(`새 채팅 생성: ${chatId}`);
       } else {
@@ -60,8 +58,7 @@ export class DataGenerationService {
 
           // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
           await this.firebaseService.createChatWithId(dto.userId, chatId, { 
-            title: chatTitle,
-            spreadsheetId: dto.spreadsheetId // 스프레드시트 ID 포함
+            title: chatTitle
           });
         } else {
           // 기존 채팅 소유권 확인
@@ -69,21 +66,34 @@ export class DataGenerationService {
             throw new BadRequestException('채팅 접근 권한이 없습니다.');
           }
           this.logger.log(`기존 채팅 사용: ${chatId}`);
-          
-          // 기존 채팅에 스프레드시트 ID가 없고 새로 전달된 경우 업데이트
-          if (!existingChat.spreadsheetId && dto.spreadsheetId) {
-            await this.firebaseService.updateChatSpreadsheetId(chatId, dto.spreadsheetId);
-            this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${dto.spreadsheetId}`);
-          }
         }
       }
 
       // 프론트엔드에서 받은 데이터 로깅
       this.logger.log('==================== 프론트엔드에서 받은 데이터 시작 ====================');
       this.logger.log(`사용자 입력: ${dto.userInput}`);
+      this.logger.log(`사용자 ID: ${dto.userId}`);
+      this.logger.log(`채팅 ID: ${dto.chatId}`);
+
+      // === 프론트엔드 호환성 체크 ===
+      if (dto.spreadsheetData) {
+        this.logger.log('🆕 프론트엔드 새 구조 (spreadsheetData) 감지');
+        this.logger.log(`- 파일명: ${dto.spreadsheetData.fileName || '없음'}`);
+        this.logger.log(`- 활성 시트: ${dto.spreadsheetData.activeSheet}`);
+        this.logger.log(`- 전체 시트 수: ${dto.spreadsheetData.sheets?.length || 0}`);
+        this.logger.log(`- SpreadsheetId: ${dto.spreadsheetData.spreadsheetId || '없음'}`);
+        
+        if (dto.spreadsheetData.sheets) {
+          dto.spreadsheetData.sheets.forEach((sheet, index) => {
+            this.logger.log(`- 시트 ${index}: ${sheet.name}`);
+            this.logger.log(`  * 행 수: ${sheet.data?.length || 0}`);
+            this.logger.log(`  * 열 수: ${sheet.headers?.length || 0}`);
+          });
+        }
+      }
 
       if (dto.extendedSheetContext) {
-        this.logger.log('확장 시트 컨텍스트:');
+        this.logger.log('📋 기존 구조 (extendedSheetContext) 감지');
         this.logger.log(`- 시트명: ${dto.extendedSheetContext.sheetName}`);
         this.logger.log(`- 시트 인덱스: ${dto.extendedSheetContext.sheetIndex}`);
         this.logger.log(`- 전체 시트 수: ${dto.extendedSheetContext.totalSheets}`);
@@ -93,10 +103,10 @@ export class DataGenerationService {
         }
       }
 
-      // ✅ sheetsData 우선 처리
+      // ✅ 우선순위: spreadsheetData > extendedSheetContext > sheetsData > currentData
       const sheetsData = dto.sheetsData || dto.currentData;
       if (sheetsData) {
-        this.logger.log('시트 데이터:');
+        this.logger.log('📊 기존 구조 (sheetsData/currentData) 감지');
         this.logger.log(`- 전체 시트 수: ${sheetsData.sheets?.length || 0}`);
         this.logger.log(`- 활성 시트: ${sheetsData.activeSheet || '없음'}`);
         this.logger.log(`- 파일명: ${sheetsData.fileName || '없음'}`);
@@ -205,9 +215,13 @@ export class DataGenerationService {
           // 생성된 스프레드시트 ID를 채팅에 연결
           if (spreadsheetId) {
             const existingChat = await this.firebaseService.getChat(chatId);
-            if (existingChat && !existingChat.spreadsheetId) {
+            if (existingChat) {
               await this.firebaseService.updateChatSpreadsheetId(chatId, spreadsheetId);
               this.logger.log(`채팅에 생성된 스프레드시트 ID 연결: ${spreadsheetId}`);
+              
+              // 연결 후 실제 저장 확인
+              const updatedChat = await this.firebaseService.getChat(chatId);
+              this.logger.log(`✅ 새 스프레드시트 ID 연결 확인: ${updatedChat?.spreadsheetId || '없음'}`);
             }
             
             // 스프레드시트 메타데이터 업데이트 (양방향 참조)
@@ -299,6 +313,25 @@ export class DataGenerationService {
 
   // === 시트 컨텍스트 생성 ===
   private createSheetContext(dto: GenerateDataDto): any {
+    // 우선순위: spreadsheetData > extendedSheetContext > sheetsData > currentData
+    
+    // 1. 프론트엔드 새 구조 (spreadsheetData) 우선 처리
+    if (dto.spreadsheetData && dto.spreadsheetData.sheets && dto.spreadsheetData.sheets.length > 0) {
+      const activeSheet = dto.spreadsheetData.sheets.find(sheet => sheet.name === dto.spreadsheetData!.activeSheet) || dto.spreadsheetData.sheets[0];
+      
+      if (activeSheet) {
+        return {
+          sheetIndex: activeSheet.sheetIndex || 0,
+          sheetName: activeSheet.name,
+          affectedCells: [],
+          totalRows: activeSheet.data?.length || 0,
+          totalColumns: activeSheet.headers?.length || 0,
+          headers: activeSheet.headers || []
+        };
+      }
+    }
+
+    // 2. 기존 extendedSheetContext 처리
     if (dto.extendedSheetContext) {
       return {
         sheetIndex: dto.extendedSheetContext.sheetIndex,
@@ -310,6 +343,7 @@ export class DataGenerationService {
       };
     }
 
+    // 3. 기존 sheetsData/currentData 처리
     const sheetsData = dto.sheetsData || dto.currentData;
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
@@ -363,15 +397,48 @@ export class DataGenerationService {
     }
   }
 
-  // ✅ getDataContext 메서드 수정 - fullData 우선 사용
+  // ✅ getDataContext 메서드 수정 - 프론트엔드 호환성 추가
   private getDataContext(dto: GenerateDataDto): any {
-    // 우선순위: extendedSheetContext > sheetsData > currentData
-    if (dto.extendedSheetContext) {
-      return dto.extendedSheetContext;
+    // 우선순위: spreadsheetData > extendedSheetContext > sheetsData > currentData
+    
+    // 1. 프론트엔드 새 구조 (spreadsheetData) 우선 처리
+    if (dto.spreadsheetData && dto.spreadsheetData.sheets && dto.spreadsheetData.sheets.length > 0) {
+      this.logger.debug('🆕 spreadsheetData 구조 사용');
+      
+      // 활성 시트 찾기
+      const activeSheet = dto.spreadsheetData.sheets.find(sheet => sheet.name === dto.spreadsheetData!.activeSheet) || dto.spreadsheetData.sheets[0];
+      
+      if (activeSheet) {
+        return {
+          sheetName: activeSheet.name,
+          headers: activeSheet.headers?.map((name, index) => ({
+            column: String.fromCharCode(65 + index),
+            name
+          })) || [],
+          data: activeSheet.data || [],
+          rowCount: activeSheet.data?.length || 0,
+          columnCount: activeSheet.headers?.length || 0,
+          sheetIndex: activeSheet.sheetIndex || 0,
+          // 프론트엔드 구조 표시
+          sourceType: 'spreadsheetData'
+        };
+      }
     }
     
+    // 2. 기존 extendedSheetContext 처리
+    if (dto.extendedSheetContext) {
+      this.logger.debug('📋 extendedSheetContext 구조 사용');
+      return {
+        ...dto.extendedSheetContext,
+        sourceType: 'extendedSheetContext'
+      };
+    }
+    
+    // 3. 기존 sheetsData/currentData 처리
     const sheetsData = dto.sheetsData || dto.currentData;
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
+      this.logger.debug('📊 sheetsData/currentData 구조 사용');
+      
       // 활성 시트 찾기
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
@@ -390,11 +457,13 @@ export class DataGenerationService {
           // ✅ 추가 메타데이터
           rowCount: activeSheet.metadata?.rowCount || 0,
           columnCount: activeSheet.metadata?.columnCount || 0,
-          sheetIndex: activeSheet.metadata?.sheetIndex || 0
+          sheetIndex: activeSheet.metadata?.sheetIndex || 0,
+          sourceType: 'sheetsData'
         };
       }
     }
     
+    this.logger.debug('❌ 사용 가능한 데이터 구조 없음');
     return null;
   }
 
@@ -405,8 +474,9 @@ export class DataGenerationService {
     return csv.split('\n').map(line => line.split(','));
   }
 
-  // ✅ getContextType 메서드 수정
+  // ✅ getContextType 메서드 수정 - 프론트엔드 호환성 추가
   private getContextType(dto: GenerateDataDto): string {
+    if (dto.spreadsheetData) return 'SpreadsheetData (프론트엔드 새 구조)';
     if (dto.extendedSheetContext) return 'ExtendedSheetContext';
     if (dto.sheetsData) return 'SheetsData';
     if (dto.currentData) return 'CurrentData (Legacy)';
@@ -414,9 +484,18 @@ export class DataGenerationService {
   }
 
   private createSystemPrompt(dto: GenerateDataDto): string {
+    // 데이터 존재 여부 체크 - 우선순위 적용
+    const hasSpreadsheetData = !!(dto.spreadsheetData && dto.spreadsheetData.sheets.length > 0);
+    const hasExtendedContext = !!dto.extendedSheetContext;
     const sheetsData = dto.sheetsData || dto.currentData;
-    const hasExistingData = !!(dto.extendedSheetContext || (sheetsData && sheetsData.sheets.length > 0));
-    const isMultiSheet = (dto.extendedSheetContext?.totalSheets || 0) > 1 || (sheetsData?.sheets?.length || 0) > 1;
+    const hasSheetsData = !!(sheetsData && sheetsData.sheets.length > 0);
+    
+    const hasExistingData = hasSpreadsheetData || hasExtendedContext || hasSheetsData;
+    
+    // 다중 시트 여부 체크
+    const isMultiSheet = (dto.spreadsheetData?.sheets?.length || 0) > 1 || 
+                        (dto.extendedSheetContext?.totalSheets || 0) > 1 || 
+                        (sheetsData?.sheets?.length || 0) > 1;
     
     return `당신은 스프레드시트 데이터 생성 및 가공 전문가입니다.
 
@@ -473,14 +552,22 @@ JSON 형식으로 응답해야 합니다:
 ## 현재 상황 컨텍스트
 ${hasExistingData ? `
 기존에 업로드된 데이터가 있습니다:
-${isMultiSheet ? `
-- 다중 시트 환경
-- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || sheetsData?.sheets?.length || 0}
-- 활성 시트: ${dto.extendedSheetContext?.sheetName || sheetsData?.activeSheet || '없음'}
+${hasSpreadsheetData ? `
+- 🆕 프론트엔드 새 구조 (spreadsheetData) 감지
+- 파일명: ${dto.spreadsheetData?.fileName || '없음'}
+- 활성 시트: ${dto.spreadsheetData?.activeSheet || '없음'}
+- 총 시트 수: ${dto.spreadsheetData?.sheets?.length || 0}
+` : hasExtendedContext ? `
+- 📋 확장 컨텍스트 구조
+- 시트명: ${dto.extendedSheetContext?.sheetName || '없음'}
+- 총 시트 수: ${dto.extendedSheetContext?.totalSheets || 0}
 ` : `
-- 단일 시트 환경
-- 시트명: ${dto.extendedSheetContext?.sheetName || sheetsData?.sheets?.[0]?.name || '없음'}
+- 📊 기존 시트 데이터 구조
+- 활성 시트: ${sheetsData?.activeSheet || '없음'}
+- 총 시트 수: ${sheetsData?.sheets?.length || 0}
 `}
+${isMultiSheet ? '- 다중 시트 환경' : '- 단일 시트 환경'}
+
 기존 데이터의 패턴을 분석하여 요청에 맞게 수정하거나 새로운 데이터를 추가 생성하세요.
 ` : `
 현재 업로드된 시트가 없습니다. 사용자의 요청에 따라 새로운 데이터를 처음부터 생성해야 합니다.
@@ -558,46 +645,66 @@ ${hasExistingData ? `
 반드시 JSON 형식으로 응답하고, 생성된 데이터의 목적과 활용 방법을 설명에 포함해주세요.`;
   }
 
-  // ✅ CSV 데이터 추출 메서드 추가
+  // ✅ CSV 데이터 추출 메서드 추가 - 프론트엔드 호환성 추가
   private extractCsvData(dto: GenerateDataDto): string {
-    const sheetsData = dto.sheetsData || dto.currentData;
+    // 우선순위: spreadsheetData > sheetsData > currentData
     
+    // 1. 프론트엔드 새 구조 (spreadsheetData) 우선 처리
+    if (dto.spreadsheetData && dto.spreadsheetData.sheets && dto.spreadsheetData.sheets.length > 0) {
+      const activeSheet = dto.spreadsheetData.sheets.find(sheet => sheet.name === dto.spreadsheetData!.activeSheet) || dto.spreadsheetData.sheets[0];
+      
+      if (activeSheet && activeSheet.headers && activeSheet.data) {
+        // SimpleSheetData 구조에서 CSV 생성
+        let csvData = activeSheet.headers.join(',') + '\n';
+        csvData += activeSheet.data.map(row => row.join(',')).join('\n');
+        
+        // CSV 데이터 크기 제한
+        return this.limitCsvData(csvData, activeSheet.data.length);
+      }
+    }
+    
+    // 2. 기존 sheetsData/currentData 처리
+    const sheetsData = dto.sheetsData || dto.currentData;
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
       
       if (activeSheet && activeSheet.csv) {
-        // ✅ CSV 데이터 크기 제한 (너무 큰 경우 잘라내기)
-        const maxCsvLength = 50000; // 최대 50,000 문자
-        let csvData = activeSheet.csv;
-        
-        if (csvData.length > maxCsvLength) {
-          // 헤더는 유지하고 데이터 행만 제한
-          const lines = csvData.split('\n');
-          const header = lines[0];
-          const dataLines = lines.slice(1);
-          
-          // 헤더 + 제한된 데이터 행들
-          let limitedCsv = header + '\n';
-          let currentLength = limitedCsv.length;
-          
-          for (const line of dataLines) {
-            if (currentLength + line.length + 1 > maxCsvLength) {
-              limitedCsv += '\n... (데이터가 더 있습니다. 총 ' + lines.length + '행)';
-              break;
-            }
-            limitedCsv += line + '\n';
-            currentLength += line.length + 1;
-          }
-          
-          this.logger.log(`CSV 데이터 크기 제한: ${csvData.length} → ${limitedCsv.length} 문자`);
-          return limitedCsv;
-        }
-        
-        return csvData;
+        // 기존 CSV 데이터 사용
+        return this.limitCsvData(activeSheet.csv, activeSheet.csv.split('\n').length);
       }
     }
     
     return '';
+  }
+
+  // CSV 데이터 크기 제한 헬퍼 메서드
+  private limitCsvData(csvData: string, totalRows: number): string {
+    const maxCsvLength = 50000; // 최대 50,000 문자
+    
+    if (csvData.length > maxCsvLength) {
+      // 헤더는 유지하고 데이터 행만 제한
+      const lines = csvData.split('\n');
+      const header = lines[0];
+      const dataLines = lines.slice(1);
+      
+      // 헤더 + 제한된 데이터 행들
+      let limitedCsv = header + '\n';
+      let currentLength = limitedCsv.length;
+      
+      for (const line of dataLines) {
+        if (currentLength + line.length + 1 > maxCsvLength) {
+          limitedCsv += '\n... (데이터가 더 있습니다. 총 ' + totalRows + '행)';
+          break;
+        }
+        limitedCsv += line + '\n';
+        currentLength += line.length + 1;
+      }
+      
+      this.logger.log(`CSV 데이터 크기 제한: ${csvData.length} → ${limitedCsv.length} 문자`);
+      return limitedCsv;
+    }
+    
+    return csvData;
   }
 
   // ✅ 전체 데이터 정보 추출 메서드 수정
@@ -663,12 +770,25 @@ ${hasExistingData ? `
     }).join('\n');
   }
 
-  // ✅ extractHeaders 메서드 수정
+  // ✅ extractHeaders 메서드 수정 - 프론트엔드 호환성 추가
   private extractHeaders(dto: GenerateDataDto): string[] {
+    // 우선순위: spreadsheetData > extendedSheetContext > sheetsData > currentData
+    
+    // 1. 프론트엔드 새 구조 (spreadsheetData) 우선 처리
+    if (dto.spreadsheetData && dto.spreadsheetData.sheets && dto.spreadsheetData.sheets.length > 0) {
+      const activeSheet = dto.spreadsheetData.sheets.find(sheet => sheet.name === dto.spreadsheetData!.activeSheet) || dto.spreadsheetData.sheets[0];
+      
+      if (activeSheet && activeSheet.headers) {
+        return activeSheet.headers;
+      }
+    }
+    
+    // 2. 기존 extendedSheetContext 처리
     if (dto.extendedSheetContext) {
       return dto.extendedSheetContext.headers.map(h => h.name || h.column);
     }
     
+    // 3. 기존 sheetsData/currentData 처리
     const sheetsData = dto.sheetsData || dto.currentData;
     if (sheetsData && sheetsData.sheets && sheetsData.sheets.length > 0) {
       const activeSheet = sheetsData.sheets.find(sheet => sheet.name === sheetsData.activeSheet);
