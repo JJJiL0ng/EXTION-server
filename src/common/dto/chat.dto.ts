@@ -211,6 +211,10 @@ export class CreateChatDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string;
 }
 
 // 채팅 업데이트 DTO
@@ -223,6 +227,10 @@ export class UpdateChatDto {
   @IsOptional()
   @IsEnum(['active', 'archived', 'deleted'])
   status?: 'active' | 'archived' | 'deleted';
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string;
 }
 
 // 스프레드시트 메타데이터 DTO

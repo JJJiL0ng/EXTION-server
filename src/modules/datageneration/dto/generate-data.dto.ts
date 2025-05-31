@@ -212,6 +212,10 @@ export class GenerateDataDto {
   @IsString()
   @IsOptional()
   language?: string = 'ko';
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string; // 스프레드시트와의 양방향 참조를 위한 필드 추가
 }
 
 // 데이터 생성 결과 DTO

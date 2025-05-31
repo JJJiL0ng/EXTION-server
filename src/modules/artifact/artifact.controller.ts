@@ -1,5 +1,5 @@
 // src/modules/artifact/artifact.controller.ts - 에러 핸들링 강화
-import { Controller, Post, Body, HttpStatus, HttpCode, BadRequestException, Logger, UsePipes, ValidationPipe, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Post, Body, HttpStatus, HttpCode, BadRequestException, Logger, UsePipes, ValidationPipe, InternalServerErrorException, Get, Param, Query } from '@nestjs/common';
 import { ArtifactService } from './artifact.service';
 import { GenerateArtifactDto, ArtifactResponseDto } from './dto/generate-artifact.dto';
 
@@ -122,5 +122,42 @@ export class ArtifactController {
       this.logger.error('Unexpected Error in Artifact Controller');
       throw new InternalServerErrorException('서버 내부 오류가 발생했습니다. 관리자에게 문의해주세요.');
     }
+  }
+
+  // 스프레드시트 ID로 연결된 채팅들 조회
+  @Get('chats/by-spreadsheet/:spreadsheetId')
+  async getChatsBySpreadsheetId(
+    @Param('spreadsheetId') spreadsheetId: string,
+    @Query('userId') userId: string
+  ) {
+    this.logger.log(`스프레드시트 연결 채팅 조회: ${spreadsheetId}, 사용자: ${userId}`);
+    
+    if (!userId) {
+      throw new BadRequestException('사용자 ID가 필요합니다.');
+    }
+
+    const chats = await this.artifactService.getChatsBySpreadsheetId(spreadsheetId, userId);
+    
+    return {
+      success: true,
+      spreadsheetId,
+      chats,
+      totalCount: chats.length
+    };
+  }
+
+  // 채팅 ID로 연결된 스프레드시트 ID 조회
+  @Get('spreadsheet/by-chat/:chatId')
+  async getSpreadsheetIdByChat(@Param('chatId') chatId: string) {
+    this.logger.log(`채팅 연결 스프레드시트 ID 조회: ${chatId}`);
+    
+    const spreadsheetId = await this.artifactService.getSpreadsheetIdByChat(chatId);
+    
+    return {
+      success: true,
+      chatId,
+      spreadsheetId,
+      hasSpreadsheet: !!spreadsheetId
+    };
   }
 }

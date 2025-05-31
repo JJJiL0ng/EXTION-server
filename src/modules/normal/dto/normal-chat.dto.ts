@@ -67,6 +67,10 @@ export class NormalChatDto {
   @IsString()
   @IsOptional()
   messageId?: string;
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string;
 }
 
 // 일반 채팅 응답 DTO

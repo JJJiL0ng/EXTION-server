@@ -70,6 +70,10 @@ export class ProcessDataDto {
   @IsOptional()
   @IsNumber()
   targetSheetIndex?: number;
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string;
 }
 
 // 데이터 수정 결과 DTO

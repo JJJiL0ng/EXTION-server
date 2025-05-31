@@ -129,4 +129,8 @@ export class ProcessFormulaDto {
   @IsArray()
   @IsString({ each: true })
   preferredFunctions?: string[]; // 선호하는 함수 타입 (예: ["AVERAGE", "SUM"])
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string; // 스프레드시트와의 양방향 참조를 위한 필드 추가
 }

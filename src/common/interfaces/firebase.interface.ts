@@ -25,6 +25,7 @@ export interface FirebaseUser {
     createdAt: Date;
     updatedAt: Date;
     messageCount: number;
+    spreadsheetId?: string;
     lastMessage?: {
       content: string;
       timestamp: Date;

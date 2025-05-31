@@ -28,6 +28,7 @@ export class NormalChatService {
       this.logger.log(`일반 채팅 요청: ${dto.userInput}`);
       this.logger.log(`사용자 ID: ${dto.userId}`);
       this.logger.log(`채팅 ID: ${dto.chatId || '새 채팅'}`);
+      this.logger.log(`스프레드시트 ID: ${dto.spreadsheetId || '없음'}`);
 
       // === 1. 채팅 세션 처리 ===
       let chatId = dto.chatId;
@@ -35,7 +36,10 @@ export class NormalChatService {
       if (!chatId) {
         // chatId가 전혀 없는 경우 - 새 채팅 생성
         const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
-        chatId = await this.firebaseService.createChat(dto.userId, { title: chatTitle });
+        chatId = await this.firebaseService.createChat(dto.userId, { 
+          title: chatTitle,
+          spreadsheetId: dto.spreadsheetId // 스프레드시트 ID 포함
+        });
         this.logger.log(`새 채팅 생성: ${chatId}`);
       } else {
         // 프론트에서 chatId를 보낸 경우
@@ -50,13 +54,22 @@ export class NormalChatService {
           const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
 
           // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
-          await this.firebaseService.createChatWithId(dto.userId, chatId, { title: chatTitle });
+          await this.firebaseService.createChatWithId(dto.userId, chatId, { 
+            title: chatTitle,
+            spreadsheetId: dto.spreadsheetId // 스프레드시트 ID 포함
+          });
         } else {
           // 기존 채팅 소유권 확인
           if (existingChat.userId !== dto.userId) {
             throw new BadRequestException('채팅 접근 권한이 없습니다.');
           }
           this.logger.log(`기존 채팅 사용: ${chatId}`);
+          
+          // 기존 채팅에 스프레드시트 ID가 없고 새로 전달된 경우 업데이트
+          if (!existingChat.spreadsheetId && dto.spreadsheetId) {
+            await this.firebaseService.updateChatSpreadsheetId(chatId, dto.spreadsheetId);
+            this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${dto.spreadsheetId}`);
+          }
         }
       }
 
@@ -80,6 +93,7 @@ export class NormalChatService {
           // spreadsheetMetadata 구성
           spreadsheetMetadata = {
             fileName: dto.spreadsheetData.fileName || currentSheet.name,
+            spreadsheetId: dto.spreadsheetData.spreadsheetId, // 스프레드시트 ID 포함
             sheets: [{
               sheetName: currentSheet.name,
               sheetIndex: currentSheet.sheetIndex || 0,
@@ -101,6 +115,15 @@ export class NormalChatService {
 
           this.logger.log(`변환 완료 - 시트명: ${spreadsheetMetadata.sheets[0].sheetName}`);
           this.logger.log(`변환 완료 - 데이터 행 수: ${activeSheetData.data.rows.length}`);
+          
+          // 채팅에 스프레드시트 ID가 연결되지 않은 경우 연결
+          if (dto.spreadsheetData.spreadsheetId) {
+            const existingChat = await this.firebaseService.getChat(chatId);
+            if (existingChat && !existingChat.spreadsheetId) {
+              await this.firebaseService.updateChatSpreadsheetId(chatId, dto.spreadsheetData.spreadsheetId);
+              this.logger.log(`채팅에 스프레드시트 ID 연결: ${dto.spreadsheetData.spreadsheetId}`);
+            }
+          }
         }
       } else {
         this.logger.log('프론트엔드에서 스프레드시트 데이터를 보내지 않았습니다.');

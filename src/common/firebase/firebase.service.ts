@@ -69,6 +69,8 @@ export class FirebaseService {
   async createChat(userId: string, createChatDto: CreateChatDto): Promise<string> {
     try {
       const chatRef = this.db.collection('chats').doc();
+      
+      // undefined 값들을 필터링하여 Firestore 호환 데이터 생성
       const chatData: Omit<FirebaseChat, 'id'> = {
         userId,
         title: createChatDto.title,
@@ -83,6 +85,11 @@ export class FirebaseService {
           dataFixCount: 0,
         },
       };
+
+      // spreadsheetId가 유효한 경우에만 추가
+      if (createChatDto.spreadsheetId && createChatDto.spreadsheetId.trim() !== '') {
+        chatData.spreadsheetId = createChatDto.spreadsheetId;
+      }
 
       await chatRef.set(chatData);
       this.logger.log(`새 채팅 생성: ${chatRef.id}`);
@@ -97,6 +104,8 @@ export class FirebaseService {
   async createChatWithId(userId: string, chatId: string, createChatDto: CreateChatDto): Promise<string> {
     try {
       const chatRef = this.db.collection('chats').doc(chatId);
+      
+      // undefined 값들을 필터링하여 Firestore 호환 데이터 생성
       const chatData: Omit<FirebaseChat, 'id'> = {
         userId,
         title: createChatDto.title,
@@ -111,6 +120,11 @@ export class FirebaseService {
           dataFixCount: 0,
         },
       };
+
+      // spreadsheetId가 유효한 경우에만 추가
+      if (createChatDto.spreadsheetId && createChatDto.spreadsheetId.trim() !== '') {
+        chatData.spreadsheetId = createChatDto.spreadsheetId;
+      }
 
       await chatRef.set(chatData);
       this.logger.log(`특정 ID로 채팅 생성: ${chatId}`);
@@ -173,11 +187,39 @@ export class FirebaseService {
       const messageRef = this.db.collection('chats').doc(chatId).collection('messages').doc();
       this.logger.log(`메시지 레퍼런스 생성: ${messageRef.path}`);
       
-      const messageData: Omit<FirebaseMessage, 'id'> = {
+      // undefined 값들을 필터링하여 Firestore 호환 데이터 생성
+      const messageData: any = {
         chatId,
-        ...messageDto,
+        role: messageDto.role,
+        content: messageDto.content,
         timestamp: new Date(),
+        type: messageDto.type,
       };
+
+      // 선택적 필드들을 유효한 경우에만 추가
+      if (messageDto.mode) {
+        messageData.mode = messageDto.mode;
+      }
+
+      if (messageDto.sheetContext) {
+        messageData.sheetContext = this.filterUndefinedValues(messageDto.sheetContext);
+      }
+
+      if (messageDto.formulaData) {
+        messageData.formulaData = this.filterUndefinedValues(messageDto.formulaData);
+      }
+
+      if (messageDto.artifactData) {
+        messageData.artifactData = this.filterUndefinedValues(messageDto.artifactData);
+      }
+
+      if (messageDto.dataChangeInfo) {
+        messageData.dataChangeInfo = this.filterUndefinedValues(messageDto.dataChangeInfo);
+      }
+
+      if (messageDto.fileUploadInfo) {
+        messageData.fileUploadInfo = this.filterUndefinedValues(messageDto.fileUploadInfo);
+      }
 
       // 각 필드별 상세 로깅
       this.logger.log(`=== 저장할 메시지 데이터 상세 분석 ===`);
@@ -252,6 +294,29 @@ export class FirebaseService {
       
       throw error;
     }
+  }
+
+  // === undefined 값들을 필터링하는 헬퍼 메서드 ===
+  private filterUndefinedValues(obj: any): any {
+    if (obj === null || obj === undefined) {
+      return null;
+    }
+
+    if (Array.isArray(obj)) {
+      return obj.filter(item => item !== undefined).map(item => this.filterUndefinedValues(item));
+    }
+
+    if (typeof obj === 'object') {
+      const filtered: any = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined) {
+          filtered[key] = this.filterUndefinedValues(value);
+        }
+      }
+      return filtered;
+    }
+
+    return obj;
   }
 
   async getChatMessages(chatId: string, limit = 50): Promise<FirebaseMessage[]> {
@@ -354,7 +419,7 @@ export class FirebaseService {
     }
   }
 
-  private async updateChatLastMessage(chatId: string, message: Omit<FirebaseMessage, 'id'>) {
+  private async updateChatLastMessage(chatId: string, message: any) {
     try {
       await this.db.collection('chats').doc(chatId).update({
         lastMessage: {
@@ -425,20 +490,120 @@ export class FirebaseService {
     }
   }
 
-  // === 스프레드시트 메타데이터 업데이트 ===
-  async updateSpreadsheetMetadata(chatId: string, spreadsheetData: any): Promise<void> {
+  // === 채팅에 스프레드시트 ID 연결 ===
+  async updateChatSpreadsheetId(chatId: string, spreadsheetId: string): Promise<void> {
     try {
+      // spreadsheetId가 유효한지 확인
+      if (!spreadsheetId || spreadsheetId.trim() === '') {
+        this.logger.warn(`유효하지 않은 spreadsheetId로 업데이트 시도: ${spreadsheetId}`);
+        return;
+      }
+
       await this.db.collection('chats').doc(chatId).update({
-        spreadsheetData: {
-          hasSpreadsheet: true,
-          fileName: spreadsheetData.fileName,
-          totalSheets: spreadsheetData.totalSheets,
-          activeSheetIndex: spreadsheetData.activeSheetIndex,
-          sheetNames: spreadsheetData.sheetNames,
-          lastModifiedAt: new Date(),
-        },
+        spreadsheetId: spreadsheetId.trim(),
         updatedAt: new Date(),
       });
+      this.logger.log(`채팅 ${chatId}에 스프레드시트 ID ${spreadsheetId} 연결 완료`);
+    } catch (error) {
+      this.logger.error('채팅 스프레드시트 ID 업데이트 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 스프레드시트 ID로 연결된 채팅들 조회 ===
+  async getChatsBySpreadsheetId(spreadsheetId: string, userId: string): Promise<FirebaseChat[]> {
+    try {
+      const chatsSnapshot = await this.db
+        .collection('chats')
+        .where('spreadsheetId', '==', spreadsheetId)
+        .where('userId', '==', userId)
+        .where('status', '==', 'active')
+        .orderBy('updatedAt', 'desc')
+        .get();
+
+      const chats = chatsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as FirebaseChat[];
+
+      this.logger.log(`스프레드시트 ${spreadsheetId}에 연결된 채팅 ${chats.length}개 조회`);
+      return chats;
+    } catch (error) {
+      this.logger.error('스프레드시트 연결 채팅 조회 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 채팅 ID로 연결된 스프레드시트 ID 조회 ===
+  async getSpreadsheetIdByChat(chatId: string): Promise<string | null> {
+    try {
+      const chatDoc = await this.db.collection('chats').doc(chatId).get();
+      
+      if (!chatDoc.exists) {
+        return null;
+      }
+
+      const chatData = chatDoc.data() as FirebaseChat;
+      return chatData.spreadsheetId || null;
+    } catch (error) {
+      this.logger.error('채팅 연결 스프레드시트 ID 조회 오류:', error);
+      throw error;
+    }
+  }
+
+  // === 스프레드시트 메타데이터 업데이트 ===
+  async updateSpreadsheetMetadata(spreadsheetId: string, spreadsheetData: any): Promise<void> {
+    try {
+      // 스프레드시트 문서가 존재하는지 확인
+      const spreadsheetRef = this.db.collection('spreadsheets').doc(spreadsheetId);
+      const spreadsheetDoc = await spreadsheetRef.get();
+
+      if (!spreadsheetDoc.exists) {
+        this.logger.warn(`스프레드시트 문서가 존재하지 않음: ${spreadsheetId}`);
+        return;
+      }
+
+      // 메타데이터 업데이트
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+
+      if (spreadsheetData.fileName) {
+        updateData.fileName = spreadsheetData.fileName;
+      }
+
+      if (spreadsheetData.totalSheets) {
+        updateData.totalSheets = spreadsheetData.totalSheets;
+      }
+
+      if (spreadsheetData.activeSheetIndex !== undefined) {
+        updateData.activeSheetIndex = spreadsheetData.activeSheetIndex;
+      }
+
+      if (spreadsheetData.sheets && Array.isArray(spreadsheetData.sheets)) {
+        updateData.sheets = spreadsheetData.sheets.map(sheet => ({
+          sheetName: sheet.sheetName,
+          sheetIndex: sheet.sheetIndex,
+          headers: sheet.headers || [],
+          metadata: {
+            rowCount: 0, // 실제 데이터에서 계산 필요
+            columnCount: sheet.headers?.length || 0,
+            lastModified: new Date(),
+          }
+        }));
+      }
+
+      // 버전 정보 업데이트
+      updateData.version = FieldValue.increment(1);
+      updateData.versionHistory = FieldValue.arrayUnion({
+        version: Date.now(),
+        timestamp: new Date(),
+        changeDescription: 'DataFix 모듈에서 데이터 수정',
+        changedBy: 'datafix'
+      });
+
+      await spreadsheetRef.update(updateData);
+      this.logger.log(`스프레드시트 메타데이터 업데이트 완료: ${spreadsheetId}`);
     } catch (error) {
       this.logger.error('스프레드시트 메타데이터 업데이트 오류:', error);
       throw error;
@@ -802,7 +967,7 @@ export class FirebaseService {
         .collection('spreadsheets')
         .doc(spreadsheetId)
         .collection('sheets')
-        .doc('0'); // 첫 번째 시트
+        .doc('0');
 
       const sheetDetailMetadata = {
         sheetIndex: 0,

@@ -263,6 +263,10 @@ export class GenerateArtifactDto {
   @IsString()
   @IsOptional()
   messageId?: string;
+
+  @IsString()
+  @IsOptional()
+  spreadsheetId?: string;
 }
 
 export class ArtifactResponseDto {
