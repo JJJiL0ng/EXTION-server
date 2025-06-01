@@ -382,6 +382,7 @@ export class ArtifactService {
 7. **Tailwind CSS 클래스는 className 속성으로 전달**하세요.
 8. **모든 텍스트는 한국어**로 작성하세요.
 9. **반드시 데이터 검증 로직을 포함**하세요.
+10. **코드 외부의 설명은 마크다운 형식을 사용하지 말고 일반 텍스트로 작성하세요.**
 
 ## 사용 가능한 라이브러리:
 - React (모든 hooks 포함) - React.createElement 사용
