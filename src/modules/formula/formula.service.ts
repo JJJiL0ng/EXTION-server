@@ -329,6 +329,11 @@ export class FormulaService {
         this.logger.log(`✅ 타임스탬프: ${result.timestamp}`);
         this.logger.log('==================== 프론트엔드 응답 전송 ====================');
         
+        // 프론트엔드로 보내는 최종 데이터 상세 로그
+        this.logger.log('==================== 프론트엔드 전송 데이터 상세 ====================');
+        this.logger.log('📤 최종 응답 데이터:', JSON.stringify(result, null, 2));
+        this.logger.log('==================== 프론트엔드 전송 데이터 끝 ====================');
+        
         return result;
 
       } catch (error) {
@@ -358,7 +363,7 @@ export class FormulaService {
       };
       
       this.logger.log('==================== 프론트엔드 전송 오류 응답 시작 ====================');
-      this.logger.log(JSON.stringify(errorResult, null, 2));
+      this.logger.log('📤 오류 응답 데이터:', JSON.stringify(errorResult, null, 2));
       this.logger.log('==================== 프론트엔드 전송 오류 응답 끝 ====================');
       
       return errorResult;
