@@ -210,13 +210,13 @@ export class ArtifactService {
       // 코드 검증
       this.validateGeneratedCode(extractedCode);
 
-      // 설명 추출
-      const explanation = this.extractExplanationFromResponse(aiResponse);
+      // 데이터 분석 결과 추출
+      const dataAnalysis = this.extractExplanationFromResponse(aiResponse);
 
       // === 4. AI 응답 메시지 저장 (아티팩트 데이터 포함) ===
       const artifactId = uuidv4();
       const aiMessageDto: CreateMessageDto = {
-        content: explanation || `${artifactType} 분석이 생성되었습니다.`,
+        content: dataAnalysis || `${artifactType} 데이터 분석이 완료되었습니다.`,
         role: MessageRole.EXTION_AI,
         type: MessageType.ARTIFACT,
         mode: MessageMode.ARTIFACT,
@@ -226,7 +226,7 @@ export class ArtifactService {
           title: this.generateTitle(dto.userInput, artifactType),
           artifactId: artifactId,
           code: extractedCode,
-          explanation: explanation || `${artifactType} 분석이 생성되었습니다.`,
+          explanation: dataAnalysis || `${artifactType} 데이터 분석이 완료되었습니다.`,
         },
       };
 
@@ -249,7 +249,7 @@ export class ArtifactService {
         code: extractedCode,
         type: artifactType,
         explanation: {
-          korean: explanation || `${artifactType} 분석이 생성되었습니다.`
+          korean: dataAnalysis || `${artifactType} 데이터 분석이 완료되었습니다.`
         },
         title: this.generateTitle(dto.userInput, artifactType),
         timestamp: new Date().toISOString(),
@@ -264,7 +264,7 @@ export class ArtifactService {
       this.logger.log(`성공 여부: ${result.success}`);
       this.logger.log(`타입: ${result.type}`);
       this.logger.log(`제목: ${result.title}`);
-      this.logger.log(`설명: ${result.explanation?.korean || '설명 없음'}`);
+      this.logger.log(`데이터 분석: ${result.explanation?.korean || '분석 없음'}`);
       this.logger.log(`채팅 ID: ${result.chatId}`);
       this.logger.log(`사용자 메시지 ID: ${result.userMessageId}`);
       this.logger.log(`AI 메시지 ID: ${result.aiMessageId}`);
@@ -382,7 +382,8 @@ export class ArtifactService {
 7. **Tailwind CSS 클래스는 className 속성으로 전달**하세요.
 8. **모든 텍스트는 한국어**로 작성하세요.
 9. **반드시 데이터 검증 로직을 포함**하세요.
-10. **코드 외부의 설명은 마크다운 형식을 사용하지 말고 일반 텍스트로 작성하세요.**
+10. **코드 외부에 반드시 상세한 데이터 분석 결과를 포함**하세요.
+11. **데이터 분석 섹션에서는 구체적인 수치, 패턴, 인사이트를 제공**하세요.
 
 ## 사용 가능한 라이브러리:
 - React (모든 hooks 포함) - React.createElement 사용
@@ -499,6 +500,25 @@ ${artifactType === ArtifactType.CHART ? '- 차트 시각화에 집중하세요. 
 ${artifactType === ArtifactType.TABLE ? '- 테이블 형태의 데이터 표시에 집중하세요. 정렬, 검색 기능을 포함하세요.' : ''}
 ${artifactType === ArtifactType.ANALYSIS ? '- 데이터 통계 분석에 집중하세요. 평균, 합계, 최댓값 등을 계산하세요.' : ''}
 
+## 📊 데이터 분석 결과 제공 (필수):
+코드 생성 후 반드시 다음 형식으로 데이터 분석 결과를 제공하세요:
+
+**데이터 분석 결과:**
+
+1. 데이터 개요
+   - 총 데이터 개수: [구체적 수치]
+   - 주요 컬럼: [컬럼명들과 특성]
+   - 데이터 품질: [결측값, 이상값 등]
+
+2. 핵심 인사이트
+   - [데이터에서 발견한 주요 패턴이나 트렌드]
+   - [통계적 특징: 평균, 최댓값, 최솟값, 분포 등]
+   - [상관관계나 특이사항]
+
+3. 비즈니스 관점의 해석
+   - [데이터가 시사하는 의미]
+   - [향후 액션 아이템이나 개선 방안]
+
 **중요**: JSX를 절대 사용하지 말고, 모든 요소를 React.createElement로 생성해주세요. 코드 안에서 사용되는 표에 관한 단어들을 입력받는 데이터에 작성되어 있는대로 작성해주세요. 이렇게 해야 프론트엔드에서 오류 없이 렌더링됩니다.`;
   }
 
@@ -548,9 +568,21 @@ ${limitedRows}
 `;
     }
 
-    promptContent += `사용자의 요청에 대해 전문적이고 친근한 톤으로 응답해주세요.
-데이터가 있는 경우 **실제 제공된 데이터**를 기준으로 구체적인 분석과 인사이트를 제공하고,
-데이터가 없는 경우 적절한 안내를 제공해주세요.`;
+    promptContent += `## 📊 데이터 분석 요구사항:
+사용자의 요청에 대해 다음과 같이 응답해주세요:
+
+1. **시각화 컴포넌트 생성**: 요청에 맞는 React 컴포넌트를 생성하세요.
+
+2. **상세한 데이터 분석 제공**: 코드와 함께 반드시 다음을 포함한 데이터 분석을 제공하세요:
+   - 실제 데이터를 기반으로 한 통계 분석 (평균, 총합, 최댓값, 최솟값 등)
+   - 데이터의 패턴과 트렌드 분석
+   - 이상값이나 특이사항 발견
+   - 비즈니스 관점에서의 인사이트
+   - 데이터 기반 추천사항이나 액션 아이템
+
+3. **구체적 수치 제시**: 모든 분석은 실제 데이터의 구체적 수치와 함께 제시하세요.
+
+데이터가 없는 경우에는 데이터 업로드를 안내하되, 일반적인 분석 방법론을 제시해주세요.`;
 
     return promptContent;
   }
@@ -608,41 +640,56 @@ ${limitedRows}
   }
 
   private extractExplanationFromResponse(response: string): string {
-    this.logger.debug(`설명 추출 시작: 응답 길이 ${response.length}자`);
+    this.logger.debug(`데이터 분석 추출 시작: 응답 길이 ${response.length}자`);
     
-    // 1. 코드 블록 이후의 설명 추출
+    // 1. 데이터 분석 결과 섹션을 우선 찾기
+    const analysisRegex = /(?:\*\*데이터 분석 결과:\*\*|데이터 분석 결과:|## 데이터 분석|### 데이터 분석|📊 데이터 분석)([\s\S]*?)(?=\n\n|\n```|$)/;
+    const analysisMatch = response.match(analysisRegex);
+    
+    if (analysisMatch && analysisMatch[1]) {
+      const analysis = analysisMatch[1].trim();
+      if (analysis.length > 20) {
+        this.logger.debug('데이터 분석 결과 섹션 추출 성공');
+        return analysis;
+      }
+    }
+    
+    // 2. 코드 블록 이후의 분석 추출
     const parts = response.split('```');
     
     if (parts.length > 2) {
-      const explanation = parts[2].trim();
-      if (explanation.length > 10) { // 최소 10자 이상의 의미있는 설명
-        this.logger.debug('코드 블록 분리 후 설명 추출 성공');
-        return explanation;
+      const afterCode = parts[2].trim();
+      if (afterCode.length > 10) { // 최소 10자 이상의 의미있는 분석
+        this.logger.debug('코드 블록 분리 후 분석 추출 성공');
+        return afterCode;
       }
     }
     
-    // 2. 설명: 또는 ## 설명 같은 패턴 찾기
-    const explanationRegex = /(?:설명[:：]|## 설명|### 설명|분석[:：]|## 분석|### 분석)([\s\S]*?)$/;
-    const match = response.match(explanationRegex);
+    // 3. 분석, 인사이트, 결과 등의 키워드가 포함된 섹션 찾기
+    const insightRegex = /(?:분석[:：]|## 분석|### 분석|인사이트[:：]|## 인사이트|### 인사이트|결과[:：]|## 결과|### 결과|핵심 인사이트|비즈니스 관점)([\s\S]*?)(?=\n\n|\n```|$)/;
+    const insightMatch = response.match(insightRegex);
     
-    if (match && match[1]) {
-      const explanation = match[1].trim();
-      if (explanation.length > 10) {
-        this.logger.debug('정규식으로 설명 추출 성공');
-        return explanation;
+    if (insightMatch && insightMatch[1]) {
+      const insight = insightMatch[1].trim();
+      if (insight.length > 10) {
+        this.logger.debug('인사이트 섹션 정규식 추출 성공');
+        return insight;
       }
     }
     
-    // 3. 코드 블록 이전의 설명 찾기
-    if (parts.length > 1) {
-      const beforeCode = parts[0].trim();
-      if (beforeCode.length > 20) { // 코드 이전에 충분한 설명이 있는 경우
-        this.logger.debug('코드 블록 이전 설명 추출');
-        return beforeCode;
+    // 4. 통계나 수치가 포함된 부분 찾기
+    const statsRegex = /(평균|총합|최댓값|최솟값|개수|비율|퍼센트|%)[^.]*\.[\s\S]*?(?=\n\n|\n```|$)/;
+    const statsMatch = response.match(statsRegex);
+    
+    if (statsMatch && statsMatch[0]) {
+      const stats = statsMatch[0].trim();
+      if (stats.length > 20) {
+        this.logger.debug('통계 수치 포함 분석 추출 성공');
+        return stats;
       }
     }
     
-    // 4. 전체 응답에서 의미있는 텍스트 부분 찾기 (코드 제외)
+    // 5. 전체 응답에서 의미있는 텍스트 부분 찾기 (코드 제외)
     const codeBlockRegex = /```[\s\S]*?```/g;
     const textWithoutCode = response.replace(codeBlockRegex, '').trim();
     
@@ -651,7 +698,7 @@ ${limitedRows}
       return textWithoutCode;
     }
     
-    this.logger.warn('응답에서 설명을 추출할 수 없습니다');
+    this.logger.warn('응답에서 데이터 분석을 추출할 수 없습니다');
     return '';
   }
 
