@@ -1,5 +1,5 @@
 // src/common/dto/chat.dto.ts - 공통 채팅 관련 DTO
-import { IsString, IsOptional, IsNotEmpty, IsUUID, IsEnum, IsBoolean, IsArray, ValidateNested, IsDateString, IsNumber } from 'class-validator';
+import { IsString, IsOptional, IsNotEmpty, IsUUID, IsEnum, IsBoolean, IsArray, ValidateNested, IsDateString, IsNumber, IsObject } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 // 메시지 타입 enum
@@ -9,7 +9,8 @@ export enum MessageType {
   FORMULA = 'formula',
   ARTIFACT = 'artifact',
   DATA_GENERATION = 'data_generation',
-  DATA_FIX = 'data_fix'
+  DATA_FIX = 'data_fix',
+  FUNCTION = 'function'
 }
 
 export enum MessageRole {
@@ -23,7 +24,8 @@ export enum MessageMode {
   FORMULA = 'formula', 
   ARTIFACT = 'artifact',
   DATA_GENERATION = 'datageneration',
-  DATA_FIX = 'datafix'
+  DATA_FIX = 'datafix',
+  FUNCTION = 'function'
 }
 
 // 시트 컨텍스트 DTO
@@ -200,6 +202,10 @@ export class CreateMessageDto {
   @ValidateNested()
   @Type(() => FileUploadInfoDto)
   fileUploadInfo?: FileUploadInfoDto;
+
+  @IsObject()
+  @IsOptional()
+  metadata?: Record<string, any>;
 }
 
 // 채팅 생성 DTO
