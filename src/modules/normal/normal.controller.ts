@@ -49,7 +49,6 @@ export class NormalChatController {
       if (normalChatDto.spreadsheetData.sheets?.length > 0) {
         const firstSheet = normalChatDto.spreadsheetData.sheets[0];
         this.logger.log(`First Sheet Name: ${firstSheet.name}`);
-        this.logger.log(`Headers Count: ${firstSheet.headers?.length || 0}`);
         this.logger.log(`Data Rows Count: ${firstSheet.data?.length || 0}`);
       }
     }

@@ -88,7 +88,6 @@ export class NormalChatService {
         if (currentSheet) {
           this.logger.log(`현재 시트명: ${currentSheet.name}`);
           this.logger.log(`데이터 행 수: ${currentSheet.data.length}`);
-          this.logger.log(`데이터 열 수: ${currentSheet.headers.length}`);
 
           // spreadsheetMetadata 구성
           spreadsheetMetadata = {
@@ -97,7 +96,6 @@ export class NormalChatService {
             sheets: [{
               sheetName: currentSheet.name,
               sheetIndex: currentSheet.sheetIndex || 0,
-              headers: currentSheet.headers
             }],
             activeSheetIndex: 0,
             totalSheets: dto.spreadsheetData.sheets.length
@@ -109,8 +107,7 @@ export class NormalChatService {
               rows: currentSheet.data
             },
             rowCount: currentSheet.data.length,
-            columnCount: currentSheet.headers.length,
-            headers: currentSheet.headers
+            columnCount: currentSheet.data[0].length,
           };
 
           this.logger.log(`변환 완료 - 시트명: ${spreadsheetMetadata.sheets[0].sheetName}`);

@@ -8,10 +8,6 @@ export class SimpleSheetData {
   name: string;
   
   @IsArray()
-  @IsString({ each: true })
-  headers: string[];
-  
-  @IsArray()
   data: string[][];
   
   @IsOptional()
