@@ -1,213 +1,19 @@
-// src/modules/artifact/dto/generate-artifact.dto.ts - 수정된 버전
-import { IsString, IsArray, IsOptional, IsEnum, IsNotEmpty, MaxLength, ValidateNested, IsNumber, IsBoolean } from 'class-validator';
+// src/modules/artifact/dto/generate-artifact.dto.ts
+import { IsString, IsArray, IsOptional, IsNotEmpty, MaxLength, ValidateNested, IsNumber, IsBoolean, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 
-export enum ArtifactType {
-  CHART = 'chart',
-  TABLE = 'table',
-  ANALYSIS = 'analysis'
-}
-
-export class HeaderInfo {
+/**
+ * 단일 시트의 데이터 구조입니다.
+ * 클라이언트의 SimpleSheetData 인터페이스 및 createRequestBody 구현과 일치합니다.
+ */
+export class SimpleSheetDataDto {
   @IsString()
-  column: string;
-
-  @IsString()
-  name: string;
-}
-
-export class DataRange {
-  @IsString()
-  startRow: string;
-
-  @IsString()
-  endRow: string;
-
-  @IsOptional()
-  @IsString()
-  startColumn?: string;
-
-  @IsOptional()
-  @IsString()
-  endColumn?: string;
-
-  @IsOptional()
-  @IsString()
-  startColLetter?: string;
-
-  @IsOptional()
-  @IsString()
-  endColLetter?: string;
-}
-
-// 시트 데이터 메타데이터 클래스 정의
-export class SheetMetadata {
-  @IsNumber()
-  rowCount: number;
-
-  @IsNumber()
-  columnCount: number;
-
-  @IsOptional()
-  @IsNumber()
-  headerRow?: number;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => DataRange)
-  dataRange?: DataRange;
-}
-
-// ✅ 시트 데이터 아이템 메타데이터 수정 (DataFix/DataGeneration과 동일하게)
-export class SheetDataItemMetadata {
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  headers?: string[];
-
-  @IsOptional()
-  @IsNumber()
-  rowCount?: number;
-
-  @IsOptional()
-  @IsNumber()
-  columnCount?: number;
-
-  @IsOptional()
-  @IsArray()
-  sampleData?: string[][]; // ✅ any[] → string[][]로 변경
-
-  // ✅ 새로 추가: 전체 데이터 필드
-  @IsOptional()
-  @IsArray()
-  fullData?: string[][];
-
-  @IsOptional()
-  @IsNumber()
-  sheetIndex?: number;
-
-  // ✅ 새로 추가: 원본 메타데이터
-  @IsOptional()
-  @IsArray()
-  originalMetadata?: any;
-}
-
-// 다중 시트를 위한 새로운 인터페이스
-export class SheetData {
-  @IsString()
-  sheetName: string;
-
-  @IsArray()
-  @IsString({ each: true })
-  headers: string[];
-
-  @IsArray()
-  data: string[][];
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetMetadata)
-  metadata?: SheetMetadata;
-}
-
-// 확장된 시트 컨텍스트
-export class ExtendedSheetContext {
-  @IsString()
-  sheetName: string;
-
-  @IsNumber()
-  sheetIndex: number;
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => HeaderInfo)
-  headers: HeaderInfo[];
-
-  @ValidateNested()
-  @Type(() => DataRange)
-  dataRange: DataRange;
-
-  @IsOptional()
-  @IsArray()
-  sampleData?: Record<string, string>[];
-
-  @IsNumber()
-  totalSheets: number;
-
-  @IsArray()
-  @IsString({ each: true })
-  sheetList: string[];
-}
-
-// 시트 데이터 아이템 수정 - ✅ csv 필드를 선택사항으로 변경
-export class SheetDataItem {
-  @IsString()
-  name: string;
-
-  // ✅ csv 필드를 선택사항으로 변경 (fullData가 있으면 csv는 불필요)
-  @IsOptional()
-  @IsString()
-  csv?: string;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SheetDataItemMetadata)
-  metadata?: SheetDataItemMetadata;
-}
-
-// ✅ 다중 시트 데이터 구조 수정 (DataFix/DataGeneration과 동일하게)
-export class SheetsData {
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => SheetDataItem)
-  sheets: SheetDataItem[];
-
-  @IsString()
-  activeSheet: string;
-
-  // ✅ 새로 추가: 전체 컨텍스트 정보
-  @IsOptional()
-  @IsNumber()
-  totalSheets?: number;
-
-  @IsOptional()
-  @IsString()
-  fileName?: string;
-
-  @IsOptional()
-  @IsNumber()
-  currentSheetIndex?: number;
-}
-
-// 기존 SheetContext는 하위 호환성을 위해 유지
-export class SheetContext {
-  @IsString()
-  sheetName: string;
-
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => HeaderInfo)
-  headers: HeaderInfo[];
-
-  @ValidateNested()
-  @Type(() => DataRange)
-  dataRange: DataRange;
-
-  @IsOptional()
-  @IsArray()
-  sampleData?: Record<string, string>[];
-}
-
-// 단순화된 시트 데이터 구조
-export class SimpleSheetData {
-  @IsString()
+  @IsNotEmpty()
   name: string;
   
   @IsArray()
-  @IsString({ each: true })
-  headers: string[];
-  
-  @IsArray()
+  // 각 행이 문자열 배열인지 확인합니다.
+  @IsArray({ each: true })
   data: string[][];
   
   @IsOptional()
@@ -215,28 +21,37 @@ export class SimpleSheetData {
   sheetIndex?: number;
 }
 
-// 스프레드시트 데이터 구조
-export class SpreadsheetData {
+/**
+ * 전체 스프레드시트의 데이터 구조입니다.
+ * 클라이언트의 SpreadsheetData 인터페이스와 일치합니다.
+ */
+export class SpreadsheetDataDto {
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => SimpleSheetData)
-  sheets: SimpleSheetData[];
+  @Type(() => SimpleSheetDataDto)
+  sheets: SimpleSheetDataDto[];
   
   @IsString()
+  @IsNotEmpty()
   activeSheet: string;
   
-  @IsOptional()
   @IsString()
-  fileName?: string;
+  @IsNotEmpty()
+  fileName: string;
   
   @IsString()
+  // spreadsheetId는 빈 문자열일 수 있으므로 IsNotEmpty는 제외합니다.
   spreadsheetId: string;
 }
 
+/**
+ * 아티팩트 생성 요청의 메인 DTO입니다.
+ * 클라이언트의 ProcessDataRequestDTO 인터페이스와 일치합니다.
+ */
 export class GenerateArtifactDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(1000)
+  @MaxLength(2000) // 사용자 입력 길이를 넉넉하게 설정
   userInput: string;
 
   @IsString()
@@ -244,29 +59,58 @@ export class GenerateArtifactDto {
   userId: string;
 
   @IsString()
-  @IsOptional()
-  chatId?: string;
+  @IsNotEmpty()
+  chatId: string;
 
-  @IsString()
-  @IsOptional()
-  chatTitle?: string;
-
-  @IsOptional()
+  // 클라이언트에서 항상 spreadsheetData 객체를 보내므로 IsOptional을 제거합니다.
   @ValidateNested()
-  @Type(() => SpreadsheetData)
-  spreadsheetData?: SpreadsheetData;
+  @Type(() => SpreadsheetDataDto)
+  spreadsheetData: SpreadsheetDataDto;
 
-  @IsString()
   @IsOptional()
+  @IsString()
   language?: string = 'ko';
 
-  @IsString()
   @IsOptional()
+  @IsString()
   messageId?: string;
-
-  @IsString()
+  
   @IsOptional()
-  spreadsheetId?: string;
+  @IsString()
+  chatTitle?: string;
+}
+
+export enum ArtifactType {
+  CHART = 'chart',
+  TABLE = 'table',
+  ANALYSIS = 'analysis',
+}
+
+class ExplanationDto {
+  @IsString()
+  korean: string;
+}
+
+class SpreadsheetMetadataResponseDto {
+  @IsBoolean()
+  hasSpreadsheet: boolean;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  totalSheets?: number;
+
+  @IsOptional()
+  @IsNumber()
+  activeSheetIndex?: number;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  sheetNames?: string[];
 }
 
 export class ArtifactResponseDto {
@@ -274,48 +118,31 @@ export class ArtifactResponseDto {
   success: boolean;
 
   @IsString()
-  @IsOptional()
-  code?: string;
+  code: string;
 
-  @IsOptional()
   @IsEnum(ArtifactType)
-  type?: ArtifactType;
+  type: ArtifactType;
 
-  @IsOptional()
-  explanation?: {
-    korean: string;
-    english?: string;
-  };
-
-  @IsOptional()
-  @IsString()
-  title?: string;
+  @ValidateNested()
+  @Type(() => ExplanationDto)
+  explanation: ExplanationDto;
 
   @IsString()
-  @IsOptional()
-  error?: string;
+  title: string;
 
   @IsString()
-  @IsOptional()
-  timestamp?: string;
+  timestamp: string;
 
   @IsString()
-  @IsOptional()
-  chatId?: string;
+  chatId: string;
 
   @IsString()
-  @IsOptional()
-  userMessageId?: string;
+  userMessageId: string;
 
   @IsString()
-  @IsOptional()
-  aiMessageId?: string;
+  aiMessageId: string;
 
-  @IsOptional()
-  spreadsheetMetadata?: {
-    fileName?: string;
-    totalSheets?: number;
-    activeSheetIndex?: number;
-    sheetNames?: string[];
-  };
+  @ValidateNested()
+  @Type(() => SpreadsheetMetadataResponseDto)
+  spreadsheetMetadata: SpreadsheetMetadataResponseDto;
 }

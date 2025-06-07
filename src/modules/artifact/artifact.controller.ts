@@ -1,9 +1,15 @@
-// src/modules/artifact/artifact.controller.ts - 에러 핸들링 강화
+// src/modules/artifact/artifact.controller.ts
 import { Controller, Post, Body, HttpStatus, HttpCode, BadRequestException, Logger, UsePipes, ValidationPipe, InternalServerErrorException, Get, Param, Query } from '@nestjs/common';
 import { ArtifactService } from './artifact.service';
 import { GenerateArtifactDto, ArtifactResponseDto } from './dto/generate-artifact.dto';
 
 @Controller('artifact')
+// ValidationPipe를 컨트롤러 레벨에 적용하여 모든 핸들러에 적용합니다.
+@UsePipes(new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+}))
 export class ArtifactController {
   private readonly logger = new Logger(ArtifactController.name);
   
@@ -11,153 +17,79 @@ export class ArtifactController {
 
   @Post('generate')
   @HttpCode(HttpStatus.OK)
-  @UsePipes(new ValidationPipe({
-    transform: true,
-    whitelist: true,
-    forbidNonWhitelisted: true
-  }))
   async generateArtifact(
     @Body() generateArtifactDto: GenerateArtifactDto
   ): Promise<ArtifactResponseDto> {
-    // 요청 데이터 로깅
-    this.logger.log('=== Artifact Generation Request ===');
-    this.logger.log(`UserInput: ${generateArtifactDto.userInput}`);
-    this.logger.log(`User ID: ${generateArtifactDto.userId}`);
-    this.logger.log(`Chat ID: ${generateArtifactDto.chatId || 'NEW CHAT'}`);
-    this.logger.log(`Chat Title: ${generateArtifactDto.chatTitle || 'N/A'}`);
-    this.logger.log(`Message ID: ${generateArtifactDto.messageId || 'N/A'}`);
-    this.logger.log(`Language: ${generateArtifactDto.language || 'ko'}`);
+    const startTime = Date.now();
+    this.logger.log('아티팩트 생성 요청 시작', { 
+      userId: generateArtifactDto.userId,
+      chatId: generateArtifactDto.chatId || '새 채팅',
+      userInputLength: generateArtifactDto.userInput.length,
+    });
 
-    // 스프레드시트 데이터 로깅
     if (generateArtifactDto.spreadsheetData) {
-      this.logger.log('=== Spreadsheet Data ===');
-      this.logger.log(`File Name: ${generateArtifactDto.spreadsheetData.fileName || 'N/A'}`);
-      this.logger.log(`Active Sheet: ${generateArtifactDto.spreadsheetData.activeSheet}`);
-      this.logger.log(`Total Sheets: ${generateArtifactDto.spreadsheetData.sheets?.length || 0}`);
-      
-      if (generateArtifactDto.spreadsheetData.sheets?.length > 0) {
-        const firstSheet = generateArtifactDto.spreadsheetData.sheets[0];
-        this.logger.log(`First Sheet Name: ${firstSheet.name}`);
-        this.logger.log(`Headers Count: ${firstSheet.headers?.length || 0}`);
-        this.logger.log(`Data Rows Count: ${firstSheet.data?.length || 0}`);
-      }
-    }
-
-    // 필수 필드 검증
-    if (!generateArtifactDto.userId) {
-      this.logger.error('Missing required field: userId');
-      throw new BadRequestException('사용자 ID가 필요합니다.');
-    }
-
-    if (!generateArtifactDto.userInput?.trim()) {
-      this.logger.error('Missing or empty userInput');
-      throw new BadRequestException('사용자 입력이 필요합니다.');
-    }
-
-    // 새 채팅인 경우 제목 검증
-    if (!generateArtifactDto.chatId && !generateArtifactDto.chatTitle) {
-      this.logger.log('New chat without title, will auto-generate from userInput');
+      const { fileName, activeSheet, sheets } = generateArtifactDto.spreadsheetData;
+      this.logger.log('스프레드시트 데이터 제공됨', { fileName, activeSheet, totalSheets: sheets?.length || 0 });
     }
 
     try {
-      this.logger.log('=== Processing Artifact Generation Request ===');
-      const startTime = Date.now();
-
       const result = await this.artifactService.generateArtifact(generateArtifactDto);
 
       const processingTime = Date.now() - startTime;
-      this.logger.log('=== Artifact Generation Response ===');
-      this.logger.log(`Processing Time: ${processingTime}ms`);
-      this.logger.log(`Success: ${result.success}`);
-      this.logger.log(`Chat ID: ${result.chatId}`);
-      this.logger.log(`User Message ID: ${result.userMessageId}`);
-      this.logger.log(`AI Message ID: ${result.aiMessageId}`);
-      this.logger.log(`Response Length: ${result.code?.length || 0} characters`);
+      this.logger.log(`아티팩트 생성 성공 (${processingTime}ms)`, {
+        chatId: result.chatId,
+        success: result.success,
+        codeLength: result.code?.length || 0,
+      });
       
-      if (result.spreadsheetMetadata) {
-        this.logger.log(`Spreadsheet Metadata:`, JSON.stringify({
-          fileName: result.spreadsheetMetadata.fileName,
-          totalSheets: result.spreadsheetMetadata.totalSheets,
-          activeSheetIndex: result.spreadsheetMetadata.activeSheetIndex,
-          sheetNames: result.spreadsheetMetadata.sheetNames
-        }, null, 2));
-      }
-
       if (!result.success) {
-        this.logger.error(`Artifact generation failed: ${result.error}`);
+        this.logger.error(`서비스 로직 실패: ${result.explanation?.korean}`);
       }
-
       return result;
 
     } catch (error) {
-      const processingTime = Date.now() - (Date.now()); // 에러 발생 시점 계산을 위해
-      this.logger.error('=== Artifact Generation Error ===');
-      this.logger.error(`Error Type: ${error.constructor.name}`);
-      this.logger.error(`Error Message: ${error.message}`);
-      this.logger.error(`Stack Trace:`, error.stack);
+      this.logger.error(`아티팩트 생성 실패: ${error.message}`, error.stack);
 
-      // Firebase 관련 오류 처리
-      if (error.message?.includes('Firebase') || error.message?.includes('Firestore')) {
-        this.logger.error('Firebase/Firestore Error Detected');
-        throw new InternalServerErrorException('데이터베이스 연결 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-      }
-
-      // OpenAI API 오류 처리
-      if (error.message?.includes('OpenAI') || error.message?.includes('API')) {
-        this.logger.error('OpenAI API Error Detected');
-        throw new InternalServerErrorException('AI 서비스 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
-      }
-
-      // 검증 오류 처리
-      if (error instanceof BadRequestException) {
+      // 서비스에서 던진 특정 HTTP 예외는 그대로 전달합니다.
+      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
         throw error;
       }
 
-      // 권한 관련 오류 처리
-      if (error.message?.includes('권한') || error.message?.includes('접근')) {
-        throw new BadRequestException(error.message);
-      }
-
-      // 기타 서버 오류
-      this.logger.error('Unexpected Error in Artifact Controller');
-      throw new InternalServerErrorException('서버 내부 오류가 발생했습니다. 관리자에게 문의해주세요.');
+      // 그 외 예상치 못한 모든 오류는 일반적인 서버 오류로 처리합니다.
+      throw new InternalServerErrorException('아티팩트 생성 중 예상치 못한 서버 오류가 발생했습니다.');
     }
   }
 
-  // 스프레드시트 ID로 연결된 채팅들 조회
-  @Get('chats/by-spreadsheet/:spreadsheetId')
-  async getChatsBySpreadsheetId(
-    @Param('spreadsheetId') spreadsheetId: string,
-    @Query('userId') userId: string
-  ) {
-    this.logger.log(`스프레드시트 연결 채팅 조회: ${spreadsheetId}, 사용자: ${userId}`);
+  // @Get('chats/by-spreadsheet/:spreadsheetId')
+  // async getChatsBySpreadsheetId(
+  //   @Param('spreadsheetId') spreadsheetId: string,
+  //   @Query('userId') userId: string
+  // ) {
+  //   // @Query 파라미터는 DTO를 사용하지 않으면 파이프가 기본적으로 검증하지 않으므로 수동 검사가 필요합니다.
+  //   if (!userId) {
+  //     throw new BadRequestException('사용자 ID(userId) 쿼리 파라미터가 필요합니다.');
+  //   }
+  //   this.logger.log(`스프레드시트(${spreadsheetId})에 연결된 채팅 목록 조회 (사용자: ${userId})`);
+  //   const chats = await this.artifactService.getChatsBySpreadsheetId(spreadsheetId, userId);
     
-    if (!userId) {
-      throw new BadRequestException('사용자 ID가 필요합니다.');
-    }
+  //   return {
+  //     success: true,
+  //     spreadsheetId,
+  //     chats,
+  //     totalCount: chats.length
+  //   };
+  // }
 
-    const chats = await this.artifactService.getChatsBySpreadsheetId(spreadsheetId, userId);
+  // @Get('spreadsheet/by-chat/:chatId')
+  // async getSpreadsheetIdByChat(@Param('chatId') chatId: string) {
+  //   this.logger.log(`채팅(${chatId})에 연결된 스프레드시트 ID 조회`);
+  //   const spreadsheetId = await this.artifactService.getSpreadsheetIdByChat(chatId);
     
-    return {
-      success: true,
-      spreadsheetId,
-      chats,
-      totalCount: chats.length
-    };
-  }
-
-  // 채팅 ID로 연결된 스프레드시트 ID 조회
-  @Get('spreadsheet/by-chat/:chatId')
-  async getSpreadsheetIdByChat(@Param('chatId') chatId: string) {
-    this.logger.log(`채팅 연결 스프레드시트 ID 조회: ${chatId}`);
-    
-    const spreadsheetId = await this.artifactService.getSpreadsheetIdByChat(chatId);
-    
-    return {
-      success: true,
-      chatId,
-      spreadsheetId,
-      hasSpreadsheet: !!spreadsheetId
-    };
-  }
+  //   return {
+  //     success: true,
+  //     chatId,
+  //     spreadsheetId,
+  //     hasSpreadsheet: !!spreadsheetId
+  //   };
+  // }
 }

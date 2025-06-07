@@ -9,6 +9,7 @@ import { NormalModule } from './modules/normal/normal.module';
 import { DataFixModule } from './modules/datafix/datafix.module';
 import { FirebaseModule } from './common/firebase/firebase.module';
 import { SheetModule } from './common/sheet/sheet.module';
+import { FunctionModule } from './modules/function/function.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SheetModule } from './common/sheet/sheet.module';
     DataFixModule,
     FirebaseModule,
     SheetModule,
+    FunctionModule,
   ],
   controllers: [AppController],
   providers: [AppService],
