@@ -116,7 +116,7 @@ export class DataFixService {
           spreadsheetData.sheets.forEach((sheet, index) => {
             this.logger.log(`- 시트 ${index}: ${sheet.name}`);
             this.logger.log(`  * 행 수: ${sheet.data?.length || 0}`);
-            this.logger.log(`  * 열 수: ${sheet.headers?.length || 0}`);
+            this.logger.log(`  * 열 수: ${sheet.data[0]?.length || 0}`);
           });
         }
 
@@ -125,6 +125,10 @@ export class DataFixService {
           const currentSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
 
           if (currentSheet) {
+            const allData = currentSheet.data || [];
+            const headers = allData.length > 0 ? allData[0] : [];
+            const rows = allData.length > 1 ? allData.slice(1) : [];
+
             // spreadsheetMetadata 구성
             spreadsheetMetadata = {
               fileName: spreadsheetData.fileName || currentSheet.name,
@@ -132,7 +136,7 @@ export class DataFixService {
               sheets: [{
                 sheetName: currentSheet.name,
                 sheetIndex: currentSheet.sheetIndex || 0,
-                headers: currentSheet.headers || []
+                headers: headers
               }],
               activeSheetIndex: currentSheet.sheetIndex || 0,
               totalSheets: spreadsheetData.sheets.length
@@ -141,11 +145,11 @@ export class DataFixService {
             // activeSheetData 구성
             activeSheetData = {
               data: {
-                rows: currentSheet.data || []
+                rows: rows
               },
-              rowCount: currentSheet.data?.length || 0,
-              columnCount: currentSheet.headers?.length || 0,
-              headers: currentSheet.headers || []
+              rowCount: rows.length,
+              columnCount: headers.length,
+              headers: headers
             };
 
             // 채팅에 스프레드시트 ID가 연결되지 않은 경우 연결
@@ -242,7 +246,7 @@ export class DataFixService {
       this.logger.log('==================== 프론트엔드 전송 응답 데이터 시작 ====================');
       this.logger.log(`성공 여부: ${result.success}`);
       this.logger.log(`시트명: ${result.editedData?.sheetName}`);
-      this.logger.log(`헤더 수: ${result.editedData?.headers?.length}`);
+      this.logger.log(`헤더 수: ${(result.editedData as any)?.headers?.length}`);
       this.logger.log(`데이터 행 수: ${result.editedData?.data?.length}`);
       this.logger.log(`시트 인덱스: ${result.sheetIndex}`);
       this.logger.log(`설명: ${result.explanation}`);
@@ -269,7 +273,7 @@ export class DataFixService {
           changes: result.changes,
           editedDataSummary: result.editedData ? {
             sheetName: result.editedData.sheetName,
-            headerCount: result.editedData.headers?.length || 0,
+            headerCount: (result.editedData as any).headers?.length || 0,
             dataRowCount: result.editedData.data?.length || 0
           } : null
         }
@@ -383,7 +387,7 @@ export class DataFixService {
     if (result.success && result.editedData) {
       content += `데이터 수정이 완료되었습니다.\n\n`;
       content += `시트명: ${result.editedData.sheetName}\n`;
-      content += `수정된 데이터: ${result.editedData.data?.length || 0}행, ${result.editedData.headers?.length || 0}열\n`;
+      content += `수정된 데이터: ${result.editedData.data?.length || 0}행, ${result.editedData.data[0]?.length || 0}열\n`;
       
       if (result.changes) {
         content += `변경 유형: ${result.changes.type}\n`;
@@ -406,15 +410,19 @@ export class DataFixService {
     
     if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
       // 활성 시트 찾기
-      const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet);
+      const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
       
       if (activeSheet) {
+        const data = activeSheet.data || [];
+        const headers = data.length > 0 ? data[0] : [];
+        const rows = data.length > 1 ? data.slice(1) : [];
+
         return {
           sheetName: activeSheet.name,
-          headers: activeSheet.headers || [],
-          data: activeSheet.data || [],
-          rowCount: activeSheet.data?.length || 0,
-          columnCount: activeSheet.headers?.length || 0,
+          headers: headers,
+          data: rows,
+          rowCount: rows.length,
+          columnCount: headers.length,
           sheetIndex: activeSheet.sheetIndex || 0
         };
       }
@@ -576,16 +584,8 @@ ${isMultiSheet ? `
     if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
       const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
       
-      if (activeSheet) {
-        let csvData = '';
-        
-        // ✅ fullData 우선 사용, CSV로 변환
-        if (activeSheet.data && activeSheet.headers) {
-          csvData = activeSheet.headers.join(',') + '\n';
-          csvData += activeSheet.data.map(row => row.join(',')).join('\n');
-        } else {
-          return '';
-        }
+      if (activeSheet && activeSheet.data) {
+        let csvData = activeSheet.data.map(row => row.join(',')).join('\n');
         
         // ✅ CSV 데이터 크기 제한 (너무 큰 경우 잘라내기)
         const maxCsvLength = 50000; // 최대 50,000 문자
@@ -648,8 +648,8 @@ ${isMultiSheet ? `
     if (spreadsheetData && spreadsheetData.sheets && spreadsheetData.sheets.length > 0) {
       const activeSheet = spreadsheetData.sheets.find(sheet => sheet.name === spreadsheetData.activeSheet) || spreadsheetData.sheets[0];
       
-      if (activeSheet && activeSheet.headers) {
-        return activeSheet.headers;
+      if (activeSheet && activeSheet.data && activeSheet.data.length > 0) {
+        return activeSheet.data[0];
       }
     }
     
@@ -728,7 +728,7 @@ ${isMultiSheet ? `
           sheetName: parsedData.sheetName,
           headers: parsedData.headers.map(header => String(header)),
           data: cleanedData
-        },
+        } as any,
         sheetIndex,
         explanation: parsedData.explanation || '데이터가 성공적으로 수정되었습니다.',
         changes
@@ -780,7 +780,7 @@ ${isMultiSheet ? `
       this.logger.log(`  - 스프레드시트 ID: ${spreadsheetId}`);
       this.logger.log(`  - 시트 인덱스: ${sheetIndex}`);
       this.logger.log(`  - 시트명: ${result.editedData.sheetName}`);
-      this.logger.log(`  - 헤더 수: ${result.editedData.headers.length}`);
+      this.logger.log(`  - 헤더 수: ${(result.editedData as any).headers.length}`);
       this.logger.log(`  - 데이터 행 수: ${result.editedData.data.length}`);
       
       // ✅ 일치성 검증
@@ -793,7 +793,7 @@ ${isMultiSheet ? `
         spreadsheetId,
         sheetIndex,
         data: {
-          headers: result.editedData.headers,
+          headers: (result.editedData as any).headers,
           rows: result.editedData.data,
           rawData: result.editedData.data // rawData와 rows 동일하게 설정
         },

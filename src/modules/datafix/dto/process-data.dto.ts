@@ -7,10 +7,6 @@ export class SimpleSheetData {
   name: string;
   
   @IsArray()
-  @IsString({ each: true })
-  headers: string[];
-  
-  @IsArray()
   data: string[][];
   
   @IsOptional()
@@ -80,10 +76,6 @@ export class ProcessDataDto {
 export class EditedDataDto {
   @IsString()
   sheetName: string;
-  
-  @IsArray()
-  @IsString({ each: true })
-  headers: string[];
   
   @IsArray()
   data: string[][];
