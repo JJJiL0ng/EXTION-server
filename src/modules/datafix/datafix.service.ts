@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { SheetService } from '../../common/sheet/sheet.service';
 import { UpdateSheetDataDto } from '../../common/sheet/dto/spreadsheet.dto';
@@ -17,7 +17,7 @@ import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 @Injectable()
 export class DataFixService {
   private readonly logger = new Logger(DataFixService.name);
-  private readonly openai: OpenAI;
+  private readonly anthropic: Anthropic;
 
   constructor(
     private configService: ConfigService,
@@ -25,8 +25,8 @@ export class DataFixService {
     private sheetService: SheetService,
     private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
-    this.openai = new OpenAI({
-      apiKey: this.configService.get('OPENAI_API_KEY'),
+    this.anthropic = new Anthropic({
+      apiKey: this.configService.get('CLAUDE_API_KEY'),
     });
   }
 
@@ -239,18 +239,19 @@ export class DataFixService {
       }
 
       // OpenAI API 호출
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
+      const completion = await this.anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        system: systemPrompt,
         messages: [
-          { role: 'system', content: systemPrompt },
           ...historyMessages,
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.2,
-        max_tokens: 10000,
+        max_tokens: 8192,
       });
 
-      const aiResponse = completion.choices[0]?.message?.content;
+      const firstBlock = completion.content[0];
+      const aiResponse = firstBlock?.type === 'text' ? firstBlock.text : null;
       
       if (!aiResponse) {
         throw new InternalServerErrorException('AI 응답을 받을 수 없습니다.');
