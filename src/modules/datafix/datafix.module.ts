@@ -2,19 +2,14 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DataFixController } from './datafix.controller';
 import { DataFixService } from './datafix.service';
-import { FirebaseService } from '../../common/firebase/firebase.service';
-import { SheetService } from '../../common/sheet/sheet.service';
+import { FirebaseModule } from '../../common/firebase/firebase.module';
+import { SheetModule } from '../../common/sheet/sheet.module';
 import { CacheModule } from '../../common/cache/cache.module';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, FirebaseModule, SheetModule, CacheModule],
   controllers: [DataFixController],
-  providers: [
-    DataFixService,
-    FirebaseService,
-    SheetService,
-    CacheModule
-  ],
+  providers: [DataFixService],
   exports: [DataFixService]
 })
 export class DataFixModule {}
