@@ -7,6 +7,7 @@ import { FirebaseService } from '../../common/firebase/firebase.service';
 import { SheetService } from '../../common/sheet/sheet.service';
 import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 import { v4 as uuidv4 } from 'uuid';
+import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class NormalChatService {
@@ -17,6 +18,7 @@ export class NormalChatService {
     private configService: ConfigService,
     private firebaseService: FirebaseService,
     private sheetService: SheetService,
+    private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
@@ -139,8 +141,18 @@ export class NormalChatService {
       const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
       this.logger.log(`사용자 메시지 저장: ${userMessageId}`);
 
+      // 사용자 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: userMessageId,
+        content: userMessageDto.content,
+        role: userMessageDto.role,
+        mode: userMessageDto.mode || MessageMode.NORMAL,
+        timestamp: new Date(),
+        sheetContext: userMessageDto.sheetContext,
+      });
+
       // === 4. AI 응답 생성 ===
-      const aiResponse = await this.generateAIResponse(dto, activeSheetData, spreadsheetMetadata);
+      const aiResponse = await this.generateAIResponse(dto, activeSheetData, spreadsheetMetadata, chatId);
 
       // === 5. AI 응답 메시지 저장 ===
       const aiMessageDto: CreateMessageDto = {
@@ -153,6 +165,16 @@ export class NormalChatService {
 
       const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
       this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);
+
+      // AI 응답 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: aiMessageId,
+        content: aiMessageDto.content,
+        role: aiMessageDto.role,
+        mode: aiMessageDto.mode || MessageMode.NORMAL,
+        timestamp: new Date(),
+        sheetContext: aiMessageDto.sheetContext,
+      });
 
       // === 6. 응답 반환 ===
       const result: NormalChatResponseDto = {
@@ -237,7 +259,8 @@ export class NormalChatService {
   private async generateAIResponse(
     dto: NormalChatDto,
     activeSheetData: any,
-    spreadsheetMetadata: any
+    spreadsheetMetadata: any,
+    chatId: string,
   ): Promise<string> {
     this.logger.log('==================== AI 응답 생성 시작 ====================');
     this.logger.log(`사용자 입력: ${dto.userInput}`);
@@ -247,6 +270,10 @@ export class NormalChatService {
 
     // 사용자 프롬프트 생성
     const userPrompt = this.createUserPrompt(dto.userInput, activeSheetData, spreadsheetMetadata);
+
+    // 이전 대화 기록 가져오기
+    const historyMessages = await this.chatHistoryCacheService.getMessagesForOpenAI(chatId);
+    this.logger.log(`가져온 대화 기록: ${historyMessages.length}개`);
 
     // 프롬프트 크기 체크
     const totalPromptSize = systemPrompt.length + userPrompt.length;
@@ -263,6 +290,7 @@ export class NormalChatService {
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
+        ...historyMessages,
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,

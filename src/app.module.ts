@@ -10,6 +10,7 @@ import { DataFixModule } from './modules/datafix/datafix.module';
 import { FirebaseModule } from './common/firebase/firebase.module';
 import { SheetModule } from './common/sheet/sheet.module';
 import { FunctionModule } from './modules/function/function.module';
+import { CacheModule } from './common/cache/cache.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { FunctionModule } from './modules/function/function.module';
     FirebaseModule,
     SheetModule,
     FunctionModule,
+    CacheModule,
   ],
   controllers: [AppController],
   providers: [AppService],

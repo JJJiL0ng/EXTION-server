@@ -12,6 +12,7 @@ import {
   ChangesDto,
   SpreadsheetData 
 } from './dto/process-data.dto';
+import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class DataFixService {
@@ -21,7 +22,8 @@ export class DataFixService {
   constructor(
     private configService: ConfigService,
     private firebaseService: FirebaseService,
-    private sheetService: SheetService
+    private sheetService: SheetService,
+    private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
@@ -185,6 +187,16 @@ export class DataFixService {
       const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
       this.logger.log(`사용자 메시지 저장: ${userMessageId}`);
 
+      // 사용자 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: userMessageId,
+        content: userMessageDto.content,
+        role: userMessageDto.role,
+        mode: userMessageDto.mode || MessageMode.DATA_FIX,
+        timestamp: new Date(),
+        sheetContext: userMessageDto.sheetContext,
+      });
+
       // 데이터 컨텍스트 조회
       const dataContext = this.getDataContext(dto);
       
@@ -211,6 +223,10 @@ export class DataFixService {
       // 사용자 프롬프트 생성 (CSV 데이터 포함)
       const userPrompt = this.createUserPrompt(dto.userInput, dto);
 
+      // 이전 대화 기록 가져오기
+      const historyMessages = await this.chatHistoryCacheService.getMessagesForOpenAI(chatId);
+      this.logger.log(`가져온 대화 기록: ${historyMessages.length}개`);
+
       // ✅ 프롬프트 크기 체크 및 로깅
       const totalPromptSize = systemPrompt.length + userPrompt.length;
       this.logger.log(`총 프롬프트 크기: ${totalPromptSize} 문자`);
@@ -227,6 +243,7 @@ export class DataFixService {
         model: 'gpt-4o',
         messages: [
           { role: 'system', content: systemPrompt },
+          ...historyMessages,
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.2,
@@ -281,6 +298,17 @@ export class DataFixService {
 
       const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
       this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);
+
+      // AI 응답 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: aiMessageId,
+        content: aiMessageDto.content,
+        role: aiMessageDto.role,
+        mode: aiMessageDto.mode || MessageMode.DATA_FIX,
+        timestamp: new Date(),
+        sheetContext: aiMessageDto.sheetContext,
+        metadata: aiMessageDto.metadata,
+      });
 
       // === 5. 응답에 Firebase 정보 추가 ===
       const finalResult: DataFixResponseDto = {

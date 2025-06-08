@@ -6,6 +6,7 @@ import { GenerateArtifactDto, ArtifactResponseDto, ArtifactType } from './dto/ge
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 import { v4 as uuidv4 } from 'uuid';
+import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class ArtifactService {
@@ -15,6 +16,7 @@ export class ArtifactService {
   constructor(
     private configService: ConfigService,
     private firebaseService: FirebaseService,
+    private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
@@ -111,14 +113,29 @@ export class ArtifactService {
       };
       const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
 
+      // 사용자 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: userMessageId,
+        content: userMessageDto.content,
+        role: userMessageDto.role,
+        mode: userMessageDto.mode || MessageMode.ARTIFACT,
+        timestamp: new Date(),
+        sheetContext: userMessageDto.sheetContext,
+      });
+
       const artifactType = this.determineArtifactType(dto.userInput);
       const systemPrompt = this.createSystemPrompt(dto, artifactType);
       const userPrompt = this.createUserPrompt(dto.userInput, dto);
+
+      // 이전 대화 기록 가져오기
+      const historyMessages = await this.chatHistoryCacheService.getMessagesForOpenAI(chatId);
+      this.logger.log(`가져온 대화 기록: ${historyMessages.length}개`);
 
       const completion = await this.openai.chat.completions.create({
         model: 'gpt-4o', // 4o-mini 보다 4o가 더 안정적인 JSX 코드 생성
         messages: [
           { role: 'system', content: systemPrompt },
+          ...historyMessages,
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.1,
@@ -154,6 +171,17 @@ export class ArtifactService {
         },
       };
       const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
+
+      // AI 응답 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: aiMessageId,
+        content: aiMessageDto.content,
+        role: aiMessageDto.role,
+        mode: aiMessageDto.mode || MessageMode.ARTIFACT,
+        timestamp: new Date(),
+        sheetContext: aiMessageDto.sheetContext,
+        metadata: { artifactData: aiMessageDto.artifactData },
+      });
 
       // === 5. 분석 카운터 증가 및 메타데이터 업데이트 ===
       await this.firebaseService.incrementAnalyticsCounter(chatId, 'artifactCount');
@@ -464,7 +492,7 @@ const ComponentToRender = () => {
 
   // === AI 응답에서 데이터 분석 설명 추출 ===
   private extractExplanationFromResponse(response: string): string {
-    const parts = response.split(/``` /);
+    const parts = response.split(/```/);
     // 코드 블록 다음의 텍스트를 분석 결과로 간주
     const explanation = parts.length > 2 ? parts[2].trim() : (parts.length === 1 ? parts[0].trim() : '');
 

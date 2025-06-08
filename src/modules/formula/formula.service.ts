@@ -5,6 +5,7 @@ import { ProcessFormulaDto } from './dto/process-formula.dto';
 import { FormulaResponseDto } from './dto/formula-response.dto';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
+import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class FormulaService {
@@ -14,6 +15,7 @@ export class FormulaService {
   constructor(
     private configService: ConfigService,
     private firebaseService: FirebaseService,
+    private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
     const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     
@@ -206,6 +208,16 @@ export class FormulaService {
         userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
         this.logger.log(`✅ 사용자 메시지 Firebase 저장 성공: ${userMessageId}`);
         this.logger.log(`채팅 ID: ${chatId}, 메시지 ID: ${userMessageId}`);
+
+        // 사용자 메시지를 캐시에 추가
+        this.chatHistoryCacheService.addMessageToCache(chatId, {
+          id: userMessageId,
+          content: userMessageDto.content,
+          role: userMessageDto.role,
+          mode: userMessageDto.mode || MessageMode.FORMULA,
+          timestamp: new Date(),
+          sheetContext: userMessageDto.sheetContext,
+        });
       } catch (error) {
         this.logger.error(`❌ 사용자 메시지 Firebase 저장 실패:`, error);
         this.logger.error(`오류 타입: ${error.constructor.name}`);
@@ -224,11 +236,16 @@ export class FormulaService {
       const systemMessage = this.buildSystemMessage();
       const userMessage = this.buildUserMessage(processFormulaDto.userInput, contextString);
 
+      // 이전 대화 기록 가져오기
+      const historyMessages = await this.chatHistoryCacheService.getMessagesForOpenAI(chatId);
+      this.logger.log(`가져온 대화 기록: ${historyMessages.length}개`);
+
       // OpenAI API 호출
       const gptResponse = await this.openai.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemMessage },
+          ...historyMessages,
           { role: 'user', content: userMessage }
         ],
         max_tokens: 500,
@@ -291,6 +308,17 @@ export class FormulaService {
         aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
         this.logger.log(`✅ AI 응답 메시지 Firebase 저장 성공: ${aiMessageId}`);
         this.logger.log(`채팅 ID: ${chatId}, 메시지 ID: ${aiMessageId}`);
+
+        // AI 응답 메시지를 캐시에 추가
+        this.chatHistoryCacheService.addMessageToCache(chatId, {
+          id: aiMessageId,
+          content: aiMessageDto.content,
+          role: aiMessageDto.role,
+          mode: aiMessageDto.mode || MessageMode.FORMULA,
+          timestamp: new Date(),
+          sheetContext: aiMessageDto.sheetContext,
+          metadata: { formulaData: aiMessageDto.formulaData },
+        });
 
         // === 6. 분석 카운터 증가 ===
         try {

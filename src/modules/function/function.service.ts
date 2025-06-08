@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 import { ProcessFunctionDto, FunctionResponseDto, FunctionDetailsDto } from './dto/process-function.dto';
+import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 
 @Injectable()
 export class FunctionService {
@@ -13,6 +14,7 @@ export class FunctionService {
   constructor(
     private configService: ConfigService,
     private firebaseService: FirebaseService,
+    private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
     this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
@@ -51,13 +53,27 @@ export class FunctionService {
       const userMessageId = await this.firebaseService.createMessage(chatId, userMessageDto);
       this.logger.log(`사용자 메시지 저장: ${userMessageId}`);
 
+      // 사용자 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: userMessageId,
+        content: userMessageDto.content,
+        role: userMessageDto.role,
+        mode: userMessageDto.mode || MessageMode.FUNCTION,
+        timestamp: new Date(),
+      });
+
       const systemPrompt = this.createSystemPrompt();
       const userPrompt = this.createUserPrompt(dto);
+
+      // 이전 대화 기록 가져오기
+      const historyMessages = await this.chatHistoryCacheService.getMessagesForOpenAI(chatId);
+      this.logger.log(`가져온 대화 기록: ${historyMessages.length}개`);
 
       const completion = await this.openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [
           { role: 'system', content: systemPrompt },
+          ...historyMessages,
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.1,
@@ -83,6 +99,16 @@ export class FunctionService {
       };
       const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
       this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);
+
+      // AI 응답 메시지를 캐시에 추가
+      this.chatHistoryCacheService.addMessageToCache(chatId, {
+        id: aiMessageId,
+        content: aiMessageDto.content,
+        role: aiMessageDto.role,
+        mode: aiMessageDto.mode || MessageMode.FUNCTION,
+        timestamp: new Date(),
+        metadata: aiMessageDto.metadata,
+      });
 
       return {
         ...result,

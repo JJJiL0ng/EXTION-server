@@ -4,6 +4,7 @@ import { DataFixController } from './datafix.controller';
 import { DataFixService } from './datafix.service';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { SheetService } from '../../common/sheet/sheet.service';
+import { CacheModule } from '../../common/cache/cache.module';
 
 @Module({
   imports: [ConfigModule],
@@ -11,7 +12,8 @@ import { SheetService } from '../../common/sheet/sheet.service';
   providers: [
     DataFixService,
     FirebaseService,
-    SheetService
+    SheetService,
+    CacheModule
   ],
   exports: [DataFixService]
 })
