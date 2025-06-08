@@ -821,11 +821,7 @@ ${isMultiSheet ? `
       const updateDto: UpdateSheetDataDto = {
         spreadsheetId,
         sheetIndex,
-        data: {
-          headers: (result.editedData as any).headers,
-          rows: result.editedData.data,
-          rawData: result.editedData.data // rawData와 rows 동일하게 설정
-        },
+        data: result.editedData.data,
         // 기존 formulas와 computedData는 유지 (선택사항)
         formulas: undefined,
         computedData: undefined

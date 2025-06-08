@@ -69,7 +69,7 @@ export class ProcessDataDto {
 
   @IsString()
   @IsOptional()
-  spreadsheetId?: string;
+  spreadsheetId: string;
 }
 
 // 데이터 수정 결과 DTO

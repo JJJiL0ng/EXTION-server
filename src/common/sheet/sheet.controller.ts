@@ -28,7 +28,7 @@ import {
   @HttpCode(HttpStatus.CREATED)
   async saveSpreadsheet(@Body() saveData: any) {
     try {
-      const { chatId, userId, fileName, originalFileName, fileSize, fileType, sheets, activeSheetIndex = 0 } = saveData;
+      const { chatId, userId, fileName, originalFileName, fileSize, fileType, sheets, activeSheetIndex = 0, spreadsheetId } = saveData;
  
       // 필수 필드 검증
       if (!chatId || !userId) {
@@ -52,6 +52,7 @@ import {
  
       // CreateSpreadsheetDto 생성
       const createDto: CreateSpreadsheetDto = {
+        spreadsheetId,
         chatId,
         fileName,
         originalFileName,
@@ -60,8 +61,7 @@ import {
         sheets: sheets.map((sheet: any, index: number) => ({
           sheetName: sheet.sheetName || `Sheet${index + 1}`,
           sheetIndex: sheet.sheetIndex !== undefined ? sheet.sheetIndex : index,
-          headers: sheet.headers || [],
-          data: sheet.data || { headers: [], rows: [] },
+          data: sheet.data || [],
           computedData: sheet.computedData || undefined,
           formulas: sheet.formulas || undefined
         })),
@@ -330,12 +330,7 @@ import {
       const processedSheets = replaceData.sheets.map((sheet: any, index: number) => ({
         sheetName: sheet.sheetName || `Sheet${index + 1}`,
         sheetIndex: sheet.sheetIndex !== undefined ? sheet.sheetIndex : index,
-        headers: sheet.headers || [],
-        data: {
-          headers: sheet.headers || [],
-          rows: sheet.data?.rows || [],
-          rawData: sheet.data?.rawData || sheet.data?.rows || []
-        },
+        data: sheet.data || [],
         computedData: sheet.computedData || [],
         formulas: sheet.formulas || []
       }));
@@ -356,9 +351,7 @@ import {
           sheetId: sheetInfo.sheetId,
           sheetIndex: sheetInfo.sheetIndex,
           sheetName: sheetInfo.sheetName,
-          headers: sheetInfo.headers,
           rowCount: sheetInfo.rowCount,
-          columnCount: sheetInfo.headers?.length || 0,
           hasFormulas: Boolean(processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.formulas && 
                               processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.formulas.length > 0),
           hasComputedData: Boolean(processedSheets.find(s => s.sheetIndex === sheetInfo.sheetIndex)?.computedData && 

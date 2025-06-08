@@ -16,82 +16,117 @@ export class SheetService {
 
     constructor(private firebaseService: FirebaseService) { }
 
-    // === 스프레드시트 생성 및 저장 ===
+    // === 스프레드시트 생성 및 저장 (개선된 버전) ===
     async createSpreadsheet(userId: string, dto: CreateSpreadsheetDto): Promise<{
         spreadsheetId: string;
         sheets: Array<{
             sheetId: string;
             sheetIndex: number;
             sheetName: string;
-            headers: string[];
             rowCount: number;
         }>;
     }> {
         try {
-            const spreadsheetRef = this.firebaseService.firestore.collection('spreadsheets').doc();
-
+            const spreadsheetId = dto.spreadsheetId || this.firebaseService.firestore.collection('spreadsheets').doc().id;
+            const spreadsheetRef = this.firebaseService.firestore.collection('spreadsheets').doc(spreadsheetId);
+            const spreadsheetDoc = await spreadsheetRef.get();
+    
+            const isUpdate = spreadsheetDoc.exists;
+    
+            if (isUpdate) {
+                // 업데이트 시 소유권 확인
+                const existingData = spreadsheetDoc.data();
+                if (!existingData || existingData.userId !== userId) {
+                    throw new Error('스프레드시트 접근 권한이 없습니다.');
+                }
+                this.logger.log(`기존 스프레드시트 교체 시작: ${spreadsheetId}`);
+                // 기존 시트 데이터 삭제
+                await this.deleteAllSheetDataForReplace(spreadsheetId);
+            } else {
+                if (dto.spreadsheetId) {
+                    this.logger.log(`제공된 ID로 새 스프레드시트 생성: ${spreadsheetId}`);
+                } else {
+                    this.logger.log(`새 스프레드시트 생성 (자동 ID): ${spreadsheetId}`);
+                }
+            }
+    
             // 데이터 크기에 따른 저장 전략 결정
             const storageStrategy = await this.determineStorageStrategy(dto);
+    
+            // 실제 시트 데이터 저장
+            const sheetInfos = await this.saveSheetData(spreadsheetId, dto.sheets, storageStrategy);
+    
+            // 공통 메타데이터
+            const sheetMetadata = dto.sheets.map(sheet => ({
+                sheetName: sheet.sheetName,
+                sheetIndex: sheet.sheetIndex,
+                metadata: {
+                    rowCount: sheet.data?.length || 0,
+                    columnCount: sheet.data?.[0]?.length || 0,
+                    headerRow: 0,
+                    dataRange: this.calculateDataRange(sheet),
+                    hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
+                    lastModified: new Date(),
+                    chunkCount: Math.ceil((sheet.data?.length || 0) / this.CHUNK_SIZE),
+                    chunkSize: this.CHUNK_SIZE
+                }
+            }));
 
-            // 메타데이터만 저장 (실제 데이터는 제외)
-            const spreadsheetData = {
-                id: spreadsheetRef.id,
-                userId,
-                chatId: dto.chatId || null,
+            const commonData = {
                 fileName: dto.fileName,
                 originalFileName: dto.originalFileName,
                 fileSize: dto.fileSize,
                 fileType: dto.fileType,
-                sheets: dto.sheets.map(sheet => ({
-                    sheetName: sheet.sheetName,
-                    sheetIndex: sheet.sheetIndex,
-                    headers: sheet.headers || [],
-                    metadata: {
-                        rowCount: sheet.data?.rows?.length || 0,
-                        columnCount: sheet.headers?.length || 0,
-                        headerRow: 0,
-                        dataRange: this.calculateDataRange(sheet),
-                        hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
-                        lastModified: new Date(),
-                        // 청크 정보 추가
-                        chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / this.CHUNK_SIZE),
-                        chunkSize: this.CHUNK_SIZE
-                    }
-                    // 실제 데이터는 여기서 제외하고 별도 저장
-                })),
+                sheets: sheetMetadata,
                 activeSheetIndex: dto.activeSheetIndex || 0,
                 dataStorageType: storageStrategy.type,
                 dataPath: storageStrategy.path || null,
-                version: 1,
-                versionHistory: [{
-                    version: 1,
-                    timestamp: new Date(),
-                    changeDescription: '초기 생성',
-                    changedBy: 'user'
-                }],
-                permissions: {
-                    owner: userId,
-                    shared: []
-                },
-                createdAt: new Date(),
-                updatedAt: new Date()
+                updatedAt: new Date(),
+                chatId: dto.chatId || null,
             };
-
-            // 메타데이터 저장
-            await spreadsheetRef.set(spreadsheetData);
-
-            // 실제 시트 데이터 저장 (별도 컬렉션에)
-            const sheetInfos = await this.saveSheetData(spreadsheetRef.id, dto.sheets, storageStrategy);
-
-            this.logger.log(`스프레드시트 생성 완료: ${spreadsheetRef.id}`);
+    
+            if (isUpdate) {
+                // 문서 업데이트
+                await spreadsheetRef.update({
+                    ...commonData,
+                    version: this.firebaseService.FieldValue.increment(1),
+                    versionHistory: this.firebaseService.FieldValue.arrayUnion({
+                        version: Date.now(),
+                        timestamp: new Date(),
+                        changeDescription: '스프레드시트 교체 (save)',
+                        changedBy: 'user'
+                    }),
+                });
+            } else {
+                // 새 문서 생성
+                await spreadsheetRef.set({
+                    ...commonData,
+                    id: spreadsheetId,
+                    userId,
+                    version: 1,
+                    versionHistory: [{
+                        version: 1,
+                        timestamp: new Date(),
+                        changeDescription: '초기 생성',
+                        changedBy: 'user'
+                    }],
+                    permissions: {
+                        owner: userId,
+                        shared: []
+                    },
+                    createdAt: new Date(),
+                });
+            }
+    
+            this.logger.log(`스프레드시트 저장/교체 완료: ${spreadsheetId}`);
             
             return {
-                spreadsheetId: spreadsheetRef.id,
+                spreadsheetId,
                 sheets: sheetInfos
             };
-
+    
         } catch (error) {
-            this.logger.error('스프레드시트 생성 오류:', error);
+            this.logger.error('스프레드시트 생성/교체 오류:', error);
             throw error;
         }
     }
@@ -104,7 +139,7 @@ export class SheetService {
         const totalDataSize = this.calculateTotalDataSize(dto.sheets);
         
         // 청크 단위로 저장할 때의 예상 문서 수 계산
-        const totalRows = dto.sheets.reduce((sum, sheet) => sum + (sheet.data?.rows?.length || 0), 0);
+        const totalRows = dto.sheets.reduce((sum, sheet) => sum + (sheet.data?.length || 0), 0);
         const estimatedChunks = Math.ceil(totalRows / this.CHUNK_SIZE);
         
         // Firestore 한도 고려: 문서 크기 + 문서 수
@@ -145,14 +180,12 @@ export class SheetService {
         sheetId: string;
         sheetIndex: number;
         sheetName: string;
-        headers: string[];
         rowCount: number;
     }>> {
         const sheetInfos: Array<{
             sheetId: string;
             sheetIndex: number;
             sheetName: string;
-            headers: string[];
             rowCount: number;
         }> = [];
 
@@ -168,7 +201,6 @@ export class SheetService {
                 sheetIndex: sheet.sheetIndex,
                 sheetName: sheet.sheetName,
                 spreadsheetId,
-                headers: sheet.headers || [],
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 chatMetadata: {
@@ -189,16 +221,15 @@ export class SheetService {
                 });
 
                 // 행 데이터를 청크 단위로 저장
-                if (sheet.data?.rows && Array.isArray(sheet.data.rows)) {
-                    await this.saveSheetRowsInChunks(spreadsheetId, sheet.sheetIndex, sheet.data.rows);
+                if (sheet.data && Array.isArray(sheet.data)) {
+                    await this.saveSheetRowsInChunks(spreadsheetId, sheet.sheetIndex, sheet.data);
                 }
 
             } else {
                 // Cloud Storage나 암호화 저장
                 const storageData = {
-                    headers: sheet.headers || [],
-                    rows: sheet.data?.rows || [],
-                    rawData: sheet.data?.rawData || [],
+                    rows: sheet.data || [],
+                    rawData: sheet.data || [],
                     computedData: sheet.computedData || [],
                     formulas: sheet.formulas || []
                 };
@@ -237,8 +268,7 @@ export class SheetService {
                 sheetId: sheetRef.id,
                 sheetIndex: sheet.sheetIndex,
                 sheetName: sheet.sheetName,
-                headers: sheet.headers || [],
-                rowCount: sheet.data?.rows?.length || 0
+                rowCount: sheet.data?.length || 0
             });
         }
 
@@ -249,16 +279,11 @@ export class SheetService {
     private flattenSheetData(sheet: any): any {
         const result: any = {};
 
-        // 헤더 저장
-        if (sheet.headers && Array.isArray(sheet.headers)) {
-            result.headers = sheet.headers;
-        }
-
         // 행 데이터는 청크 단위로 별도 저장하므로 메타데이터만 저장
-        if (sheet.data?.rows && Array.isArray(sheet.data.rows)) {
-            result.rowCount = sheet.data.rows.length;
+        if (sheet.data && Array.isArray(sheet.data)) {
+            result.rowCount = sheet.data.length;
             result.hasData = true;
-            result.chunkCount = Math.ceil(sheet.data.rows.length / this.CHUNK_SIZE);
+            result.chunkCount = Math.ceil(sheet.data.length / this.CHUNK_SIZE);
             result.chunkSize = this.CHUNK_SIZE;
             // 실제 rows 데이터는 저장하지 않고 청크로 별도 저장
         } else {
@@ -382,8 +407,8 @@ export class SheetService {
     }
 
     private calculateDataRange(sheet: any) {
-        const rowCount = sheet.data?.rows?.length || 0;
-        const colCount = sheet.headers?.length || 0;
+        const rowCount = sheet.data?.length || 0;
+        const colCount = sheet.data?.[0]?.length || 0;
 
         return {
             startRow: 1,
@@ -423,7 +448,6 @@ export class SheetService {
             return {
                 sheetIndex,
                 sheetName: sheetData.sheetName,
-                headers: sheetData.headers || [],
                 rows: [],
                 rowCount: 0
             };
@@ -580,8 +604,8 @@ export class SheetService {
             await sheetRef.update(updateData);
 
             // 행 데이터 업데이트가 있는 경우
-            if (dto.data && dto.data.rows) {
-                await this.updateSheetRowsInChunks(dto.spreadsheetId, dto.sheetIndex, dto.data.rows);
+            if (dto.data && dto.data.length > 0) {
+                await this.updateSheetRowsInChunks(dto.spreadsheetId, dto.sheetIndex, dto.data);
             }
 
             // 버전 히스토리 업데이트
@@ -851,10 +875,8 @@ export class SheetService {
             sheetsWithData.push({
               sheetName: sheetMetadata.sheetName,
               sheetIndex: sheetMetadata.sheetIndex,
-              headers: sheetMetadata.headers,
               metadata: sheetMetadata.metadata,
               data: {
-                headers: sheetMetadata.headers,
                 rows: rows,
                 rawData: rows // rawData와 rows는 동일하게 처리
               },
@@ -868,7 +890,7 @@ export class SheetService {
           // 시트 데이터 로드 실패 시 메타데이터만 포함
           sheetsWithData.push({
             ...sheetMetadata,
-            data: { headers: sheetMetadata.headers, rows: [] },
+            data: { rows: [] },
             error: '시트 데이터 로드 실패'
           });
         }
@@ -1030,7 +1052,6 @@ export class SheetService {
         sheetId: string;
         sheetIndex: number;
         sheetName: string;
-        headers: string[];
         rowCount: number;
     }>> {
     try {
@@ -1120,15 +1141,14 @@ export class SheetService {
         sheets: newSheetsData.map((sheet: any, index: number) => ({
           sheetName: sheet.sheetName || `Sheet${index + 1}`,
           sheetIndex: sheet.sheetIndex !== undefined ? sheet.sheetIndex : index,
-          headers: sheet.headers || [],
           metadata: {
-            rowCount: sheet.data?.rows?.length || 0,
-            columnCount: sheet.headers?.length || 0,
+            rowCount: sheet.data?.length || 0,
+            columnCount: sheet.data?.[0]?.length || 0,
             headerRow: 0,
             dataRange: this.calculateDataRange(sheet),
             hasFormulas: Boolean(sheet.formulas && sheet.formulas.length > 0),
             lastModified: new Date(),
-            chunkCount: Math.ceil((sheet.data?.rows?.length || 0) / this.CHUNK_SIZE),
+            chunkCount: Math.ceil((sheet.data?.length || 0) / this.CHUNK_SIZE),
             chunkSize: this.CHUNK_SIZE
           }
         })),

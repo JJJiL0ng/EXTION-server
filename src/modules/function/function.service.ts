@@ -42,6 +42,13 @@ export class FunctionService {
           throw new BadRequestException('채팅 접근 권한이 없습니다.');
         }
         this.logger.log(`기존 채팅 사용: ${chatId}`);
+
+        // 기존 채팅에 spreadsheetId가 없고 새로 전달된 경우 업데이트
+        const newSpreadsheetId = dto.spreadsheetData?.spreadsheetId;
+        if (!existingChat.spreadsheetId && newSpreadsheetId) {
+          await this.firebaseService.updateChatSpreadsheetId(chatId, newSpreadsheetId);
+          this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${newSpreadsheetId}`);
+        }
       }
 
       const userMessageDto: CreateMessageDto = {
@@ -92,10 +99,7 @@ export class FunctionService {
         role: MessageRole.EXTION_AI,
         type: MessageType.FUNCTION,
         mode: MessageMode.FUNCTION,
-        metadata: {
-          success: result.success,
-          functionDetails: result.functionDetails
-        }
+        metadata: result
       };
       const aiMessageId = await this.firebaseService.createMessage(chatId, aiMessageDto);
       this.logger.log(`AI 응답 메시지 저장: ${aiMessageId}`);

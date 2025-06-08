@@ -31,9 +31,6 @@ export class ChunkOptionsDto {
 }
 
 export class SheetDataDto {
-  @IsArray()
-  @IsString({ each: true })
-  headers: string[];
 
   @IsArray()
   rows: string[][];
@@ -79,6 +76,10 @@ export class FormulaDto {
 export class CreateSpreadsheetDto {
   @IsOptional()
   @IsString()
+  spreadsheetId?: string;
+
+  @IsOptional()
+  @IsString()
   chatId?: string;
 
   @IsString()
@@ -107,8 +108,9 @@ export class CreateSpreadsheetDto {
   @Type(() => ChunkOptionsDto)
   chunkOptions?: ChunkOptionsDto;
 
+  @IsOptional()
   @IsEnum(DataStorageType)
-  dataStorageType: DataStorageType;
+  dataStorageType?: DataStorageType;
 
   @IsString()
   @IsOptional()
@@ -124,14 +126,7 @@ export class SheetDto {
 
   @IsOptional()
   @IsArray()
-  headers?: string[];
-
-  @IsOptional()
-  data?: {
-    headers?: string[];
-    rows?: string[][];
-    rawData?: string[][];
-  };
+  data?: string[][];
 
   @IsOptional()
   @IsArray()
@@ -150,11 +145,8 @@ export class UpdateSheetDataDto {
   sheetIndex: number;
 
   @IsOptional()
-  data?: {
-    headers?: string[];
-    rows?: string[][];
-    rawData?: string[][];
-  };
+  @IsArray()
+  data?: string[][];
 
   @IsOptional()
   @IsArray()
