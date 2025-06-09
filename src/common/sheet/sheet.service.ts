@@ -28,6 +28,7 @@ export class SheetService {
     }> {
         try {
             const spreadsheetId = dto.spreadsheetId || this.firebaseService.firestore.collection('spreadsheets').doc().id;
+            const chatId = dto.chatId || this.firebaseService.firestore.collection('chats').doc().id;
             const spreadsheetRef = this.firebaseService.firestore.collection('spreadsheets').doc(spreadsheetId);
             const spreadsheetDoc = await spreadsheetRef.get();
     
@@ -51,7 +52,7 @@ export class SheetService {
             }
     
             // 데이터 크기에 따른 저장 전략 결정
-            const storageStrategy = await this.determineStorageStrategy(dto);
+            const storageStrategy = await this.determineStorageStrategy(dto, chatId);
     
             // 실제 시트 데이터 저장
             const sheetInfos = await this.saveSheetData(spreadsheetId, dto.sheets, storageStrategy);
@@ -82,7 +83,7 @@ export class SheetService {
                 dataStorageType: storageStrategy.type,
                 dataPath: storageStrategy.path || null,
                 updatedAt: new Date(),
-                chatId: dto.chatId || null,
+                chatId: chatId,
             };
     
             if (isUpdate) {
@@ -132,7 +133,7 @@ export class SheetService {
     }
 
     // === 데이터 크기에 따른 저장 전략 결정 (개선) ===
-    private async determineStorageStrategy(dto: CreateSpreadsheetDto): Promise<{
+    private async determineStorageStrategy(dto: CreateSpreadsheetDto, chatId: string): Promise<{
         type: DataStorageType;
         path?: string;
     }> {
@@ -148,12 +149,12 @@ export class SheetService {
         } else if (totalDataSize < 10 * 1024 * 1024) { // 10MB 미만
             return {
                 type: DataStorageType.CLOUD_STORAGE,
-                path: `spreadsheets/${dto.chatId}/${Date.now()}.json`
+                path: `spreadsheets/${chatId}/${Date.now()}.json`
             };
         } else {
             return {
                 type: DataStorageType.ENCRYPTED,
-                path: `spreadsheets/${dto.chatId}/${Date.now()}.encrypted`
+                path: `spreadsheets/${chatId}/${Date.now()}.encrypted`
             };
         }
     }

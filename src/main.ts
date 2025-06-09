@@ -15,16 +15,18 @@ async function bootstrap() {
  app.use(express.json({ limit: '10mb' }));
  app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+ const corsOrigins = [
+   'http://localhost:3000',
+   'https://docs.google.com',
+   'https://*.googleusercontent.com',
+   'https://extion-server.railway.internal',
+   'https://extion-beta.vercel.app',
+   'https://extion.co',
+ ];
+
  // CORS 설정
  app.enableCors({
-   origin: [
-     'http://localhost:3000',
-     'https://docs.google.com',
-     'https://*.googleusercontent.com',
-     'https://extion-server.railway.internal',
-     'https://extion-beta.vercel.app',
-     'https://extion.co'
-   ],
+   origin: corsOrigins,
    credentials: true,
    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
    allowedHeaders: ['Content-Type', 'Authorization'],
@@ -51,7 +53,7 @@ async function bootstrap() {
    logger.log(`🚀 Extion Server is running on port ${port}`);
  } else {
    logger.log(`🚀 Extion Server is running on port ${port} (${process.env.NODE_ENV || 'development'} mode)`);
-   logger.debug(`CORS origins: ${JSON.stringify(app.get('cors').origin)}`);
+   logger.debug(`CORS origins: ${JSON.stringify(corsOrigins)}`);
  }
 }
 
