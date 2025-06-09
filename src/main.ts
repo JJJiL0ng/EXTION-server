@@ -22,7 +22,8 @@ async function bootstrap() {
      'https://docs.google.com',
      'https://*.googleusercontent.com',
      'https://extion-server.railway.internal',
-     'https://extion-beta.vercel.app'
+     'https://extion-beta.vercel.app',
+     'https://extion.co'
    ],
    credentials: true,
    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
