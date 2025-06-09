@@ -31,8 +31,8 @@ import {
       const { chatId, userId, fileName, originalFileName, fileSize, fileType, sheets, activeSheetIndex = 0, spreadsheetId } = saveData;
  
       // 필수 필드 검증
-      if (!chatId || !userId) {
-        throw new BadRequestException('chatId와 userId는 필수입니다.');
+      if (!userId) {
+        throw new BadRequestException('userId는 필수입니다.');
       }
  
       if (!fileName || !originalFileName) {
@@ -78,7 +78,7 @@ import {
         success: true,
         message: '스프레드시트가 성공적으로 저장되었습니다.',
         spreadsheetId: result.spreadsheetId,
-        chatId: createDto.chatId,
+        chatId: result.chatId,
         fileName: createDto.fileName,
         sheets: result.sheets
       };

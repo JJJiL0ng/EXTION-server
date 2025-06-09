@@ -19,6 +19,7 @@ export class SheetService {
     // === 스프레드시트 생성 및 저장 (개선된 버전) ===
     async createSpreadsheet(userId: string, dto: CreateSpreadsheetDto): Promise<{
         spreadsheetId: string;
+        chatId: string;
         sheets: Array<{
             sheetId: string;
             sheetIndex: number;
@@ -123,6 +124,7 @@ export class SheetService {
             
             return {
                 spreadsheetId,
+                chatId,
                 sheets: sheetInfos
             };
     
