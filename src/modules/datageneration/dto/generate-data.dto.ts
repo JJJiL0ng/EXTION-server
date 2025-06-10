@@ -221,8 +221,8 @@ export class GenerateDataDto {
 
   // ✅ 채팅 관련 필드 추가
   @IsString()
-  @IsNotEmpty()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 
   @IsString()
   @IsOptional()

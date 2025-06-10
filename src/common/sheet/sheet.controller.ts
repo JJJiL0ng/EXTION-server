@@ -31,10 +31,6 @@ import {
       const { chatId, userId, fileName, originalFileName, fileSize, fileType, sheets, activeSheetIndex = 0, spreadsheetId } = saveData;
  
       // 필수 필드 검증
-      if (!userId) {
-        throw new BadRequestException('userId는 필수입니다.');
-      }
- 
       if (!fileName || !originalFileName) {
         throw new BadRequestException('fileName과 originalFileName은 필수입니다.');
       }

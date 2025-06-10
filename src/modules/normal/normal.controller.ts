@@ -54,11 +54,6 @@ export class NormalChatController {
     }
 
     // 필수 필드 검증
-    if (!normalChatDto.userId) {
-      this.logger.error('Missing required field: userId');
-      throw new BadRequestException('사용자 ID가 필요합니다.');
-    }
-
     if (!normalChatDto.userInput?.trim()) {
       this.logger.error('Missing or empty userInput');
       throw new BadRequestException('사용자 입력이 필요합니다.');

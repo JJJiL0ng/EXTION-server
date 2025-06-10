@@ -55,12 +55,12 @@ export class GenerateArtifactDto {
   userInput: string;
 
   @IsString()
-  @IsNotEmpty()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 
   @IsString()
-  @IsNotEmpty()
-  chatId: string;
+  @IsOptional()
+  chatId?: string;
 
   // 클라이언트에서 항상 spreadsheetData 객체를 보내므로 IsOptional을 제거합니다.
   @ValidateNested()

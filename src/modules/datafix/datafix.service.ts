@@ -5,6 +5,7 @@ import { FirebaseService } from '../../common/firebase/firebase.service';
 import { SheetService } from '../../common/sheet/sheet.service';
 import { UpdateSheetDataDto } from '../../common/sheet/dto/spreadsheet.dto';
 import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
+import { v4 as uuidv4 } from 'uuid';
 import { 
   ProcessDataDto, 
   DataFixResponseDto, 
@@ -44,7 +45,7 @@ export class DataFixService {
       if (!chatId) {
         // chatId가 전혀 없는 경우 - 새 채팅 생성
         const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
-        chatId = await this.firebaseService.createChat(dto.userId!, { 
+        chatId = await this.firebaseService.createChat(dto.userId || `guest_${uuidv4()}`, { 
           title: chatTitle,
           spreadsheetId: dto.spreadsheetId || dto.spreadsheetData?.spreadsheetId // 스프레드시트 ID 포함
         });
@@ -66,7 +67,7 @@ export class DataFixService {
           const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
 
           // 프론트엔드가 제공한 chatId를 사용하여 채팅 생성
-          await this.firebaseService.createChatWithId(dto.userId!, chatId, { 
+          await this.firebaseService.createChatWithId(dto.userId || `guest_${uuidv4()}`, chatId, { 
             title: chatTitle,
             spreadsheetId: dto.spreadsheetId || dto.spreadsheetData?.spreadsheetId // 스프레드시트 ID 포함
           });
@@ -76,8 +77,16 @@ export class DataFixService {
           this.logger.log(`✅ 특정 ID 채팅 spreadsheetId 저장 확인: ${createdChatWithId?.spreadsheetId || '없음'}`);
         } else {
           // 기존 채팅 소유권 확인
-          if (existingChat.userId !== dto.userId) {
-            throw new BadRequestException('채팅 접근 권한이 없습니다.');
+          if (dto.userId) {
+            // 로그인한 사용자는 자신의 채팅에만 접근할 수 있습니다.
+            if (existingChat.userId !== dto.userId) {
+              throw new BadRequestException('채팅 접근 권한이 없습니다.');
+            }
+          } else {
+            // 비로그인 사용자는 게스트 채팅에만 접근할 수 있습니다.
+            if (!existingChat.userId.startsWith('guest_')) {
+              throw new BadRequestException('로그인이 필요한 채팅입니다.');
+            }
           }
           this.logger.log(`기존 채팅 사용: ${chatId}`);
           

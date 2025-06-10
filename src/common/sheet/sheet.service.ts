@@ -17,7 +17,7 @@ export class SheetService {
     constructor(private firebaseService: FirebaseService) { }
 
     // === 스프레드시트 생성 및 저장 (개선된 버전) ===
-    async createSpreadsheet(userId: string, dto: CreateSpreadsheetDto): Promise<{
+    async createSpreadsheet(userId: string | undefined, dto: CreateSpreadsheetDto): Promise<{
         spreadsheetId: string;
         chatId: string;
         sheets: Array<{
@@ -101,19 +101,20 @@ export class SheetService {
                 });
             } else {
                 // 새 문서 생성
+                const finalUserId = userId || `guest_${this.firebaseService.firestore.collection('users').doc().id}`;
                 await spreadsheetRef.set({
                     ...commonData,
                     id: spreadsheetId,
-                    userId,
+                    userId: finalUserId,
                     version: 1,
                     versionHistory: [{
                         version: 1,
                         timestamp: new Date(),
                         changeDescription: '초기 생성',
-                        changedBy: 'user'
+                        changedBy: userId ? 'user' : 'guest'
                     }],
                     permissions: {
-                        owner: userId,
+                        owner: finalUserId,
                         shared: []
                     },
                     createdAt: new Date(),

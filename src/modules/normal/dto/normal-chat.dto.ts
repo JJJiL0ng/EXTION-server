@@ -41,7 +41,8 @@ export class NormalChatDto {
   userInput: string;
 
   @IsString()
-  userId: string;
+  @IsOptional()
+  userId?: string;
 
   @IsString()
   @IsOptional()

@@ -5,6 +5,7 @@ import { FirebaseService } from '../../common/firebase/firebase.service';
 import { CreateMessageDto, MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 import { ProcessFunctionDto, FunctionResponseDto, FunctionDetailsDto } from './dto/process-function.dto';
 import { ChatHistoryCacheService } from '../../common/cache/cache.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class FunctionService {
@@ -28,7 +29,7 @@ export class FunctionService {
 
       if (!chatId) {
         const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
-        chatId = await this.firebaseService.createChat(dto.userId!, { 
+        chatId = await this.firebaseService.createChat(dto.userId || `guest_${uuidv4()}`, { 
           title: chatTitle,
           spreadsheetId: dto.spreadsheetData?.spreadsheetId
         });
@@ -36,18 +37,33 @@ export class FunctionService {
       } else {
         const existingChat = await this.firebaseService.getChat(chatId);
         if (!existingChat) {
-          throw new BadRequestException(`Chat with ID ${chatId} not found.`);
-        }
-        if (existingChat.userId !== dto.userId) {
-          throw new BadRequestException('채팅 접근 권한이 없습니다.');
-        }
-        this.logger.log(`기존 채팅 사용: ${chatId}`);
+          const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
+          await this.firebaseService.createChatWithId(dto.userId || `guest_${uuidv4()}`, chatId, {
+            title: chatTitle,
+            spreadsheetId: dto.spreadsheetData?.spreadsheetId
+          });
+          this.logger.log(`Firebase에 채팅이 없어서 새로 생성: ${chatId}`);
+        } else {
+          // 기존 채팅 소유권 확인
+          if (dto.userId) {
+            // 로그인한 사용자는 자신의 채팅에만 접근할 수 있습니다.
+            if (existingChat.userId !== dto.userId) {
+              throw new BadRequestException('채팅 접근 권한이 없습니다.');
+            }
+          } else {
+            // 비로그인 사용자는 게스트 채팅에만 접근할 수 있습니다.
+            if (!existingChat.userId.startsWith('guest_')) {
+              throw new BadRequestException('로그인이 필요한 채팅입니다.');
+            }
+          }
+          this.logger.log(`기존 채팅 사용: ${chatId}`);
 
-        // 기존 채팅에 spreadsheetId가 없고 새로 전달된 경우 업데이트
-        const newSpreadsheetId = dto.spreadsheetData?.spreadsheetId;
-        if (!existingChat.spreadsheetId && newSpreadsheetId) {
-          await this.firebaseService.updateChatSpreadsheetId(chatId, newSpreadsheetId);
-          this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${newSpreadsheetId}`);
+          // 기존 채팅에 spreadsheetId가 없고 새로 전달된 경우 업데이트
+          const newSpreadsheetId = dto.spreadsheetData?.spreadsheetId;
+          if (!existingChat.spreadsheetId && newSpreadsheetId) {
+            await this.firebaseService.updateChatSpreadsheetId(chatId, newSpreadsheetId);
+            this.logger.log(`기존 채팅에 스프레드시트 ID 연결: ${newSpreadsheetId}`);
+          }
         }
       }
 

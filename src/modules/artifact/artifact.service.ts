@@ -35,7 +35,7 @@ export class ArtifactService {
 
       if (!chatId) {
         const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
-        chatId = await this.firebaseService.createChat(dto.userId, {
+        chatId = await this.firebaseService.createChat(dto.userId || `guest_${uuidv4()}`, {
           title: chatTitle,
           spreadsheetId: dto.spreadsheetData?.spreadsheetId
         });
@@ -44,14 +44,23 @@ export class ArtifactService {
         const existingChat = await this.firebaseService.getChat(chatId);
         if (!existingChat) {
           const chatTitle = dto.chatTitle || this.generateChatTitle(dto.userInput);
-          await this.firebaseService.createChatWithId(dto.userId, chatId, {
+          await this.firebaseService.createChatWithId(dto.userId || `guest_${uuidv4()}`, chatId, {
             title: chatTitle,
             spreadsheetId: dto.spreadsheetData?.spreadsheetId
           });
           this.logger.log(`Firebase에 채팅이 없어서 새로 생성: ${chatId}`);
         } else {
-          if (existingChat.userId !== dto.userId) {
-            throw new BadRequestException('채팅 접근 권한이 없습니다.');
+          // 기존 채팅 소유권 확인
+          if (dto.userId) {
+            // 로그인한 사용자는 자신의 채팅에만 접근할 수 있습니다.
+            if (existingChat.userId !== dto.userId) {
+              throw new BadRequestException('채팅 접근 권한이 없습니다.');
+            }
+          } else {
+            // 비로그인 사용자는 게스트 채팅에만 접근할 수 있습니다.
+            if (!existingChat.userId.startsWith('guest_')) {
+              throw new BadRequestException('로그인이 필요한 채팅입니다.');
+            }
           }
           this.logger.log(`기존 채팅 사용: ${chatId}`);
           if (!existingChat.spreadsheetId && dto.spreadsheetData?.spreadsheetId) {
@@ -264,9 +273,8 @@ export class ArtifactService {
 
   // === 시스템 프롬프트 생성 (JSX 기반) ===
   // === 시스템 프롬프트 업데이트 (GPT가 데이터를 직접 처리하도록) ===
-  // === 시스템 프롬프트 업데이트 (GPT가 데이터를 직접 처리하도록) ===
-private createSystemPrompt(dto: GenerateArtifactDto, artifactType: ArtifactType): string {
-  return `당신은 React와 Recharts를 사용하여 모던하고 전문적인 데이터 대시보드를 생성하는 AI 전문가입니다. 사용자의 요청과 제공된 CSV 데이터를 기반으로, 하나의 독립적인 React 컴포넌트를 생성해야 합니다.
+  private createSystemPrompt(dto: GenerateArtifactDto, artifactType: ArtifactType): string {
+    return `당신은 React와 Recharts를 사용하여 모던하고 전문적인 데이터 대시보드를 생성하는 AI 전문가입니다. 사용자의 요청과 제공된 CSV 데이터를 기반으로, 하나의 독립적인 React 컴포넌트를 생성해야 합니다.
 
 ## 🚨 중요 규칙 (반드시 준수):
 1. **하나의 완성된 React 함수 컴포넌트**를 생성하세요. 컴포넌트 이름은 "ComponentToRender"로 지정하세요.
@@ -384,24 +392,40 @@ const ComponentToRender = () => {
 - ${artifactType === ArtifactType.TABLE ? '데이터를 깔끔한 테이블 형태로 보여주고 정렬, 필터링 기능을 추가하세요.' : ''}
 - ${artifactType === ArtifactType.ANALYSIS ? '데이터에 대한 깊이 있는 분석과 인사이트를 제공하세요.' : ''}
 
-## 📊 데이터 분석 결과 제공:
-코드 블록 다음에, 반드시 다음 형식에 맞춰 **한국어**로 데이터 분석 결과를 상세히 제공하세요.
-\`\`\`text
-### 데이터 분석 결과
+## 사용자 요청 중심의 데이터 분석 결과 제공:
+코드 블록 다음에, 반드시 다음 형식에 맞춰 사용자의 요청에 대한 답변 형태로 한국어로 데이터 분석 결과를 상세히 제공하세요.
+중요: 코드나 기술적 구현에 대한 설명이 아닌, 순수하게 데이터 분석 관점에서 사용자가 궁금해하는 내용에 대한 답변을 작성하세요.
 
-#### 1. 주요 지표
-- **총 데이터 건수**: [숫자]
-- **핵심 통계**: [평균, 총합, 최빈값 등]
+"${dto.userInput}"에 대한 분석 결과
 
-#### 2. 핵심 인사이트
-- [발견한 중요한 패턴이나 특징]
-- [주목할만한 데이터 포인트]
+핵심 발견사항:
+- [사용자 요청과 직접 관련된 주요 발견사항]
+- [데이터에서 나타나는 중요한 패턴이나 특징]
+- [주목할만한 수치나 변화 추이]
 
-#### 3. 제안
-- [분석 결과 기반 추천사항]
-\`\`\`
+상세 분석:
+- [분석 포인트 1]: [구체적인 분석 내용과 수치]
+- [분석 포인트 2]: [비교 분석이나 변화율 등]
+- [분석 포인트 3]: [예외사항이나 특이점]
+
+인사이트 및 시사점:
+- [분석 결과로부터 도출되는 인사이트]
+- [비즈니스나 의사결정에 도움이 되는 시사점]
+- [향후 모니터링이 필요한 지표나 추세]
+
+실행 가능한 제안:
+- [분석 결과를 바탕으로 한 구체적인 액션 아이템]
+- [개선 방향이나 최적화 포인트]
+- [추가로 수집하거나 분석하면 좋을 데이터]
+
+분석 작성 가이드라인:
+1. 사용자의 구체적인 질문이나 요청에 직접적으로 답변하세요
+2. 데이터에서 실제로 관찰되는 내용만 언급하세요  
+3. 구체적인 수치와 비율을 포함하여 설득력 있게 작성하세요
+4. 코드 구현이나 기술적 내용은 언급하지 마세요
+5. 비즈니스 관점에서 실용적인 인사이트를 제공하세요
 `;
-}
+  }
 
   // === 사용자 프롬프트 생성 (Raw 데이터 포함) ===
   private createUserPrompt(userInput: string, dto: GenerateArtifactDto): string {
@@ -478,17 +502,17 @@ const ComponentToRender = () => {
 
     // 탭으로 구분된 형식으로 변환 (CSV보다 읽기 쉬움)
     const formattedString = displayRows.map((row, index) => {
-        const rowData = row.map(cell => cell || '').join('\t');
-        return `${index + 1}: ${ rowData }`;
+      const rowData = row.map(cell => cell || '').join('\t');
+      return `${index + 1}: ${rowData}`;
     }).join('\n');
-  
-  // 데이터가 잘렸다면 알림 추가
-  if (rows.length > maxRows) {
-    return formattedString + `\n... (총 ${ rows.length }행 중 처음 ${ maxRows }행만 표시)`;
+
+    // 데이터가 잘렸다면 알림 추가
+    if (rows.length > maxRows) {
+      return formattedString + `\n... (총 ${rows.length}행 중 처음 ${maxRows}행만 표시)`;
+    }
+
+    return formattedString;
   }
-  
-  return formattedString;
-}
 
   // === AI 응답에서 데이터 분석 설명 추출 ===
   private extractExplanationFromResponse(response: string): string {
