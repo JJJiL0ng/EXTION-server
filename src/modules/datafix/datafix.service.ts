@@ -249,7 +249,7 @@ export class DataFixService {
 
       // OpenAI API 호출
       const completion = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-3.7-sonnet-20250219',
         system: systemPrompt,
         messages: [
           ...historyMessages,
