@@ -1,7 +1,8 @@
 // src/modules/normalchat/normalchat.service.ts - 수정된 서비스
 import { Injectable, Logger, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+// import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { NormalChatDto, NormalChatResponseDto } from './dto/normal-chat.dto';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { SheetService } from '../../common/sheet/sheet.service';
@@ -12,7 +13,8 @@ import { ChatHistoryCacheService } from '../../common/cache/cache.service';
 @Injectable()
 export class NormalChatService {
   private readonly logger = new Logger(NormalChatService.name);
-  private readonly openai: OpenAI;
+  // private readonly openai: OpenAI;
+  private readonly anthropic: Anthropic;
 
   constructor(
     private configService: ConfigService,
@@ -20,8 +22,11 @@ export class NormalChatService {
     private sheetService: SheetService,
     private chatHistoryCacheService: ChatHistoryCacheService,
   ) {
-    this.openai = new OpenAI({
+    /* this.openai = new OpenAI({
       apiKey: this.configService.get('OPENAI_API_KEY'),
+    }); */
+    this.anthropic = new Anthropic({
+      apiKey: this.configService.get('CLAUDE_API_KEY'),
     });
   }
 
@@ -294,7 +299,7 @@ export class NormalChatService {
     }
 
     // OpenAI API 호출
-    const completion = await this.openai.chat.completions.create({
+    /* const completion = await this.openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
@@ -305,7 +310,21 @@ export class NormalChatService {
       max_tokens: 10000,
     });
 
-    const aiResponse = completion.choices[0]?.message?.content;
+    const aiResponse = completion.choices[0]?.message?.content; */
+    
+    const completion = await this.anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      system: systemPrompt,
+      messages: [
+        ...historyMessages,
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 8192,
+    });
+
+    const firstBlock = completion.content[0];
+    const aiResponse = firstBlock?.type === 'text' ? firstBlock.text : null;
 
     if (!aiResponse) {
       throw new InternalServerErrorException('AI 응답을 받을 수 없습니다.');
