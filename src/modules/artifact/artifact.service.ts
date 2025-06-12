@@ -158,7 +158,7 @@ export class ArtifactService {
 
       const aiResponse = completion.choices[0]?.message?.content; */
       const completion = await this.anthropic.messages.create({
-        model: 'claude-sonnet-3.7-20250219',
+        model: 'claude-sonnet-4-20250514',
         system: systemPrompt,
         messages: [
           ...historyMessages,
