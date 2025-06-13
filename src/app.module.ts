@@ -11,6 +11,7 @@ import { FirebaseModule } from './common/firebase/firebase.module';
 import { SheetModule } from './common/sheet/sheet.module';
 import { FunctionModule } from './modules/function/function.module';
 import { CacheModule } from './common/cache/cache.module';
+import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { CacheModule } from './common/cache/cache.module';
     SheetModule,
     FunctionModule,
     CacheModule,
+    DatabaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],
