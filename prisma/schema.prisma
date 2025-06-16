@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  displayName   String
+  photoURL      String?
+  isGuest       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  lastActiveAt  DateTime  @updatedAt
+  preferences   Json?     // entspricht FirebaseUser.preferences
+  statistics    Json?     // entspricht FirebaseUser.statistics
+
+  chats         Chat[]
+  sheetMetaData SheetMetaData[]
+}
+
+model SheetMetaData {
+  id               String   @id @default(cuid())
+  fileName         String
+  originalFileName String?
+  fileSize         Int?
+  fileType         String?
+  activeSheetIndex Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  sheetTableData SheetTableData[]
+  chats          Chat[]
+}
+
+model SheetTableData {
+  id            String   @id @default(cuid())
+  name          String
+  index         Int
+  data          Json // Storing string[][]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sheetMetaData   SheetMetaData @relation(fields: [sheetMetaDataId], references: [id], onDelete: Cascade)
+  sheetMetaDataId String
+
+  @@unique([sheetMetaDataId, index])
+  @@unique([sheetMetaDataId, name])
+}
+
+model Chat {
+  id           String     @id @default(cuid())
+  title        String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  messageCount Int        @default(0)
+  status       ChatStatus @default(ACTIVE)
+  analytics    Json?
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  sheetMetaData   SheetMetaData? @relation(fields: [sheetMetaDataId], references: [id], onDelete: SetNull)
+  sheetMetaDataId String?
+
+  messages Message[]
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  content        String      @db.Text
+  timestamp      DateTime    @default(now())
+  role           MessageRole
+  type           MessageType
+  mode           MessageMode?
+  sheetContext   Json?       // entspricht FirebaseMessage.sheetContext
+  formulaData    Json?       // entspricht FirebaseMessage.formulaData
+  artifactData   Json?       // entspricht FirebaseMessage.artifactData
+  dataChangeInfo Json?       // entspricht FirebaseMessage.dataChangeInfo
+  fileUploadInfo Json?       // entspricht FirebaseMessage.fileUploadInfo
+
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  chatId String
+}
+
+enum ChatStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum MessageRole {
+  USER
+  EXTION_AI
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  FILE_UPLOAD
+  FORMULA
+  ARTIFACT
+  DATA_GENERATION
+  DATA_FIX
+  FUNCTION
+}
+
+enum MessageMode {
+  NORMAL
+  FORMULA
+  ARTIFACT
+  DATAGENERATION
+  DATAFIX
+  FUNCTION
+}

@@ -12,6 +12,7 @@ import { SheetModule } from './common/sheet/sheet.module';
 import { FunctionModule } from './modules/function/function.module';
 import { CacheModule } from './common/cache/cache.module';
 import { DatabaseModule } from './database/database.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { DatabaseModule } from './database/database.module';
     FunctionModule,
     CacheModule,
     DatabaseModule,
+    PrismaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
