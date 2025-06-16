@@ -50,9 +50,9 @@ async function bootstrap() {
  // 환경별 로그 출력
  const logger = new Logger('Bootstrap');
  if (process.env.NODE_ENV === 'production') {
-   logger.log(`🚀 Extion Server is running on port ${port}`);
+   logger.log(`🚀 Extion ai Server is running on port ${port}`);
  } else {
-   logger.log(`🚀 Extion Server is running on port ${port} (${process.env.NODE_ENV || 'development'} mode)`);
+   logger.log(`🚀 Extion ai Server is running on port ${port} (${process.env.NODE_ENV || 'development'} mode)`);
    logger.debug(`CORS origins: ${JSON.stringify(corsOrigins)}`);
  }
 }
