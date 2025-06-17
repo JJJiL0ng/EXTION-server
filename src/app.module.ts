@@ -22,6 +22,8 @@ import { VisualizationGenerateChatModule } from './chat-modules/visualization-ge
 import { AnalyzeUserIntentModule } from './chat-modules/analyze-user-intent/analyze-user-intent.module';
 import { GeminiApiModule } from './chat-modules/gemini-api/gemini-api.module';
 import { SpreadsheetModule } from './sheet-modules/spreadsheet/spreadsheet.module';
+import { SheetLoadModule } from './sheet-modules/sheet-load/sheet-load.module';
+import { AuthModule } from './auth-modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -49,6 +51,8 @@ import { SpreadsheetModule } from './sheet-modules/spreadsheet/spreadsheet.modul
     AnalyzeUserIntentModule,
     GeminiApiModule,
     SpreadsheetModule,
+    SheetLoadModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -18,6 +18,30 @@ export class SpreadsheetService {
       sheets,
     } = dto;
 
+    // 사용자 존재 여부 확인
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new Error(`사용자 ID ${userId}를 찾을 수 없습니다.`);
+    }
+
+    // chatId가 제공된 경우 채팅 존재 여부 확인
+    let existingChatId = chatId;
+    if (chatId) {
+      const chat = await this.prisma.chat.findFirst({
+        where: { 
+          id: chatId, 
+          userId: userId 
+        },
+      });
+
+      if (!chat) {
+        throw new Error(`채팅 ID ${chatId}를 찾을 수 없거나 사용자 권한이 없습니다.`);
+      }
+    }
+
     return this.prisma.$transaction(async (tx) => {
       // 1. 시트 메타데이터 생성
       const sheetMetaData = await tx.sheetMetaData.create({
@@ -48,10 +72,33 @@ export class SpreadsheetService {
         });
       }
 
-      // 4. chatId가 제공된 경우, 채팅과 시트 메타데이터 연결
-      if (chatId) {
+      // 4. chatId가 없는 경우 새로운 채팅 생성
+      if (!existingChatId) {
+        const today = new Date().toLocaleDateString('ko-KR', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).replace(/\./g, '').replace(/\s/g, '');
+        
+        const chatTitle = `${fileName} ${today}`;
+        
+        const newChat = await tx.chat.create({
+          data: {
+            title: chatTitle,
+            user: {
+              connect: { id: userId },
+            },
+            sheetMetaData: {
+              connect: { id: sheetMetaData.id },
+            },
+          },
+        });
+        
+        existingChatId = newChat.id;
+      } else {
+        // 5. chatId가 제공된 경우, 채팅과 시트 메타데이터 연결
         await tx.chat.update({
-          where: { id: chatId, userId: userId },
+          where: { id: existingChatId, userId: userId },
           data: {
             sheetMetaData: {
               connect: { id: sheetMetaData.id },
@@ -62,6 +109,7 @@ export class SpreadsheetService {
 
       return {
         ...sheetMetaData,
+        chatId: existingChatId,
         sheets: sheets.map((s) => ({
           name: s.name,
           index: s.index,
@@ -69,5 +117,27 @@ export class SpreadsheetService {
         })),
       };
     });
+  }
+
+  async getSpreadsheet(sheetId: string) {
+    const sheetMetaData = await this.prisma.sheetMetaData.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheetMetaData) {
+      return null;
+    }
+
+    const sheets = await this.prisma.sheetTableData.findMany({
+      where: { sheetMetaDataId: sheetId },
+      orderBy: {
+        index: 'asc',
+      },
+    });
+
+    return {
+      ...sheetMetaData,
+      sheets,
+    };
   }
 }
