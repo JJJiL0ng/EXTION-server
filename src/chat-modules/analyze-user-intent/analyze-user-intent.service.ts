@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GeminiApiService } from '../../common/gemini-api/gemini-api.service';
+import { GeminiApiService } from '../gemini-api/gemini-api.service';
 import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';

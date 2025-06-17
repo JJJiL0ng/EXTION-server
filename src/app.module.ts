@@ -20,7 +20,8 @@ import { DataEditChatModule } from './chat-modules/data-edit-chat/data-edit-chat
 import { DataGenerateChatModule } from './chat-modules/data-generate-chat/data-generate-chat.module';
 import { VisualizationGenerateChatModule } from './chat-modules/visualization-generate-chat/visualization-generate-chat.module';
 import { AnalyzeUserIntentModule } from './chat-modules/analyze-user-intent/analyze-user-intent.module';
-import { GeminiApiModule } from './common/gemini-api/gemini-api.module';
+import { GeminiApiModule } from './chat-modules/gemini-api/gemini-api.module';
+import { SpreadsheetModule } from './sheet-modules/spreadsheet/spreadsheet.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { GeminiApiModule } from './common/gemini-api/gemini-api.module';
     VisualizationGenerateChatModule,
     AnalyzeUserIntentModule,
     GeminiApiModule,
+    SpreadsheetModule,
   ],
   controllers: [AppController],
   providers: [AppService],
