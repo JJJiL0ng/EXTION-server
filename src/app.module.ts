@@ -13,6 +13,14 @@ import { FunctionModule } from './modules/function/function.module';
 import { CacheModule } from './common/cache/cache.module';
 import { DatabaseModule } from './database/database.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { OrchestratorChatModule } from './chat-modules/orchestrator-chat/orchestrator-chat.module';
+import { GeneralChatModule } from './chat-modules/general-chat/general-chat.module';
+import { FunctionChatModule } from './chat-modules/function-chat/function-chat.module';
+import { DataEditChatModule } from './chat-modules/data-edit-chat/data-edit-chat.module';
+import { DataGenerateChatModule } from './chat-modules/data-generate-chat/data-generate-chat.module';
+import { VisualizationGenerateChatModule } from './chat-modules/visualization-generate-chat/visualization-generate-chat.module';
+import { AnalyzeUserIntentModule } from './chat-modules/analyze-user-intent/analyze-user-intent.module';
+import { GeminiApiModule } from './common/gemini-api/gemini-api.module';
 
 @Module({
   imports: [
@@ -31,6 +39,14 @@ import { PrismaModule } from './prisma/prisma.module';
     CacheModule,
     DatabaseModule,
     PrismaModule,
+    OrchestratorChatModule,
+    GeneralChatModule,
+    FunctionChatModule,
+    DataEditChatModule,
+    DataGenerateChatModule,
+    VisualizationGenerateChatModule,
+    AnalyzeUserIntentModule,
+    GeminiApiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
