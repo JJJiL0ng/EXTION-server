@@ -87,6 +87,7 @@ model Message {
   artifactData   Json?       // entspricht FirebaseMessage.artifactData
   dataChangeInfo Json?       // entspricht FirebaseMessage.dataChangeInfo
   fileUploadInfo Json?       // entspricht FirebaseMessage.fileUploadInfo
+  metadata       Json?       // 추가 메타데이터 정보
 
   chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
   chatId String
@@ -108,7 +109,7 @@ enum MessageType {
   TEXT
   FILE_UPLOAD
   FORMULA
-  ARTIFACT
+  VISUALIZATION
   DATA_GENERATION
   DATA_FIX
   FUNCTION
@@ -117,7 +118,7 @@ enum MessageType {
 enum MessageMode {
   NORMAL
   FORMULA
-  ARTIFACT
+  VISUALIZATION
   DATAGENERATION
   DATAFIX
   FUNCTION

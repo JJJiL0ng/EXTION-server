@@ -3,7 +3,6 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { FormulaModule } from './modules/formula/formula.module';
-import { ArtifactModule } from './modules/artifact/artifact.module';
 import { DataGenerationModule } from './modules/datageneration/datageneration.module';
 import { NormalModule } from './modules/normal/normal.module';
 import { DataFixModule } from './modules/datafix/datafix.module';
@@ -24,6 +23,7 @@ import { GeminiApiModule } from './chat-modules/gemini-api/gemini-api.module';
 import { SpreadsheetModule } from './sheet-modules/spreadsheet/spreadsheet.module';
 import { SheetLoadModule } from './sheet-modules/sheet-load/sheet-load.module';
 import { AuthModule } from './auth-modules/auth/auth.module';
+import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.module';
 
 @Module({
   imports: [
@@ -32,7 +32,6 @@ import { AuthModule } from './auth-modules/auth/auth.module';
       envFilePath: '.env',
     }),
     FormulaModule,
-    ArtifactModule,
     DataGenerationModule,
     NormalModule,
     DataFixModule,
@@ -53,6 +52,7 @@ import { AuthModule } from './auth-modules/auth/auth.module';
     SpreadsheetModule,
     SheetLoadModule,
     AuthModule,
+    ChatDatabaseModule,
   ],
   controllers: [AppController],
   providers: [AppService],

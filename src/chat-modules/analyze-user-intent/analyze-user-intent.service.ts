@@ -35,7 +35,7 @@ export class AnalyzeUserIntentService {
 
     const promptPath = path.join(
       process.cwd(),
-      `src/chat-modules/prompts/${language}/system/intent.yml`,
+      `src/chat-modules/prompts/${language}/intent.yml`,
     );
     this.intentPrompt = yaml.load(
       fs.readFileSync(promptPath, 'utf8'),

@@ -13,7 +13,7 @@ export class GeminiApiService {
   }
 
   async generateContent(prompt: string): Promise<string> {
-    const model = this.configService.get<string>('GEMINI_MODEL') || 'gemini-1.5-flash';
+    const model = this.configService.get<string>('GEMINI_MODEL') || 'gemini-2.0-flash';
     
     try {
       const genModel = this.genAI.getGenerativeModel({ model });

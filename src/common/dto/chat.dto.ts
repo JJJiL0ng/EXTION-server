@@ -7,7 +7,7 @@ export enum MessageType {
   TEXT = 'text',
   FILE_UPLOAD = 'file_upload', 
   FORMULA = 'formula',
-  ARTIFACT = 'artifact',
+  VISUALIZATION = 'visualization',
   DATA_GENERATION = 'data_generation',
   DATA_FIX = 'data_fix',
   FUNCTION = 'function'
@@ -22,7 +22,7 @@ export enum MessageRole {
 export enum MessageMode {
   NORMAL = 'normal',
   FORMULA = 'formula', 
-  ARTIFACT = 'artifact',
+  VISUALIZATION = 'visualization',
   DATA_GENERATION = 'datageneration',
   DATA_FIX = 'datafix',
   FUNCTION = 'function'
