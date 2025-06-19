@@ -40,9 +40,19 @@ export class SpreadsheetController {
   @Post('/data/save')
   async saveSpreadsheet(@Body() createSpreadsheetDto: CreateSpreadsheetDto) {
     try {
+      // 상세한 요청 정보 로깅
       this.logger.log(
-        `스프레드시트 저장 시작: ${createSpreadsheetDto.fileName}`,
+        `스프레드시트 저장 시작: ${createSpreadsheetDto.fileName}, userId: ${createSpreadsheetDto.userId}, chatId: ${createSpreadsheetDto.chatId}`,
       );
+      this.logger.debug(`요청 데이터:`, JSON.stringify({
+        ...createSpreadsheetDto,
+        sheets: createSpreadsheetDto.sheets?.map(sheet => ({
+          name: sheet.name,
+          index: sheet.index,
+          dataLength: sheet.data?.length || 0
+        }))
+      }));
+
       const result = await this.spreadsheetService.saveSpreadsheet(
         createSpreadsheetDto,
       );
@@ -54,10 +64,38 @@ export class SpreadsheetController {
         data: result,
       };
     } catch (error) {
-      this.logger.error('스프레드시트 저장 오류:', error);
-      throw new BadRequestException(
-        `데이터 저장 중 오류가 발생했습니다: ${error.message}`,
-      );
+      // 상세한 에러 정보 로깅
+      this.logger.error('스프레드시트 저장 오류:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+        code: error.code,
+        meta: error.meta,
+        fileName: createSpreadsheetDto.fileName,
+        userId: createSpreadsheetDto.userId,
+        chatId: createSpreadsheetDto.chatId,
+      });
+
+      // 프로덕션에서 더 자세한 에러 정보 반환
+      const errorDetails = {
+        originalError: error.message,
+        errorType: error.constructor.name,
+        fileName: createSpreadsheetDto.fileName,
+        userId: createSpreadsheetDto.userId,
+        timestamp: new Date().toISOString(),
+      };
+
+      if (error.code) {
+        errorDetails['code'] = error.code;
+      }
+      if (error.meta) {
+        errorDetails['meta'] = error.meta;
+      }
+
+      throw new BadRequestException({
+        message: `데이터 저장 중 오류가 발생했습니다: ${error.message}`,
+        details: errorDetails,
+      });
     }
   }
 
@@ -185,6 +223,52 @@ export class SpreadsheetController {
       throw new BadRequestException(
         `강제 자동저장 중 오류가 발생했습니다: ${error.message}`,
       );
+    }
+  }
+
+  // 데이터베이스 연결 및 스키마 상태 확인 엔드포인트 (디버깅용)
+  @Get('/health/db')
+  async checkDatabaseHealth() {
+    try {
+      this.logger.log('데이터베이스 상태 확인 시작');
+      
+      // 기본 연결 테스트
+      await this.spreadsheetService['prisma'].$queryRaw`SELECT 1 as test`;
+      
+      // 테이블 존재 여부 확인
+      const userCount = await this.spreadsheetService['prisma'].user.count();
+      const sheetMetaDataCount = await this.spreadsheetService['prisma'].sheetMetaData.count();
+      const chatCount = await this.spreadsheetService['prisma'].chat.count();
+      
+      this.logger.log('데이터베이스 상태 확인 완료');
+      
+      return {
+        success: true,
+        message: '데이터베이스 연결 상태 양호',
+        data: {
+          connected: true,
+          userCount,
+          sheetMetaDataCount,
+          chatCount,
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      this.logger.error('데이터베이스 상태 확인 실패:', {
+        error: error.message,
+        code: error.code,
+        meta: error.meta,
+      });
+      
+      throw new BadRequestException({
+        message: '데이터베이스 연결 실패',
+        details: {
+          error: error.message,
+          code: error.code,
+          meta: error.meta,
+          timestamp: new Date().toISOString(),
+        },
+      });
     }
   }
 

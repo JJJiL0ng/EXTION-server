@@ -76,18 +76,29 @@ export class SpreadsheetService {
     if (!user) {
       // 게스트 사용자인 경우 자동 생성
       if (userId!.startsWith('guest_')) {
-        user = await this.prisma.user.create({
-          data: {
-            id: userId!,
-            email: `${userId}@guest.temp`,
-            displayName: userId!,
-            isGuest: true,
-          },
-        });
-        console.log(`게스트 사용자 생성: ${userId}`);
+        try {
+          user = await this.prisma.user.create({
+            data: {
+              id: userId!,
+              email: `${userId}@guest.temp`,
+              displayName: userId!,
+              isGuest: true,
+            },
+          });
+          console.log(`게스트 사용자 생성 완료: ${userId}`);
+        } catch (userCreateError) {
+          console.error(`게스트 사용자 생성 실패: ${userId}`, {
+            error: userCreateError.message,
+            code: userCreateError.code,
+            meta: userCreateError.meta,
+          });
+          throw new Error(`게스트 사용자 생성 실패: ${userCreateError.message}`);
+        }
       } else {
         throw new Error(`사용자 ID ${userId}를 찾을 수 없습니다.`);
       }
+    } else {
+      console.log(`기존 사용자 확인: ${userId}, isGuest: ${user.isGuest}`);
     }
 
     // chatId가 제공된 경우 채팅 존재 여부 확인
