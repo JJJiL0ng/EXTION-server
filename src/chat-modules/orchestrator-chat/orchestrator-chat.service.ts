@@ -18,6 +18,7 @@ import { FunctionChatService } from '../function-chat/function-chat.service';
 // import { GenerateChatService } from '../generate-chat/generate-chat.service';
 import { AnalyzeUserIntentService, ChatModule } from '../analyze-user-intent/analyze-user-intent.service';
 import { MessageMode } from '../../common/dto/chat.dto';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class OrchestratorChatService {
@@ -31,6 +32,8 @@ export class OrchestratorChatService {
     private readonly dataEditChatService: DataEditChatService,
     private readonly dataGenerateChatService: DataGenerateChatService,
     private readonly functionChatService: FunctionChatService,
+    // Prisma 서비스 의존성 주입
+    private readonly prisma: PrismaService,
     // private readonly generateChatService: GenerateChatService,
   ) {}
 
@@ -43,6 +46,34 @@ export class OrchestratorChatService {
     return `guest_${timestamp}_${random}`;
   }
 
+  /**
+   * 게스트 사용자를 DB에 생성
+   */
+  private async createGuestUserIfNotExists(userId: string): Promise<void> {
+    try {
+      // 사용자 존재 여부 확인
+      const existingUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!existingUser && userId.startsWith('guest_')) {
+        // 게스트 사용자 생성
+        await this.prisma.user.create({
+          data: {
+            id: userId,
+            email: `${userId}@guest.temp`,
+            displayName: userId,
+            isGuest: true,
+          },
+        });
+        this.logger.log(`게스트 사용자 생성: ${userId}`);
+      }
+    } catch (error) {
+      this.logger.error(`게스트 사용자 생성 실패: ${userId}`, error);
+      throw new BadRequestException(`게스트 사용자 생성에 실패했습니다: ${error.message}`);
+    }
+  }
+
   async processMessage(requestDto: OrchestratorChatRequestDto): Promise<OrchestratorChatResponseDto> {
     this.logger.log(`채팅 처리 요청`);
 
@@ -51,6 +82,9 @@ export class OrchestratorChatService {
       requestDto.userId = this.generateGuestUserId();
       this.logger.log(`게스트 사용자 ID 생성: ${requestDto.userId}`);
     }
+
+    // 게스트 사용자를 DB에 생성 (외래키 제약 조건 해결)
+    await this.createGuestUserIfNotExists(requestDto.userId);
 
     try {
       // 1. 사용자 의중 파악 (메시지 분석)

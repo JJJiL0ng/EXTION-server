@@ -7,6 +7,7 @@ import { VisualizationGenerateChatModule } from '../visualization-generate-chat/
 import { DataEditChatModule } from '../data-edit-chat/data-edit-chat.module';
 import { DataGenerateChatModule } from '../data-generate-chat/data-generate-chat.module';
 import { FunctionChatModule } from '../function-chat/function-chat.module';
+import { PrismaModule } from '../../prisma/prisma.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { FunctionChatModule } from '../function-chat/function-chat.module';
     DataEditChatModule,
     DataGenerateChatModule,
     FunctionChatModule,
+    PrismaModule,
   ],
   controllers: [OrchestratorChatController],
   providers: [OrchestratorChatService],
