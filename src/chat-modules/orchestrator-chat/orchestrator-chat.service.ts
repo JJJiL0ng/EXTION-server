@@ -177,14 +177,20 @@ export class OrchestratorChatService {
    * 데이터 생성 채팅 처리
    */
   private async handleGenerateChat(requestDto: OrchestratorChatRequestDto): Promise<GenerateChatResponseDto> {
+    // 새로운 시트 생성인지 기존 시트 기반 생성인지 확인
+    const isNewSheetCreation = !requestDto.sheetId;
+    
+    this.logger.log(`데이터 생성 요청 - ${isNewSheetCreation ? '새로운 시트 생성' : '기존 시트 기반 생성'}`);
+    
     // DataGenerateChatService 호출
     const generateRequest = {
       userInput: requestDto.message,
       userId: requestDto.userId,
       chatId: requestDto.chatId,
       language: requestDto.language || 'ko',
-      spreadsheetId: requestDto.sheetId,
+      spreadsheetId: requestDto.sheetId, // 새로운 시트 생성 시에는 undefined
       spreadsheetData: undefined, // OrchestratorChatRequestDto에는 spreadsheetData 속성이 없음
+      chatTitle: isNewSheetCreation ? `새 시트 생성 ${new Date().toLocaleDateString()}` : undefined,
     };
 
     const result = await this.dataGenerateChatService.processDataGenerateChat(generateRequest);
@@ -198,17 +204,17 @@ export class OrchestratorChatService {
       timestamp: result.timestamp,
               data: {
           editedData: result.editedData || {
-            sheetName: '',
+            sheetName: isNewSheetCreation ? '새로운 시트' : '',
             headers: [],
             data: []
           },
           sheetIndex: result.sheetIndex || null,
-          explanation: result.explanation || '데이터 생성이 완료되었습니다.',
+          explanation: result.explanation || (isNewSheetCreation ? '새로운 데이터 시트가 생성되었습니다.' : '데이터 생성이 완료되었습니다.'),
           changeLog: result.changeLog?.map(item => ({
             action: item.type || 'create',
-            details: item.description || '새 데이터 생성'
+            details: item.description || (isNewSheetCreation ? '새 시트 및 데이터 생성' : '새 데이터 생성')
           })) || [
-            { action: 'create', details: '새 데이터 생성' }
+            { action: 'create', details: isNewSheetCreation ? '새 시트 및 데이터 생성' : '새 데이터 생성' }
           ],
           spreadsheetId: result.spreadsheetId || ''
         },

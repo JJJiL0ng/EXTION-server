@@ -307,7 +307,7 @@ export class NormalChatService {
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.3,
-      max_tokens: 10000,
+              max_tokens: 8000,
     });
 
     const aiResponse = completion.choices[0]?.message?.content; */

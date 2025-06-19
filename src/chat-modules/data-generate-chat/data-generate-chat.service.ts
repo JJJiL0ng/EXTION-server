@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { PromptService, ChatType, PromptData } from '../prompts/prompt/prompt.service';
 import { ChatDatabaseService, ChatListItem, ChatMessage, AnthropicMessage } from '../chat-database/chat-database.service';
 import { MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
+import { SpreadsheetService } from '../../sheet-modules/spreadsheet/spreadsheet.service';
+import { CreateSpreadsheetDto } from '../../sheet-modules/spreadsheet/dto/spreadsheet.dto';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface DataGenerateChatRequest {
@@ -59,6 +61,7 @@ export class DataGenerateChatService {
     private prismaService: PrismaService,
     private promptService: PromptService,
     private chatDatabaseService: ChatDatabaseService,
+    private spreadsheetService: SpreadsheetService,
   ) {
     this.anthropic = new Anthropic({
       apiKey: this.configService.get('CLAUDE_API_KEY'),
@@ -103,13 +106,14 @@ export class DataGenerateChatService {
       // 7. 응답에서 데이터 추출
       const extractedResult = this.extractDataFromResponse(aiResponse);
 
-      // 8. 새로운 시트 저장 (DB에 저장)
+      // 8. 새로운 시트 저장 (DB에 저장) - SpreadsheetService 사용
       let generatedSpreadsheetId: string | undefined;
       if (extractedResult.editedData) {
         generatedSpreadsheetId = await this.saveNewSheetToDatabase(
           request.userId,
           extractedResult.editedData,
-          extractedResult.sheetIndex
+          extractedResult.sheetIndex,
+          chatId
         );
       }
 
@@ -392,9 +396,17 @@ export class DataGenerateChatService {
       }
     }
 
+    // 완전히 새로운 시트 생성 요청인지 확인
+    const hasAnyData = hasData || !!(request.extendedSheetContext || request.sheetsData || request.currentData);
+    
+    // 로그로 데이터 상태 확인
+    if (!hasAnyData) {
+      this.logger.log('기존 데이터 없이 새로운 시트 생성 요청');
+    }
+
     return {
       user_input: request.userInput,
-      has_data: hasData || !!(request.extendedSheetContext || request.sheetsData || request.currentData),
+      has_data: hasAnyData,
       spreadsheet_name: spreadsheetMetadata?.fileName || '',
       sheet_name: spreadsheetData?.activeSheet || request.extendedSheetContext?.sheetName || '',
       headers,
@@ -499,7 +511,7 @@ export class DataGenerateChatService {
           { role: 'user', content: userPrompt }
         ],
         temperature: temperature || 0.3,
-        max_tokens: maxTokens || 10000,
+        max_tokens: maxTokens || 8000,
       });
 
       const firstBlock = completion.content[0];
@@ -597,42 +609,56 @@ export class DataGenerateChatService {
   }
 
   /**
-   * 새로운 시트를 데이터베이스에 저장
+   * 새로운 시트를 데이터베이스에 저장 (SpreadsheetService 사용)
    */
   private async saveNewSheetToDatabase(
     userId: string,
     editedData: any,
-    sheetIndex?: number
+    sheetIndex?: number,
+    chatId?: string
   ): Promise<string | undefined> {
     try {
-      this.logger.log(`데이터베이스에 새 시트 저장 시작: ${editedData.sheetName}`);
+      this.logger.log(`SpreadsheetService를 사용하여 새 시트 저장 시작: ${editedData.sheetName}`);
 
-      // SheetMetaData 생성
-      const sheetMetaData = await this.prismaService.sheetMetaData.create({
-        data: {
-          fileName: editedData.sheetName,
-          activeSheetIndex: 0,
-          userId,
-        },
-      });
-
-      // SheetTableData 생성 (헤더 + 데이터 결합)
+      // 헤더 + 데이터 결합
       const allData = [editedData.headers, ...editedData.data];
-      await this.prismaService.sheetTableData.create({
-        data: {
-          name: editedData.sheetName,
-          index: sheetIndex || 0,
-          data: allData,
-          sheetMetaDataId: sheetMetaData.id,
-        },
-      });
+      
+      // SpreadsheetService의 saveSpreadsheet 메서드 사용
+      const createSpreadsheetDto: CreateSpreadsheetDto = {
+        userId,
+        chatId, // 채팅 ID가 있으면 연결
+        fileName: editedData.sheetName,
+        originalFileName: `${editedData.sheetName}.xlsx`,
+        fileSize: this.calculateDataSize(allData),
+        fileType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        activeSheetIndex: 0,
+        sheets: [
+          {
+            name: editedData.sheetName,
+            index: sheetIndex || 0,
+            data: allData,
+          }
+        ],
+      };
 
-      this.logger.log(`데이터베이스 시트 저장 완료: ${editedData.sheetName}, ID: ${sheetMetaData.id}`);
-      return sheetMetaData.id;
+      const result = await this.spreadsheetService.saveSpreadsheet(createSpreadsheetDto);
+      
+      this.logger.log(`SpreadsheetService를 통한 시트 저장 완료: ${editedData.sheetName}, ID: ${result.id}`);
+      this.logger.log(`연결된 채팅 ID: ${result.chatId}`);
+      
+      return result.id;
     } catch (error) {
-      this.logger.error('데이터베이스 시트 저장 실패:', error);
+      this.logger.error('SpreadsheetService를 통한 시트 저장 실패:', error);
       throw error;
     }
+  }
+
+  /**
+   * 데이터 크기 계산 (간단한 추정)
+   */
+  private calculateDataSize(data: any[][]): number {
+    const jsonString = JSON.stringify(data);
+    return Buffer.byteLength(jsonString, 'utf8');
   }
 
   /**

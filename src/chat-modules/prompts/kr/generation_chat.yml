@@ -121,7 +121,7 @@ prompt:
     반드시 JSON 형식으로 응답하고, 생성된 데이터의 목적과 활용 방법을 설명에 포함해주세요.
 
   temperature: 0.3
-  max_tokens: 10000
+  max_tokens: 8000
   description: "스프레드시트 데이터 생성 및 가공을 위한 프롬프트"
   variables:
     - user_input
@@ -136,7 +136,7 @@ prompt:
 
 global_settings:
   default_temperature: 0.3
-  default_max_tokens: 10000
+  default_max_tokens: 8000
   encoding: "utf-8"
   model: "gpt-4o"
   max_csv_length: 50000
