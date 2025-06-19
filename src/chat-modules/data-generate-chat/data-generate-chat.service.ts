@@ -174,7 +174,7 @@ export class DataGenerateChatService {
       data: {
         title: request.chatTitle || `데이터 생성 ${new Date().toLocaleDateString()}`,
         userId: request.userId,
-        sheetMetaDataId: request.spreadsheetId || null,
+        sheetMetaDataId: null, // 외래키 제약 조건 위반 방지를 위해 null로 설정
         status: 'ACTIVE',
         messageCount: 0,
       },

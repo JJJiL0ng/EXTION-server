@@ -141,7 +141,7 @@ export class FunctionChatService {
       data: {
         title: request.chatTitle || `함수 실행 ${new Date().toLocaleDateString()}`,
         userId: request.userId,
-        sheetMetaDataId: request.spreadsheetId || null,
+        sheetMetaDataId: null, // 외래키 제약 조건 위반 방지를 위해 null로 설정
         status: 'ACTIVE',
         messageCount: 0,
       },
