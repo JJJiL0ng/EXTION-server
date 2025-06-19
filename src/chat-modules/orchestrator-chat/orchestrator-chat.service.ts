@@ -34,8 +34,23 @@ export class OrchestratorChatService {
     // private readonly generateChatService: GenerateChatService,
   ) {}
 
+  /**
+   * Guest User ID 생성
+   */
+  private generateGuestUserId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `guest_${timestamp}_${random}`;
+  }
+
   async processMessage(requestDto: OrchestratorChatRequestDto): Promise<OrchestratorChatResponseDto> {
     this.logger.log(`채팅 처리 요청`);
+
+    // userId가 없으면 게스트 ID 생성
+    if (!requestDto.userId) {
+      requestDto.userId = this.generateGuestUserId();
+      this.logger.log(`게스트 사용자 ID 생성: ${requestDto.userId}`);
+    }
 
     try {
       // 1. 사용자 의중 파악 (메시지 분석)
@@ -68,7 +83,7 @@ export class OrchestratorChatService {
     // GeneralChatService 호출
     const generalChatRequest = {
       userInput: requestDto.message,
-      userId: requestDto.userId,
+      userId: requestDto.userId!,
       chatId: requestDto.chatId,
       language: requestDto.language || 'ko',
       spreadsheetId: requestDto.sheetId,
@@ -80,6 +95,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'general-chat',
       chatId: result.chatId,
+      userId: requestDto.userId,
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
       timestamp: result.timestamp,
@@ -100,7 +116,7 @@ export class OrchestratorChatService {
     // FunctionChatService 호출
     const functionRequest = {
       userInput: requestDto.message,
-      userId: requestDto.userId,
+      userId: requestDto.userId!,
       chatId: requestDto.chatId,
       language: requestDto.language || 'ko',
       spreadsheetId: requestDto.sheetId,
@@ -113,6 +129,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'function-chat',
       chatId: result.chatId,
+      userId: requestDto.userId,
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
       timestamp: result.timestamp,
@@ -137,7 +154,7 @@ export class OrchestratorChatService {
     // DataEditChatService 호출
     const editRequest = {
       userInput: requestDto.message,
-      userId: requestDto.userId,
+      userId: requestDto.userId!,
       chatId: requestDto.chatId,
       language: requestDto.language || 'ko',
       spreadsheetId: requestDto.sheetId,
@@ -150,6 +167,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'edit-chat',
       chatId: result.chatId,
+      userId: requestDto.userId, // 생성된 게스트 ID 포함
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
       timestamp: result.timestamp,
@@ -185,7 +203,7 @@ export class OrchestratorChatService {
     // DataGenerateChatService 호출
     const generateRequest = {
       userInput: requestDto.message,
-      userId: requestDto.userId,
+      userId: requestDto.userId!,
       chatId: requestDto.chatId,
       language: requestDto.language || 'ko',
       spreadsheetId: requestDto.sheetId, // 새로운 시트 생성 시에는 undefined
@@ -199,6 +217,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'generate-chat',
       chatId: result.chatId,
+      userId: requestDto.userId, // 생성된 게스트 ID 포함
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
       timestamp: result.timestamp,
@@ -229,7 +248,7 @@ export class OrchestratorChatService {
     // VisualizationGenerateChatService 호출
     const visualizationRequest = {
       userInput: requestDto.message,
-      userId: requestDto.userId,
+      userId: requestDto.userId!,
       chatId: requestDto.chatId,
       language: requestDto.language || 'ko',
       spreadsheetId: requestDto.sheetId,
@@ -242,6 +261,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'visualization-chat',
       chatId: result.chatId,
+      userId: requestDto.userId, // 생성된 게스트 ID 포함
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
       timestamp: result.timestamp,

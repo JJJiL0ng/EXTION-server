@@ -41,7 +41,22 @@ export class SpreadsheetService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Guest User ID 생성
+   */
+  private generateGuestUserId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 8);
+    return `guest_${timestamp}_${random}`;
+  }
+
   async saveSpreadsheet(dto: CreateSpreadsheetDto) {
+    // userId가 없으면 게스트 ID 생성
+    if (!dto.userId) {
+      dto.userId = this.generateGuestUserId();
+      console.log(`게스트 사용자 ID 생성: ${dto.userId}`);
+    }
+
     const {
       userId,
       chatId,
@@ -53,13 +68,26 @@ export class SpreadsheetService {
       sheets,
     } = dto;
 
-    // 사용자 존재 여부 확인
-    const user = await this.prisma.user.findUnique({
+    // 사용자 존재 여부 확인 및 게스트 사용자 생성
+    let user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
 
     if (!user) {
-      throw new Error(`사용자 ID ${userId}를 찾을 수 없습니다.`);
+      // 게스트 사용자인 경우 자동 생성
+      if (userId!.startsWith('guest_')) {
+        user = await this.prisma.user.create({
+          data: {
+            id: userId!,
+            email: `${userId}@guest.temp`,
+            displayName: userId!,
+            isGuest: true,
+          },
+        });
+        console.log(`게스트 사용자 생성: ${userId}`);
+      } else {
+        throw new Error(`사용자 ID ${userId}를 찾을 수 없습니다.`);
+      }
     }
 
     // chatId가 제공된 경우 채팅 존재 여부 확인
@@ -448,6 +476,12 @@ export class SpreadsheetService {
 
   // 기존 자동저장 메서드 (하위 호환성)
   async queueAutoSave(dto: AutoSaveSpreadsheetDto) {
+    // userId가 없으면 게스트 ID 생성
+    if (!dto.userId) {
+      dto.userId = this.generateGuestUserId();
+      console.log(`자동저장용 게스트 사용자 ID 생성: ${dto.userId}`);
+    }
+
     // 레거시 호환을 위해 전체 시트 데이터를 델타로 변환
     const cellChanges: CellChange[] = [];
     
@@ -467,7 +501,7 @@ export class SpreadsheetService {
     });
 
     return this.queueDeltaAutoSave({
-      userId: dto.userId,
+      userId: dto.userId!,
       spreadsheetId: dto.spreadsheetId,
       cellChanges,
       metaChanges: dto.activeSheetIndex !== undefined ? [{

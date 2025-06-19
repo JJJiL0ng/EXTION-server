@@ -24,6 +24,7 @@ import { SpreadsheetModule } from './sheet-modules/spreadsheet/spreadsheet.modul
 import { SheetLoadModule } from './sheet-modules/sheet-load/sheet-load.module';
 import { AuthModule } from './auth-modules/auth/auth.module';
 import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.module';
+import { AiutilsModule } from './chat-modules/aiutils/aiutils.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.m
     SheetLoadModule,
     AuthModule,
     ChatDatabaseModule,
+    AiutilsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

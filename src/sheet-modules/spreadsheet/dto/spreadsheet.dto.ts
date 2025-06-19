@@ -22,9 +22,9 @@ export class CreateSheetTableDataDto {
 }
 
 export class CreateSpreadsheetDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  userId: string;
+  userId?: string;
 
   @IsString()
   @IsOptional()
@@ -58,9 +58,9 @@ export class CreateSpreadsheetDto {
 
 // 자동저장을 위한 경량화된 DTO
 export class AutoSaveSpreadsheetDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  userId: string;
+  userId?: string;
 
   @IsString()
   @IsNotEmpty()

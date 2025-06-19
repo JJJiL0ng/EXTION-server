@@ -376,14 +376,14 @@ export class FunctionChatService {
 
     try {
       const completion = await this.anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
+        model: 'claude-sonnet-4-20250514',
         system: systemPrompt,
         messages: [
           ...historyMessages,
           { role: 'user', content: userPrompt }
         ],
         temperature: temperature || 0.1,
-        max_tokens: maxTokens || 4096,
+        max_tokens: maxTokens || 8192,
       });
 
       const firstBlock = completion.content[0];

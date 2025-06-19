@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptService, ChatType, PromptData } from '../prompts/prompt/prompt.service';
 import { ChatDatabaseService, ChatListItem, ChatMessage, AnthropicMessage } from '../chat-database/chat-database.service';
+import { AiutilsService } from '../aiutils/aiutils.service';
 import { MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,7 +21,7 @@ export interface GeneralChatRequest {
 
 export interface GeneralChatResponse {
   success: boolean;
-  message: string;
+  message: string; // 이제 항상 플레인 텍스트로 처리됨
   chatId: string;
   userMessageId: string;
   aiMessageId: string;
@@ -39,6 +40,7 @@ export class GeneralChatService {
     private prismaService: PrismaService,
     private promptService: PromptService,
     private chatDatabaseService: ChatDatabaseService,
+    private aiutilsService: AiutilsService,
   ) {
     this.anthropic = new Anthropic({
       apiKey: this.configService.get('CLAUDE_API_KEY'),
@@ -69,7 +71,7 @@ export class GeneralChatService {
       // 5. AI 프롬프트 생성
       const prompts = this.promptService.generatePrompts(ChatType.GENERAL_CHAT, promptData);
 
-      // 6. AI 응답 생성
+            // 6. AI 응답 생성
       const aiResponse = await this.generateAIResponse(
         prompts.systemPrompt,
         prompts.userPrompt,
@@ -78,17 +80,20 @@ export class GeneralChatService {
         prompts.maxTokens
       );
 
-      // 7. AI 응답 저장
-      const aiMessageId = await this.saveAIMessage(chatId, aiResponse);
+      // 7. 마크다운 제거된 플레인 텍스트 생성
+      const plainTextMessage = this.aiutilsService.convertMarkdownToPlainText(aiResponse);
 
-      // 8. 채팅 메타데이터 업데이트
+      // 8. AI 응답 저장 (플레인 텍스트로)
+      const aiMessageId = await this.saveAIMessage(chatId, aiResponse, true);
+
+      // 9. 채팅 메타데이터 업데이트
       await this.updateChatMetadata(chatId);
 
       this.logger.log('==================== General Chat 처리 완료 ====================');
 
       return {
         success: true,
-        message: aiResponse,
+        message: plainTextMessage,  // 사용자에게는 플레인 텍스트로 전송
         chatId,
         userMessageId,
         aiMessageId,
@@ -163,10 +168,15 @@ export class GeneralChatService {
   /**
    * AI 응답 저장
    */
-  private async saveAIMessage(chatId: string, content: string): Promise<string> {
+  private async saveAIMessage(chatId: string, content: string, saveAsPlainText: boolean = false): Promise<string> {
+    // 필요시 마크다운 제거
+    const contentToSave = saveAsPlainText 
+      ? this.aiutilsService.convertMarkdownToPlainText(content)
+      : content;
+
     const aiMessage = await this.prismaService.message.create({
       data: {
-        content,
+        content: contentToSave,
         role: 'EXTION_AI' as any,
         type: 'TEXT' as any,
         mode: 'NORMAL' as any,
@@ -174,7 +184,7 @@ export class GeneralChatService {
       },
     });
 
-    this.logger.log(`AI 응답 메시지 저장: ${aiMessage.id}`);
+    this.logger.log(`AI 응답 메시지 저장: ${aiMessage.id}${saveAsPlainText ? ' (플레인 텍스트로)' : ''}`);
     return aiMessage.id;
   }
 

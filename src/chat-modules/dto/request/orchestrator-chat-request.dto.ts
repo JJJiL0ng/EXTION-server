@@ -12,8 +12,9 @@ export class OrchestratorChatRequestDto {
   @IsString()
   chatId?: string;
 
+  @IsOptional()
   @IsString()
-  userId: string;
+  userId?: string;
 
   @IsString()
   @IsIn(['KR', 'US', 'JP', 'CN', 'DE', 'FR', 'GB', 'ES', 'IT', 'BR', 'IN', 'RU'])
