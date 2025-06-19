@@ -95,7 +95,12 @@ export class VisualizationGenerateChatService {
       // 8. 코드 추출 및 검증
       const extractedCode = this.extractCodeFromResponse(aiResponse);
       if (!extractedCode) {
-        throw new InternalServerErrorException('생성된 응답에서 유효한 코드를 찾을 수 없습니다.');
+        this.logger.error('코드 추출 실패 - AI 응답 전체 내용:');
+        this.logger.error(aiResponse);
+        throw new InternalServerErrorException(
+          '생성된 응답에서 유효한 코드를 찾을 수 없습니다. ' +
+          'AI가 올바른 형식의 React 컴포넌트를 생성하지 않았을 수 있습니다.'
+        );
       }
       this.validateGeneratedCode(extractedCode);
 
@@ -385,7 +390,7 @@ export class VisualizationGenerateChatService {
 
     try {
       const completion = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-3-5-haiku-20241022',
         system: systemPrompt,
         messages: [
           ...historyMessages,
@@ -403,6 +408,7 @@ export class VisualizationGenerateChatService {
       }
 
       this.logger.log(`AI 응답 생성 완료: ${aiResponse.length}자`);
+      this.logger.debug(`AI 응답 미리보기: ${aiResponse.substring(0, 300)}...`);
       return aiResponse;
 
     } catch (error) {
@@ -415,14 +421,51 @@ export class VisualizationGenerateChatService {
    * AI 응답에서 코드 블록 추출
    */
   private extractCodeFromResponse(response: string): string | null {
-    const codeBlockRegex = /```(?:javascript|jsx|js)?\n?([\s\S]*?)\n?```/;
-    const match = response.match(codeBlockRegex);
-    if (match && match[1]) {
-      this.logger.debug('코드 블록에서 코드 추출 성공');
-      return match[1].trim();
+    // 다양한 형태의 코드 블록을 매치하도록 개선된 정규식
+    const codeBlockPatterns = [
+      // 언어 지정자가 있는 경우 (javascript, jsx, js)
+      /```(?:javascript|jsx|js)\s*\n([\s\S]*?)\n?```/g,
+      // 언어 지정자가 없는 일반 코드 블록
+      /```\s*\n([\s\S]*?)\n?```/g,
+      // 공백 없이 바로 시작하는 코드 블록
+      /```([\s\S]*?)```/g
+    ];
+
+    for (const pattern of codeBlockPatterns) {
+      const matches = [...response.matchAll(pattern)];
+      for (const match of matches) {
+        const code = match[1]?.trim();
+        if (code && this.isValidReactCode(code)) {
+          this.logger.debug('코드 블록에서 코드 추출 성공');
+          this.logger.debug(`추출된 코드 미리보기: ${code.substring(0, 100)}...`);
+          return code;
+        }
+      }
     }
-    this.logger.warn('응답에서 코드 블록을 찾지 못했습니다.');
+
+    // 코드 블록이 없는 경우, 응답 전체에서 React 컴포넌트 찾기
+    const componentMatch = response.match(/const\s+ComponentToRender\s*=[\s\S]*?(?=\n\n|$)/);
+    if (componentMatch) {
+      const code = componentMatch[0].trim();
+      if (this.isValidReactCode(code)) {
+        this.logger.debug('응답에서 React 컴포넌트 직접 추출 성공');
+        return code;
+      }
+    }
+
+    this.logger.warn('응답에서 유효한 코드를 찾지 못했습니다.');
+    this.logger.debug(`응답 미리보기: ${response.substring(0, 500)}...`);
     return null;
+  }
+
+  /**
+   * 코드가 유효한 React 코드인지 간단히 검증
+   */
+  private isValidReactCode(code: string): boolean {
+    return code.includes('ComponentToRender') && 
+           code.includes('=>') && 
+           code.includes('return') &&
+           code.length > 50; // 최소 길이 체크
   }
 
   /**

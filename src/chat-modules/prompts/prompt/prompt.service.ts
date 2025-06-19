@@ -89,7 +89,7 @@ export class PromptService {
 
   constructor(private configService: ConfigService) {
     this.language = this.configService.get('PROMPT_LANGUAGE', 'kr');
-    this.promptsBasePath = path.join(process.cwd(), 'prompts', this.language);
+    this.promptsBasePath = path.join(process.cwd(), 'src', 'chat-modules', 'prompts', this.language);
     this.logger.log(`프롬프트 기본 경로: ${this.promptsBasePath}`);
     this.logger.log(`프롬프트 언어: ${this.language}`);
   }
