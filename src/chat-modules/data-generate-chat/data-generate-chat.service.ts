@@ -709,7 +709,13 @@ export class DataGenerateChatService {
    * 채팅방 제목 업데이트
    */
   async updateChatTitle(chatId: string, userId: string, newTitle: string): Promise<boolean> {
-    return await this.chatDatabaseService.updateChatTitle(chatId, userId, newTitle);
+    try {
+      await this.chatDatabaseService.updateChatTitle(chatId, userId, newTitle);
+      return true;
+    } catch (error) {
+      this.logger.error('채팅 제목 업데이트 실패:', error);
+      return false;
+    }
   }
 
   /**

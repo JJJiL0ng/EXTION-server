@@ -1,8 +1,12 @@
 import { 
   Controller, 
   Get, 
+  Post,
+  Delete,
+  Patch,
   Param, 
   Query,
+  Body,
   Logger,
   BadRequestException,
   NotFoundException,
@@ -14,7 +18,12 @@ import {
   LoadChatRequestDto, 
   LoadChatResponseDto,
   ChatListRequestDto,
-  ChatListResponseDto 
+  ChatListResponseDto,
+  CreateChatDto,
+  CreateChatResponseDto,
+  DeleteChatResponseDto,
+  UpdateChatTitleDto,
+  UpdateChatTitleResponseDto
 } from './dto';
 
 @Controller('chat-database')
@@ -48,7 +57,10 @@ export class ChatDatabaseController {
       // 채팅방 존재 여부 및 접근 권한 확인
       const chatExists = await this.chatDatabaseService.chatExists(chatId, userId);
       
+      this.logger.log(`채팅 존재 확인 결과: chatExists=${chatExists}`);
+      
       if (!chatExists) {
+        this.logger.warn(`채팅을 찾을 수 없음: chatId=${chatId}, userId=${userId}`);
         throw new NotFoundException('채팅방을 찾을 수 없거나 접근 권한이 없습니다.');
       }
 
@@ -121,6 +133,197 @@ export class ChatDatabaseController {
     } catch (error) {
       this.logger.error(`채팅 목록 조회 실패: ${error.message}`, error.stack);
       throw new BadRequestException('채팅 목록을 불러오는 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
+   * 새 채팅 생성
+   * POST /chat-database/create
+   */
+  @Post('create')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async createChat(@Body() createChatDto: CreateChatDto): Promise<CreateChatResponseDto> {
+    try {
+      const { title, userId, spreadsheetId } = createChatDto;
+
+      if (!title) {
+        throw new BadRequestException('채팅 제목이 필요합니다.');
+      }
+
+      if (!userId) {
+        throw new BadRequestException('사용자 ID가 필요합니다.');
+      }
+
+      this.logger.log(`새 채팅 생성 요청: title=${title}, userId=${userId}, spreadsheetId=${spreadsheetId}`);
+
+      const newChat = await this.chatDatabaseService.createChat(title, userId, spreadsheetId);
+
+      this.logger.log(`새 채팅 생성 완료: chatId=${newChat.chatId}`);
+
+      return {
+        success: true,
+        chatId: newChat.chatId,
+        chat: newChat,
+      };
+
+    } catch (error) {
+      this.logger.error(`새 채팅 생성 실패: ${error.message}`, error.stack);
+      
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      
+      throw new BadRequestException('새 채팅을 생성하는 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
+   * 채팅 삭제
+   * DELETE /chat-database/:chatId
+   */
+  @Delete(':chatId')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async deleteChat(
+    @Param('chatId') chatId: string,
+    @Query('userId') userId: string,
+  ): Promise<DeleteChatResponseDto> {
+    try {
+      if (!chatId) {
+        throw new BadRequestException('채팅 ID가 필요합니다.');
+      }
+
+      if (!userId) {
+        throw new BadRequestException('사용자 ID가 필요합니다.');
+      }
+
+      this.logger.log(`채팅 삭제 요청: chatId=${chatId}, userId=${userId}`);
+
+      const isDeleted = await this.chatDatabaseService.deleteChat(chatId, userId);
+
+      if (!isDeleted) {
+        throw new BadRequestException('채팅을 삭제할 수 없습니다.');
+      }
+
+      this.logger.log(`채팅 삭제 완료: chatId=${chatId}`);
+
+      return {
+        success: true,
+        message: '채팅이 성공적으로 삭제되었습니다.',
+      };
+
+    } catch (error) {
+      this.logger.error(`채팅 삭제 실패: ${error.message}`, error.stack);
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new BadRequestException('채팅을 삭제하는 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
+   * 채팅 제목 업데이트
+   * PATCH /chat-database/:chatId/title
+   */
+  @Patch(':chatId/title')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async updateChatTitle(
+    @Param('chatId') chatId: string,
+    @Body() updateTitleDto: UpdateChatTitleDto,
+  ): Promise<UpdateChatTitleResponseDto> {
+    try {
+      const { title, userId } = updateTitleDto;
+
+      if (!title || title.trim().length === 0) {
+        throw new BadRequestException('채팅 제목이 필요합니다.');
+      }
+
+      if (!userId) {
+        throw new BadRequestException('사용자 ID가 필요합니다.');
+      }
+
+      if (!chatId) {
+        throw new BadRequestException('채팅 ID가 필요합니다.');
+      }
+
+      this.logger.log(`채팅 제목 업데이트 요청: chatId=${chatId}, userId=${userId}, title=${title}`);
+
+      // 채팅 존재 여부 및 권한 확인
+      const chatExists = await this.chatDatabaseService.chatExists(chatId, userId);
+      if (!chatExists) {
+        this.logger.warn(`채팅 제목 업데이트 실패 - 채팅을 찾을 수 없음: chatId=${chatId}, userId=${userId}`);
+        throw new NotFoundException('채팅을 찾을 수 없거나 접근 권한이 없습니다.');
+      }
+
+      // 제목 업데이트
+      const updatedChat = await this.chatDatabaseService.updateChatTitle(
+        chatId,
+        userId,
+        title.trim()
+      );
+
+      this.logger.log(`채팅 제목 업데이트 완료: chatId=${chatId}, newTitle=${updatedChat.title}`);
+
+      return {
+        success: true,
+        message: '채팅 제목이 성공적으로 업데이트되었습니다.',
+        data: {
+          chatId: updatedChat.id,
+          title: updatedChat.title,
+          updatedAt: updatedChat.updatedAt,
+        },
+      };
+
+    } catch (error) {
+      this.logger.error(`채팅 제목 업데이트 실패: ${error.message}`, error.stack);
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      
+      throw new BadRequestException('채팅 제목 업데이트 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
+   * 디버깅용: 사용자의 모든 채팅 정보 조회 (상태 포함)
+   * GET /chat-database/debug/:userId
+   */
+  @Get('debug/:userId')
+  async debugUserChats(@Param('userId') userId: string) {
+    try {
+      this.logger.log(`디버깅: 사용자 채팅 조회 - userId=${userId}`);
+
+      const allChats = await this.chatDatabaseService['prismaService'].chat.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          messageCount: true,
+          createdAt: true,
+          updatedAt: true,
+          sheetMetaDataId: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+
+      this.logger.log(`디버깅 결과: ${allChats.length}개 채팅 발견`);
+      allChats.forEach(chat => {
+        this.logger.log(`  - chatId: ${chat.id}, status: ${chat.status}, title: ${chat.title}`);
+      });
+
+      return {
+        success: true,
+        userId,
+        totalChats: allChats.length,
+        chats: allChats,
+      };
+
+    } catch (error) {
+      this.logger.error(`디버깅 조회 실패: ${error.message}`, error.stack);
+      throw new BadRequestException('디버깅 조회 중 오류가 발생했습니다.');
     }
   }
 }

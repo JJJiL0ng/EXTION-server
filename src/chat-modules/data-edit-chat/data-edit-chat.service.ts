@@ -400,7 +400,7 @@ export class DataEditChatService {
         ],
         temperature: temperature || 0.2,
         max_tokens: maxTokens || 8192,
-      });
+      }); 
 
       const firstBlock = completion.content[0];
       const aiResponse = firstBlock?.type === 'text' ? firstBlock.text : null;
@@ -546,7 +546,13 @@ export class DataEditChatService {
    * 채팅방 제목 업데이트
    */
   async updateChatTitle(chatId: string, userId: string, newTitle: string): Promise<boolean> {
-    return await this.chatDatabaseService.updateChatTitle(chatId, userId, newTitle);
+    try {
+      await this.chatDatabaseService.updateChatTitle(chatId, userId, newTitle);
+      return true;
+    } catch (error) {
+      this.logger.error('채팅 제목 업데이트 실패:', error);
+      return false;
+    }
   }
 
   /**

@@ -39,6 +39,71 @@ export class ChatDatabaseService {
   constructor(private prismaService: PrismaService) {}
 
   /**
+   * 새 채팅 생성
+   */
+  async createChat(title: string, userId: string, spreadsheetId?: string): Promise<ChatListItem> {
+    try {
+      this.logger.log(`새 채팅 생성: ${title}, 사용자: ${userId}`);
+
+      // sheetMetaData 연결 처리
+      let sheetMetaDataId: string | undefined = undefined;
+      
+      if (spreadsheetId) {
+        // 스프레드시트 ID가 있으면 sheetMetaData에서 찾거나 생성
+        const existingSheetMetaData = await this.prismaService.sheetMetaData.findFirst({
+          where: { 
+            fileName: spreadsheetId,
+            userId,
+          },
+        });
+
+        if (existingSheetMetaData) {
+          sheetMetaDataId = existingSheetMetaData.id;
+        } else {
+          // 새로운 sheetMetaData 생성 (필요한 경우)
+          const newSheetMetaData = await this.prismaService.sheetMetaData.create({
+            data: {
+              fileName: spreadsheetId,
+              originalFileName: `스프레드시트 ${spreadsheetId.substring(0, 8)}...`,
+              userId,
+            },
+          });
+          sheetMetaDataId = newSheetMetaData.id;
+        }
+      }
+
+      // 새 채팅 생성
+      const newChat = await this.prismaService.chat.create({
+        data: {
+          title,
+          userId,
+          messageCount: 0,
+          status: 'ACTIVE',
+          sheetMetaDataId,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+
+      this.logger.log(`새 채팅 생성 완료: ${newChat.id}`);
+
+      return {
+        chatId: newChat.id,
+        title: newChat.title,
+        messageCount: newChat.messageCount,
+        lastUpdated: newChat.updatedAt,
+        createdAt: newChat.createdAt,
+        sheetMetaDataId: newChat.sheetMetaDataId || undefined,
+        status: newChat.status,
+      };
+
+    } catch (error) {
+      this.logger.error('새 채팅 생성 중 오류:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 사용자의 채팅 목록 가져오기
    */
   async getChatList(userId: string): Promise<ChatListItem[]> {
@@ -162,13 +227,17 @@ export class ChatDatabaseService {
    */
   async chatExists(chatId: string, userId: string): Promise<boolean> {
     try {
+      this.logger.log(`채팅 존재 확인: chatId=${chatId}, userId=${userId}`);
+      
       const chat = await this.prismaService.chat.findFirst({
         where: { 
           id: chatId,
           userId,
+          status: 'ACTIVE', // ACTIVE 상태인 채팅만 확인
         },
       });
 
+      this.logger.log(`채팅 존재 확인 결과: ${!!chat ? '존재함' : '존재하지 않음'}`);
       return !!chat;
 
     } catch (error) {
@@ -254,7 +323,11 @@ export class ChatDatabaseService {
   /**
    * 채팅방 제목 업데이트
    */
-  async updateChatTitle(chatId: string, userId: string, newTitle: string): Promise<boolean> {
+  async updateChatTitle(chatId: string, userId: string, newTitle: string): Promise<{
+    id: string;
+    title: string;
+    updatedAt: Date;
+  }> {
     try {
       this.logger.log(`채팅방 제목 업데이트: ${chatId}, 새 제목: ${newTitle}`);
 
@@ -263,6 +336,7 @@ export class ChatDatabaseService {
         where: { 
           id: chatId,
           userId,
+          status: 'ACTIVE', // ACTIVE 상태인 채팅만 업데이트 가능
         },
       });
 
@@ -270,20 +344,25 @@ export class ChatDatabaseService {
         throw new BadRequestException('채팅방을 찾을 수 없거나 접근 권한이 없습니다.');
       }
 
-      await this.prismaService.chat.update({
+      const updatedChat = await this.prismaService.chat.update({
         where: { id: chatId },
         data: { 
           title: newTitle,
           updatedAt: new Date(),
         },
+        select: {
+          id: true,
+          title: true,
+          updatedAt: true,
+        },
       });
 
       this.logger.log(`채팅방 제목 업데이트 완료: ${chatId}`);
-      return true;
+      return updatedChat;
 
     } catch (error) {
       this.logger.error('채팅방 제목 업데이트 중 오류:', error);
-      return false;
+      throw error;
     }
   }
 
