@@ -25,6 +25,7 @@ export class OrchestratorChatController {
       return {
         success: false,
         chatType: null,
+        sheetId: requestDto.sheetId,
         error: error.message || '메시지 처리 중 오류가 발생했습니다.',
         timestamp: new Date().toISOString()
       };

@@ -129,6 +129,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'general-chat',
       chatId: result.chatId,
+      sheetId: requestDto.sheetId,
       userId: requestDto.userId,
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
@@ -163,6 +164,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'function-chat',
       chatId: result.chatId,
+      sheetId: requestDto.sheetId,
       userId: requestDto.userId,
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
@@ -201,6 +203,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'edit-chat',
       chatId: result.chatId,
+      sheetId: requestDto.sheetId,
       userId: requestDto.userId, // 생성된 게스트 ID 포함
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
@@ -251,6 +254,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'generate-chat',
       chatId: result.chatId,
+      sheetId: requestDto.sheetId,
       userId: requestDto.userId, // 생성된 게스트 ID 포함
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
@@ -295,6 +299,7 @@ export class OrchestratorChatService {
       success: result.success,
       chatType: 'visualization-chat',
       chatId: result.chatId,
+      sheetId: requestDto.sheetId,
       userId: requestDto.userId, // 생성된 게스트 ID 포함
       userMessageId: result.userMessageId,
       aiMessageId: result.aiMessageId,
