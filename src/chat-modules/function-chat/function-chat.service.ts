@@ -121,6 +121,9 @@ export class FunctionChatService {
    * 채팅방 생성 또는 기존 채팅방 가져오기
    */
   private async ensureChatExists(request: FunctionChatRequest): Promise<string> {
+    // 사용자 존재 여부 확인 및 게스트 사용자 생성
+    await this.ensureUserExists(request.userId);
+
     if (request.chatId) {
       // 기존 채팅방 검증
       const existingChat = await this.prismaService.chat.findUnique({
@@ -149,6 +152,39 @@ export class FunctionChatService {
 
     this.logger.log(`새 채팅방 생성: ${newChat.id}`);
     return newChat.id;
+  }
+
+  /**
+   * 사용자 존재 여부 확인 및 게스트 사용자 생성
+   */
+  private async ensureUserExists(userId: string): Promise<void> {
+    try {
+      // 사용자 존재 여부 확인
+      const existingUser = await this.prismaService.user.findUnique({
+        where: { id: userId },
+      });
+
+      if (!existingUser && userId.startsWith('guest_')) {
+        // 게스트 사용자 생성
+        await this.prismaService.user.create({
+          data: {
+            id: userId,
+            email: `${userId}@guest.temp`,
+            displayName: userId,
+            isGuest: true,
+          },
+        });
+        this.logger.log(`게스트 사용자 생성: ${userId}`);
+      } else if (!existingUser) {
+        throw new BadRequestException(`유효하지 않은 사용자 ID: ${userId}`);
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      this.logger.error(`사용자 확인/생성 실패: ${userId}`, error);
+      throw new BadRequestException(`사용자 확인에 실패했습니다: ${error.message}`);
+    }
   }
 
   /**

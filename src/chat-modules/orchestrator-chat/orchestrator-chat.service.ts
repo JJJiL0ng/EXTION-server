@@ -11,7 +11,7 @@ import {
 
 // 각 서비스 import
 import { GeneralChatService } from '../general-chat/general-chat.service';
-import { VisualizationGenerateChatService } from '../visualization-generate-chat/visualization-generate-chat.service';
+import { VisualizationGenerateChatService } from '../../common/visualization-generate-chat.service';
 import { DataEditChatService } from '../data-edit-chat/data-edit-chat.service';
 import { DataGenerateChatService } from '../data-generate-chat/data-generate-chat.service';
 import { FunctionChatService } from '../function-chat/function-chat.service';
@@ -46,33 +46,7 @@ export class OrchestratorChatService {
     return `guest_${timestamp}_${random}`;
   }
 
-  /**
-   * 게스트 사용자를 DB에 생성
-   */
-  private async createGuestUserIfNotExists(userId: string): Promise<void> {
-    try {
-      // 사용자 존재 여부 확인
-      const existingUser = await this.prisma.user.findUnique({
-        where: { id: userId },
-      });
 
-      if (!existingUser && userId.startsWith('guest_')) {
-        // 게스트 사용자 생성
-        await this.prisma.user.create({
-          data: {
-            id: userId,
-            email: `${userId}@guest.temp`,
-            displayName: userId,
-            isGuest: true,
-          },
-        });
-        this.logger.log(`게스트 사용자 생성: ${userId}`);
-      }
-    } catch (error) {
-      this.logger.error(`게스트 사용자 생성 실패: ${userId}`, error);
-      throw new BadRequestException(`게스트 사용자 생성에 실패했습니다: ${error.message}`);
-    }
-  }
 
   async processMessage(requestDto: OrchestratorChatRequestDto): Promise<OrchestratorChatResponseDto> {
     this.logger.log(`채팅 처리 요청`);
@@ -82,9 +56,6 @@ export class OrchestratorChatService {
       requestDto.userId = this.generateGuestUserId();
       this.logger.log(`게스트 사용자 ID 생성: ${requestDto.userId}`);
     }
-
-    // 게스트 사용자를 DB에 생성 (외래키 제약 조건 해결)
-    await this.createGuestUserIfNotExists(requestDto.userId);
 
     try {
       // 1. 사용자 의중 파악 (메시지 분석)
