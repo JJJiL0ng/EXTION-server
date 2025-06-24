@@ -209,7 +209,7 @@ export class DataEditChatService {
         content: request.userInput,
         role: 'USER' as any,
         type: 'TEXT' as any,
-        mode: 'DATAFIX' as any,
+        mode: 'DATA_EDIT' as any,
         chatId,
         sheetContext: request.spreadsheetData ? {
           hasData: !!request.spreadsheetData,
@@ -237,8 +237,8 @@ export class DataEditChatService {
       data: {
         content,
         role: 'EXTION_AI' as any,
-        type: 'DATA_FIX' as any,
-        mode: 'DATAFIX' as any,
+        type: 'DATA_EDIT' as any,
+        mode: 'DATA_EDIT' as any,
         chatId,
         dataChangeInfo: extractedResult.editedData ? {
           sheetName: extractedResult.editedData.sheetName,
