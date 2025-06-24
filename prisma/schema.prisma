@@ -113,7 +113,6 @@ enum MessageType {
   DATA_GENERATION
   DATA_FIX
   FUNCTION
-  DATA_EDIT
 }
 
 enum MessageMode {
@@ -122,6 +121,5 @@ enum MessageMode {
   VISUALIZATION
   DATAGENERATION
   DATAFIX
-  DATA_EDIT
   FUNCTION
 }
