@@ -589,4 +589,50 @@ export class SpreadsheetService {
       sheets,
     };
   }
+
+  async getSpreadsheetByChatId(chatId: string) {
+    // 1. chatId로 채팅 정보와 연결된 시트 메타데이터 조회
+    const chat = await this.prisma.chat.findUnique({
+      where: { id: chatId },
+      include: {
+        sheetMetaData: true,
+      },
+    });
+
+    if (!chat) {
+      return null;
+    }
+
+    if (!chat.sheetMetaData) {
+      return {
+        error: 'SHEET_NOT_FOUND',
+        message: '이 채팅에 연결된 스프레드시트가 없습니다.',
+        chatInfo: {
+          id: chat.id,
+          title: chat.title,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+        },
+      };
+    }
+
+    // 2. 시트 메타데이터로 시트 테이블 데이터 조회
+    const sheets = await this.prisma.sheetTableData.findMany({
+      where: { sheetMetaDataId: chat.sheetMetaData.id },
+      orderBy: {
+        index: 'asc',
+      },
+    });
+
+    return {
+      chatInfo: {
+        id: chat.id,
+        title: chat.title,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+      },
+      sheetMetaData: chat.sheetMetaData,
+      sheets,
+    };
+  }
 }

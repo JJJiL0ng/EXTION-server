@@ -8,6 +8,7 @@ import {
   Query,
   NotFoundException,
   Patch,
+  Param,
 } from '@nestjs/common';
 import { SpreadsheetService } from './spreadsheet.service';
 import { CreateSpreadsheetDto, AutoSaveSpreadsheetDto, AutoSaveStatusDto } from './dto/spreadsheet.dto';
@@ -303,6 +304,66 @@ export class SpreadsheetController {
       }
       throw new BadRequestException(
         `데이터 로드 중 오류가 발생했습니다: ${error.message}`,
+      );
+    }
+  }
+
+  @Get('data/loadsheet/:chatId')
+  async loadSpreadsheetByChatId(@Param('chatId') chatId: string) {
+    try {
+      if (!chatId) {
+        throw new BadRequestException('chatId가 필요합니다.');
+      }
+
+      this.logger.log(`채팅 ID로 스프레드시트 로드 시작: ${chatId}`);
+      const result = await this.spreadsheetService.getSpreadsheetByChatId(chatId);
+
+      if (!result) {
+        throw new NotFoundException(
+          `채팅 ID가 ${chatId}인 채팅을 찾을 수 없습니다.`,
+        );
+      }
+
+      // 에러가 있는 경우 (채팅은 있지만 시트가 없는 경우)
+      if (result.error) {
+        this.logger.warn(`채팅에 연결된 시트 없음: ${chatId}`, result);
+        return {
+          success: false,
+          message: result.message,
+          error: result.error,
+          data: result.chatInfo,
+        };
+      }
+
+      this.logger.log(
+        `채팅 ID로 스프레드시트 로드 완료: 채팅=${chatId}, 시트=${result.sheetMetaData?.id}`,
+      );
+
+      return {
+        success: true,
+        message: '스프레드시트를 성공적으로 불러왔습니다.',
+        data: {
+          chatInfo: result.chatInfo,
+          sheetMetaData: result.sheetMetaData,
+          sheets: result.sheets,
+        },
+      };
+    } catch (error) {
+      this.logger.error('채팅 ID로 스프레드시트 로드 오류:', {
+        chatId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        `채팅 ID로 데이터 로드 중 오류가 발생했습니다: ${error.message}`,
       );
     }
   }
