@@ -22,14 +22,45 @@ async function bootstrap() {
    'https://extion-server.railway.internal',
    'https://extion-beta.vercel.app',
    'https://extion.co',
+   'https://www.extion.co',
  ];
 
  // CORS 설정
  app.enableCors({
-   origin: corsOrigins,
+   origin: (origin, callback) => {
+     // origin이 없는 경우 (same-origin 요청 등) 허용
+     if (!origin) return callback(null, true);
+     
+     // 허용된 origin 목록 확인
+     const isAllowed = corsOrigins.some(allowedOrigin => {
+       if (allowedOrigin.includes('*')) {
+         // 와일드카드 처리
+         const regex = new RegExp(allowedOrigin.replace(/\*/g, '.*'));
+         return regex.test(origin);
+       }
+       return origin === allowedOrigin;
+     });
+     
+     if (isAllowed) {
+       callback(null, true);
+     } else {
+       callback(new Error('Not allowed by CORS policy'), false);
+     }
+   },
    credentials: true,
-   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-   allowedHeaders: ['Content-Type', 'Authorization'],
+   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+   allowedHeaders: [
+     'Content-Type', 
+     'Authorization', 
+     'X-Requested-With',
+     'Accept',
+     'Origin',
+     'Access-Control-Request-Method',
+     'Access-Control-Request-Headers'
+   ],
+   exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
+   optionsSuccessStatus: 200, // 일부 레거시 브라우저 (IE11, various SmartTVs) choke on 204
+   preflightContinue: false,
  });
 
  // 전역 파이프 설정 (DTO 유효성 검증)

@@ -41,6 +41,11 @@ export class SpreadsheetController {
   @Post('/data/save')
   async saveSpreadsheet(@Body() createSpreadsheetDto: CreateSpreadsheetDto) {
     try {
+      // CORS 디버깅을 위한 로깅 추가
+      this.logger.log(`=== 스프레드시트 저장 요청 시작 ===`);
+      this.logger.log(`요청 시간: ${new Date().toISOString()}`);
+      this.logger.log(`환경: ${process.env.NODE_ENV || 'development'}`);
+      
       // 상세한 요청 정보 로깅
       this.logger.log(
         `스프레드시트 저장 시작: ${createSpreadsheetDto.fileName}, userId: ${createSpreadsheetDto.userId}, chatId: ${createSpreadsheetDto.chatId}`,
@@ -66,6 +71,8 @@ export class SpreadsheetController {
       };
     } catch (error) {
       // 상세한 에러 정보 로깅
+      this.logger.error('=== 스프레드시트 저장 오류 발생 ===');
+      this.logger.error(`에러 시간: ${new Date().toISOString()}`);
       this.logger.error('스프레드시트 저장 오류:', {
         message: error.message,
         stack: error.stack,
@@ -84,6 +91,7 @@ export class SpreadsheetController {
         fileName: createSpreadsheetDto.fileName,
         userId: createSpreadsheetDto.userId,
         timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
       };
 
       if (error.code) {
