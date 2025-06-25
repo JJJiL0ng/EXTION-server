@@ -112,7 +112,6 @@ enum MessageType {
   VISUALIZATION
   DATA_GENERATION
   FUNCTION
-  DATA_EDIT
 }
 
 enum MessageMode {
