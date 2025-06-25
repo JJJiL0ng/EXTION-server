@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptService, ChatType, PromptData } from '../prompts/prompt/prompt.service';
 import { ChatDatabaseService, ChatListItem, ChatMessage, AnthropicMessage } from '../chat-database/chat-database.service';
-import { MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
+import { MessageRole, MessageType, MessageMode } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface DataEditChatRequest {
@@ -209,7 +209,7 @@ export class DataEditChatService {
         content: request.userInput,
         role: 'USER' as any,
         type: 'TEXT' as any,
-        mode: 'DATAFIX' as any,
+        mode: 'DATA_EDIT' as any,
         chatId,
         sheetContext: request.spreadsheetData ? {
           hasData: !!request.spreadsheetData,
@@ -237,8 +237,8 @@ export class DataEditChatService {
       data: {
         content,
         role: 'EXTION_AI' as any,
-        type: 'DATA_FIX' as any,
-        mode: 'DATAFIX' as any,
+        type: 'DATA_EDIT' as any,
+        mode: 'DATA_EDIT' as any,
         chatId,
         dataChangeInfo: extractedResult.editedData ? {
           sheetName: extractedResult.editedData.sheetName,

@@ -10,6 +10,7 @@ export enum MessageType {
   VISUALIZATION = 'visualization',
   DATA_GENERATION = 'data_generation',
   DATA_FIX = 'data_fix',
+  DATA_EDIT = 'data_edit',
   FUNCTION = 'function'
 }
 
@@ -25,6 +26,7 @@ export enum MessageMode {
   VISUALIZATION = 'visualization',
   DATA_GENERATION = 'datageneration',
   DATA_FIX = 'datafix',
+  DATA_EDIT = 'dataedit',
   FUNCTION = 'function'
 }
 
