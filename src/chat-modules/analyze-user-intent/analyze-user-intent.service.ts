@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
 
-//배포용 주석 추후 삭제
+
 export enum ChatModule {
   VISUALIZATION = 'visualization-chat',
   GENERATION = 'generate-chat',
