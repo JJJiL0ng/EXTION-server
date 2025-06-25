@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,86 +8,78 @@ datasource db {
 }
 
 model User {
-  id            String    @id
-  email         String?   @unique
+  id            String          @id
+  email         String?         @unique
   displayName   String
   photoURL      String?
-  isGuest       Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  lastActiveAt  DateTime  @updatedAt
-  preferences   Json?     // entspricht FirebaseUser.preferences
-  statistics    Json?     // entspricht FirebaseUser.statistics
-
+  isGuest       Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  lastActiveAt  DateTime        @updatedAt
+  preferences   Json?
+  statistics    Json?
   chats         Chat[]
   sheetMetaData SheetMetaData[]
 }
 
 model SheetMetaData {
-  id               String   @id @default(cuid())
+  id               String           @id @default(cuid())
   fileName         String
   originalFileName String?
   fileSize         Int?
   fileType         String?
-  activeSheetIndex Int      @default(0)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  sheetTableData SheetTableData[]
-  chats          Chat[]
+  activeSheetIndex Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  userId           String
+  chats            Chat[]
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sheetTableData   SheetTableData[]
 }
 
 model SheetTableData {
-  id            String   @id @default(cuid())
-  name          String
-  index         Int
-  data          Json // Storing string[][]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  sheetMetaData   SheetMetaData @relation(fields: [sheetMetaDataId], references: [id], onDelete: Cascade)
+  id              String        @id @default(cuid())
+  name            String
+  index           Int
+  data            Json
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   sheetMetaDataId String
+  sheetMetaData   SheetMetaData @relation(fields: [sheetMetaDataId], references: [id], onDelete: Cascade)
 
   @@unique([sheetMetaDataId, index])
   @@unique([sheetMetaDataId, name])
 }
 
 model Chat {
-  id           String     @id @default(cuid())
-  title        String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  messageCount Int        @default(0)
-  status       ChatStatus @default(ACTIVE)
-  analytics    Json?
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-
-  sheetMetaData   SheetMetaData? @relation(fields: [sheetMetaDataId], references: [id], onDelete: SetNull)
+  id              String         @id @default(cuid())
+  title           String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  messageCount    Int            @default(0)
+  status          ChatStatus     @default(ACTIVE)
+  analytics       Json?
+  userId          String
   sheetMetaDataId String?
-
-  messages Message[]
+  sheetMetaData   SheetMetaData? @relation(fields: [sheetMetaDataId], references: [id])
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages        Message[]
 }
 
 model Message {
-  id             String      @id @default(cuid())
-  content        String      @db.Text
-  timestamp      DateTime    @default(now())
+  id             String       @id @default(cuid())
+  content        String
+  timestamp      DateTime     @default(now())
   role           MessageRole
   type           MessageType
   mode           MessageMode?
-  sheetContext   Json?       // entspricht FirebaseMessage.sheetContext
-  formulaData    Json?       // entspricht FirebaseMessage.formulaData
-  artifactData   Json?       // entspricht FirebaseMessage.artifactData
-  dataChangeInfo Json?       // entspricht FirebaseMessage.dataChangeInfo
-  fileUploadInfo Json?       // entspricht FirebaseMessage.fileUploadInfo
-  metadata       Json?       // 추가 메타데이터 정보
-
-  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  chatId String
+  sheetContext   Json?
+  formulaData    Json?
+  artifactData   Json?
+  dataChangeInfo Json?
+  fileUploadInfo Json?
+  chatId         String
+  metadata       Json?
+  chat           Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
 }
 
 enum ChatStatus {
@@ -112,6 +101,7 @@ enum MessageType {
   VISUALIZATION
   DATA_GENERATION
   FUNCTION
+  DATA_EDIT
 }
 
 enum MessageMode {
