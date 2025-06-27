@@ -11,7 +11,8 @@ import {
   BadRequestException,
   NotFoundException,
   UsePipes,
-  ValidationPipe 
+  ValidationPipe,
+  ForbiddenException
 } from '@nestjs/common';
 import { ChatDatabaseService } from './chat-database.service';
 import { 
@@ -25,12 +26,16 @@ import {
   UpdateChatTitleDto,
   UpdateChatTitleResponseDto
 } from './dto';
+import { AuthService } from '../../auth-modules/auth/auth.service';
 
 @Controller('chat-database')
 export class ChatDatabaseController {
   private readonly logger = new Logger(ChatDatabaseController.name);
 
-  constructor(private readonly chatDatabaseService: ChatDatabaseService) {}
+  constructor(
+    private readonly chatDatabaseService: ChatDatabaseService,
+    private readonly authService: AuthService
+  ) {}
 
   /**
    * 채팅 ID로 채팅 로그 불러오기
@@ -109,6 +114,74 @@ export class ChatDatabaseController {
   }
 
   /**
+   * 어드민용: 채팅 ID로 채팅 로그 불러오기 (권한 체크 우회)
+   * GET /chat-database/admin/load/:chatId
+   */
+  @Get('admin/load/:chatId')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async adminLoadChatMessages(
+    @Param('chatId') chatId: string,
+    @Query('adminUserId') adminUserId: string,
+    @Query('limit') limit?: string,
+  ): Promise<LoadChatResponseDto> {
+    try {
+      if (!adminUserId) {
+        throw new BadRequestException('어드민 사용자 ID가 필요합니다.');
+      }
+
+      if (!chatId) {
+        throw new BadRequestException('채팅 ID가 필요합니다.');
+      }
+
+      // 어드민 권한 확인
+      const adminCheck = await this.authService.checkAdminPermission(adminUserId);
+      if (!adminCheck.isAdmin) {
+        throw new ForbiddenException('어드민 권한이 필요합니다.');
+      }
+
+      this.logger.log(`어드민 채팅 로그 불러오기 요청: chatId=${chatId}, adminUserId=${adminUserId}`);
+
+      // 메시지 제한 수 파싱 (기본값: 무제한)
+      const messageLimit = limit ? parseInt(limit, 10) : undefined;
+      
+      if (messageLimit && (messageLimit <= 0 || messageLimit > 1000)) {
+        throw new BadRequestException('메시지 제한 수는 1-1000 사이여야 합니다.');
+      }
+
+      // 채팅 메시지 불러오기 (권한 체크 우회)
+      const messages = await this.chatDatabaseService.getAdminChatMessages(chatId, messageLimit);
+
+      // 채팅 정보 가져오기 (권한 체크 우회)
+      const chatInfo = await this.chatDatabaseService.getAdminChatInfo(chatId);
+
+      this.logger.log(`어드민 채팅 로그 불러오기 완료: ${messages.length}개 메시지`);
+
+      return {
+        success: true,
+        chatId,
+        messages,
+        messageCount: messages.length,
+        chatInfo: {
+          title: chatInfo?.title,
+          createdAt: chatInfo?.createdAt,
+          updatedAt: chatInfo?.updatedAt,
+          totalMessageCount: chatInfo?.messageCount,
+          sheetMetaDataId: chatInfo?.sheetMetaDataId,
+        },
+      };
+
+    } catch (error) {
+      this.logger.error(`어드민 채팅 로그 불러오기 실패: ${error.message}`, error.stack);
+      
+      if (error instanceof BadRequestException || error instanceof NotFoundException || error instanceof ForbiddenException) {
+        throw error;
+      }
+      
+      throw new BadRequestException('채팅 로그를 불러오는 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
    * 사용자의 모든 채팅 목록 가져오기
    * GET /chat-database/list
    */
@@ -132,6 +205,87 @@ export class ChatDatabaseController {
 
     } catch (error) {
       this.logger.error(`채팅 목록 조회 실패: ${error.message}`, error.stack);
+      throw new BadRequestException('채팅 목록을 불러오는 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
+   * 어드민용: 모든 채팅 목록 가져오기
+   * GET /chat-database/admin/all-chats
+   */
+  @Get('admin/all-chats')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async getAllChats(@Query('adminUserId') adminUserId: string): Promise<ChatListResponseDto> {
+    try {
+      if (!adminUserId) {
+        throw new BadRequestException('어드민 사용자 ID가 필요합니다.');
+      }
+
+      // 어드민 권한 확인
+      const adminCheck = await this.authService.checkAdminPermission(adminUserId);
+      if (!adminCheck.isAdmin) {
+        throw new ForbiddenException('어드민 권한이 필요합니다.');
+      }
+
+      this.logger.log(`어드민 모든 채팅 목록 조회 요청: adminUserId=${adminUserId}`);
+
+      const chatList = await this.chatDatabaseService.getAllChats();
+
+      return {
+        success: true,
+        chats: chatList,
+        count: chatList.length,
+      };
+
+    } catch (error) {
+      this.logger.error(`모든 채팅 목록 조회 실패: ${error.message}`, error.stack);
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+      throw new BadRequestException('채팅 목록을 불러오는 중 오류가 발생했습니다.');
+    }
+  }
+
+  /**
+   * 어드민용: 특정 사용자의 채팅 목록 가져오기
+   * GET /chat-database/admin/user/:userId/chats
+   */
+  @Get('admin/user/:userId/chats')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async getUserChats(
+    @Param('userId') userId: string,
+    @Query('adminUserId') adminUserId: string
+  ): Promise<ChatListResponseDto> {
+    try {
+      if (!adminUserId) {
+        throw new BadRequestException('어드민 사용자 ID가 필요합니다.');
+      }
+
+      if (!userId) {
+        throw new BadRequestException('대상 사용자 ID가 필요합니다.');
+      }
+
+      // 어드민 권한 확인
+      const adminCheck = await this.authService.checkAdminPermission(adminUserId);
+      if (!adminCheck.isAdmin) {
+        throw new ForbiddenException('어드민 권한이 필요합니다.');
+      }
+
+      this.logger.log(`어드민 특정 사용자 채팅 목록 조회: userId=${userId}, adminUserId=${adminUserId}`);
+
+      const chatList = await this.chatDatabaseService.getChatList(userId);
+
+      return {
+        success: true,
+        chats: chatList,
+        count: chatList.length,
+      };
+
+    } catch (error) {
+      this.logger.error(`특정 사용자 채팅 목록 조회 실패: ${error.message}`, error.stack);
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
       throw new BadRequestException('채팅 목록을 불러오는 중 오류가 발생했습니다.');
     }
   }

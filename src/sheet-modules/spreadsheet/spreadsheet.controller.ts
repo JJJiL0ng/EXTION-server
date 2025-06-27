@@ -9,9 +9,11 @@ import {
   NotFoundException,
   Patch,
   Param,
+  ForbiddenException,
 } from '@nestjs/common';
 import { SpreadsheetService } from './spreadsheet.service';
 import { CreateSpreadsheetDto, AutoSaveSpreadsheetDto, AutoSaveStatusDto } from './dto/spreadsheet.dto';
+import { AuthService } from '../../auth-modules/auth/auth.service';
 
 // 델타 자동저장을 위한 DTO
 interface DeltaAutoSaveDto {
@@ -36,7 +38,11 @@ interface DeltaAutoSaveDto {
 @Controller('spreadsheet')
 export class SpreadsheetController {
   private readonly logger = new Logger(SpreadsheetController.name);
-  constructor(private readonly spreadsheetService: SpreadsheetService) {}
+  
+  constructor(
+    private readonly spreadsheetService: SpreadsheetService,
+    private readonly authService: AuthService
+  ) {}
 
   @Post('/data/save')
   async saveSpreadsheet(@Body() createSpreadsheetDto: CreateSpreadsheetDto) {
@@ -409,6 +415,84 @@ export class SpreadsheetController {
       this.logger.error('자동저장 통계 조회 오류:', error);
       throw new BadRequestException(
         `통계 조회 중 오류가 발생했습니다: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * 어드민용: 채팅 ID로 스프레드시트 로드 (권한 체크 우회)
+   * GET /spreadsheet/admin/loadsheet/:chatId
+   */
+  @Get('admin/loadsheet/:chatId')
+  async adminLoadSpreadsheetByChatId(
+    @Param('chatId') chatId: string,
+    @Query('adminUserId') adminUserId: string
+  ) {
+    try {
+      if (!chatId) {
+        throw new BadRequestException('chatId가 필요합니다.');
+      }
+
+      if (!adminUserId) {
+        throw new BadRequestException('어드민 사용자 ID가 필요합니다.');
+      }
+
+      // 어드민 권한 확인
+      const adminCheck = await this.authService.checkAdminPermission(adminUserId);
+      if (!adminCheck.isAdmin) {
+        throw new ForbiddenException('어드민 권한이 필요합니다.');
+      }
+
+      this.logger.log(`어드민용 채팅 ID로 스프레드시트 로드 시작: ${chatId}`);
+      const result = await this.spreadsheetService.getAdminSpreadsheetByChatId(chatId);
+
+      if (!result) {
+        throw new NotFoundException(
+          `채팅 ID가 ${chatId}인 채팅을 찾을 수 없습니다.`,
+        );
+      }
+
+      // 에러가 있는 경우 (채팅은 있지만 시트가 없는 경우)
+      if (result.error) {
+        this.logger.warn(`채팅에 연결된 시트 없음: ${chatId}`, result);
+        return {
+          success: false,
+          message: result.message,
+          error: result.error,
+          data: result.chatInfo,
+        };
+      }
+
+      this.logger.log(
+        `어드민용 채팅 ID로 스프레드시트 로드 완료: 채팅=${chatId}, 시트=${result.sheetMetaData?.id}`,
+      );
+
+      return {
+        success: true,
+        message: '스프레드시트를 성공적으로 불러왔습니다.',
+        data: {
+          chatInfo: result.chatInfo,
+          sheetMetaData: result.sheetMetaData,
+          sheets: result.sheets,
+        },
+      };
+    } catch (error) {
+      this.logger.error('어드민용 채팅 ID로 스프레드시트 로드 오류:', {
+        chatId,
+        error: error.message,
+        stack: error.stack,
+      });
+
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        `채팅 ID로 데이터 로드 중 오류가 발생했습니다: ${error.message}`,
       );
     }
   }

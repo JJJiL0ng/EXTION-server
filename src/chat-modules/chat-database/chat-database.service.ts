@@ -484,4 +484,128 @@ export class ChatDatabaseService {
       };
     }
   }
+
+  /**
+   * 어드민용: 특정 채팅의 메시지 가져오기 (권한 체크 우회)
+   */
+  async getAdminChatMessages(chatId: string, limit?: number): Promise<ChatMessage[]> {
+    try {
+      this.logger.log(`어드민용 채팅 메시지 조회: ${chatId}`);
+
+      const messages = await this.prismaService.message.findMany({
+        where: { chatId },
+        orderBy: { timestamp: 'asc' },
+        ...(limit && { take: limit }),
+      });
+
+      const chatMessages = messages.map(msg => ({
+        messageId: msg.id,
+        content: msg.content,
+        role: msg.role as MessageRole,
+        type: msg.type as any,
+        mode: msg.mode as any,
+        timestamp: msg.timestamp,
+        sheetContext: msg.sheetContext,
+        formulaData: msg.formulaData,
+        artifactData: msg.artifactData,
+        dataChangeInfo: msg.dataChangeInfo,
+        fileUploadInfo: msg.fileUploadInfo,
+        metadata: msg.metadata,
+      }));
+
+      this.logger.log(`어드민용 채팅 메시지 조회 완료: ${chatMessages.length}개`);
+      return chatMessages;
+
+    } catch (error) {
+      this.logger.error('어드민용 채팅 메시지 조회 중 오류:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 어드민용: 채팅 정보 가져오기 (권한 체크 우회)
+   */
+  async getAdminChatInfo(chatId: string): Promise<any> {
+    try {
+      this.logger.log(`어드민용 채팅 정보 조회: ${chatId}`);
+
+      const chat = await this.prismaService.chat.findUnique({
+        where: { id: chatId },
+        include: {
+          _count: {
+            select: { messages: true }
+          }
+        }
+      });
+
+      if (!chat) {
+        this.logger.warn(`어드민용 채팅 정보 조회 - 채팅을 찾을 수 없음: ${chatId}`);
+        return null;
+      }
+
+      this.logger.log(`어드민용 채팅 정보 조회 완료: ${chatId}`);
+      
+      return {
+        id: chat.id,
+        title: chat.title,
+        userId: chat.userId,
+        status: chat.status,
+        messageCount: chat._count.messages,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+        sheetMetaDataId: chat.sheetMetaDataId,
+      };
+
+    } catch (error) {
+      this.logger.error('어드민용 채팅 정보 조회 중 오류:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 어드민용: 모든 채팅 목록 가져오기
+   */
+  async getAllChats(): Promise<ChatListItem[]> {
+    try {
+      this.logger.log('어드민용 모든 채팅 목록 조회');
+
+      const chats = await this.prismaService.chat.findMany({
+        where: { 
+          status: 'ACTIVE',
+        },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          _count: {
+            select: { messages: true },
+          },
+          user: {
+            select: {
+              displayName: true,
+              email: true,
+            }
+          }
+        },
+      });
+
+      const chatList = chats.map(chat => ({
+        chatId: chat.id,
+        title: chat.title,
+        messageCount: chat.messageCount,
+        lastUpdated: chat.updatedAt,
+        createdAt: chat.createdAt,
+        sheetMetaDataId: chat.sheetMetaDataId || undefined,
+        status: chat.status,
+        userId: chat.userId,
+        userDisplayName: chat.user?.displayName,
+        userEmail: chat.user?.email,
+      }));
+
+      this.logger.log(`어드민용 모든 채팅 목록 조회 완료: ${chatList.length}개`);
+      return chatList as ChatListItem[];
+
+    } catch (error) {
+      this.logger.error('어드민용 모든 채팅 목록 조회 중 오류:', error);
+      throw error;
+    }
+  }
 }

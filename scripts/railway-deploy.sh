@@ -7,11 +7,7 @@ echo "🚀 Extion Server - Railway 자동 배포 시작"
 echo "환경: ${NODE_ENV:-production}"
 echo "시간: $(date)"
 
-# 1. 의존성 설치
-echo "📦 의존성 설치 중..."
-npm install
-
-# 2. 빌드
+# 1. 빌드 (Railway에서 이미 npm install 실행됨)
 echo "🔨 애플리케이션 빌드 중..."
 npm run build
 
