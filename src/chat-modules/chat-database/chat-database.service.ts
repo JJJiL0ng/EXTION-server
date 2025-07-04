@@ -570,9 +570,6 @@ export class ChatDatabaseService {
       this.logger.log('어드민용 모든 채팅 목록 조회');
 
       const chats = await this.prismaService.chat.findMany({
-        where: { 
-          status: 'ACTIVE',
-        },
         orderBy: { updatedAt: 'desc' },
         include: {
           _count: {
