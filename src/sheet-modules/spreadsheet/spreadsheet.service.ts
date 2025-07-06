@@ -68,34 +68,38 @@ export class SpreadsheetService {
       sheets,
     } = dto;
 
-    // 사용자 존재 여부 확인 및 게스트 사용자 생성
+    // 사용자 존재 여부 확인 및 필요시 생성
     let user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
 
     if (!user) {
-      // 게스트 사용자인 경우 자동 생성
-      if (userId!.startsWith('guest_')) {
-        try {
-          user = await this.prisma.user.create({
-            data: {
-              id: userId!,
-              email: `${userId}@guest.temp`,
-              displayName: userId!,
-              isGuest: true,
-            },
-          });
-          console.log(`게스트 사용자 생성 완료: ${userId}`);
-        } catch (userCreateError) {
-          console.error(`게스트 사용자 생성 실패: ${userId}`, {
-            error: userCreateError.message,
-            code: userCreateError.code,
-            meta: userCreateError.meta,
-          });
-          throw new Error(`게스트 사용자 생성 실패: ${userCreateError.message}`);
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            id: userId!,
+            email: `${userId}@guest.temp`, // 임시 이메일
+            displayName: userId!, // ID를 표시 이름으로 사용
+            isGuest: true, // 모든 신규 사용자를 게스트로 처리
+          },
+        });
+        console.log(`새로운 사용자(게스트) 생성 완료: ${userId}`);
+      } catch (error) {
+        if (error.code === 'P2002') {
+          // 경쟁 조건: 다른 요청에서 이미 사용자를 생성한 경우
+          console.warn(
+            `사용자 생성 경쟁 조건 발생, 기존 사용자 재조회: ${userId}`,
+          );
+          user = await this.prisma.user.findUnique({ where: { id: userId } });
+          if (!user) {
+            // 이 경우는 거의 발생하지 않아야 함
+            console.error(`사용자 생성 실패 후 재조회 실패: ${userId}`);
+            throw new Error(`사용자를 생성하거나 찾을 수 없습니다: ${userId}`);
+          }
+        } else {
+          console.error(`사용자 생성 실패: ${userId}`, error);
+          throw new Error(`사용자 생성 실패: ${error.message}`);
         }
-      } else {
-        throw new Error(`사용자 ID ${userId}를 찾을 수 없습니다.`);
       }
     } else {
       console.log(`기존 사용자 확인: ${userId}, isGuest: ${user.isGuest}`);
