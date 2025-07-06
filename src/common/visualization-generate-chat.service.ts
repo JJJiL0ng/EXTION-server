@@ -2,7 +2,7 @@ import { Injectable, Logger, BadRequestException, InternalServerErrorException }
 import { ConfigService } from '@nestjs/config';
 import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../prisma/prisma.service';
-import { PromptService, ChatType, PromptData } from '../chat-modules/prompts/prompt/prompt.service';
+import { PromptService, ChatType, PromptData } from '../prompts/prompt/prompt.service';
 import { ChatDatabaseService, ChatListItem, ChatMessage, AnthropicMessage } from '../chat-modules/chat-database/chat-database.service';
 import { MessageRole, MessageType, MessageMode } from './dto/chat.dto';
 import { v4 as uuidv4 } from 'uuid';

@@ -25,6 +25,7 @@ import { SheetLoadModule } from './sheet-modules/sheet-load/sheet-load.module';
 import { AuthModule } from './auth-modules/auth/auth.module';
 import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.module';
 import { AiutilsModule } from './chat-modules/aiutils/aiutils.module';
+import { TableGenerateModule } from './table-generate/table-generate.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { AiutilsModule } from './chat-modules/aiutils/aiutils.module';
     AuthModule,
     ChatDatabaseModule,
     AiutilsModule,
+    TableGenerateModule,
   ],
   controllers: [AppController],
   providers: [AppService],

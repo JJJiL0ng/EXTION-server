@@ -36,7 +36,7 @@ export class AnalyzeUserIntentService {
 
     const promptPath = path.join(
       process.cwd(),
-      `src/chat-modules/prompts/${language}/intent.yml`,
+      `src/prompts/${language}/intent.yml`,
     );
     this.intentPrompt = yaml.load(
       fs.readFileSync(promptPath, 'utf8'),
@@ -44,7 +44,7 @@ export class AnalyzeUserIntentService {
 
     const keywordsPath = path.join(
       process.cwd(),
-      `src/chat-modules/prompts/${language}/keywords.yml`,
+      `src/prompts/${language}/keywords.yml`,
     );
     this.intentKeywords = yaml.load(
       fs.readFileSync(keywordsPath, 'utf8'),

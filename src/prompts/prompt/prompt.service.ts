@@ -11,6 +11,7 @@ export enum ChatType {
   EDIT_CHAT = 'edit_chat',
   VISUALIZATION_CHAT = 'visualization_chat',
   GENERATION_CHAT = 'generation_chat',
+  TABLE_GENERATE = 'table_generate',
   // 필요에 따라 추가
 }
 
@@ -89,7 +90,7 @@ export class PromptService {
 
   constructor(private configService: ConfigService) {
     this.language = this.configService.get('PROMPT_LANGUAGE', 'kr');
-    this.promptsBasePath = path.join(process.cwd(), 'src', 'chat-modules', 'prompts', this.language);
+    this.promptsBasePath = path.join(process.cwd(), 'src', 'prompts', this.language);
     this.logger.log(`프롬프트 기본 경로: ${this.promptsBasePath}`);
     this.logger.log(`프롬프트 언어: ${this.language}`);
   }
