@@ -105,21 +105,6 @@ export class SpreadsheetService {
       console.log(`기존 사용자 확인: ${userId}, isGuest: ${user.isGuest}`);
     }
 
-    // chatId가 제공된 경우 채팅 존재 여부 확인
-    let existingChatId = chatId;
-    if (chatId) {
-      const chat = await this.prisma.chat.findFirst({
-        where: { 
-          id: chatId, 
-          userId: userId 
-        },
-      });
-
-      if (!chat) {
-        throw new Error(`채팅 ID ${chatId}를 찾을 수 없거나 사용자 권한이 없습니다.`);
-      }
-    }
-
     return this.prisma.$transaction(async (tx) => {
       // 1. 시트 메타데이터 생성
       const sheetMetaData = await tx.sheetMetaData.create({
@@ -150,44 +135,63 @@ export class SpreadsheetService {
         });
       }
 
-      // 4. chatId가 없는 경우 새로운 채팅 생성
-      if (!existingChatId) {
-        const today = new Date().toLocaleDateString('ko-KR', {
+      // 4. 채팅 처리 (생성 또는 업데이트)
+      let finalChatId = chatId;
+      const today = new Date()
+        .toLocaleDateString('ko-KR', {
           year: 'numeric',
           month: '2-digit',
-          day: '2-digit'
-        }).replace(/\./g, '').replace(/\s/g, '');
-        
-        const chatTitle = `${fileName} ${today}`;
-        
+          day: '2-digit',
+        })
+        .replace(/\./g, '')
+        .replace(/\s/g, '');
+      const chatTitle = `${fileName} ${today}`;
+
+      if (finalChatId) {
+        // chatId가 제공된 경우, 해당 ID로 채팅을 찾거나 생성
+        const chat = await tx.chat.findUnique({
+          where: { id: finalChatId },
+        });
+
+        if (chat) {
+          // 채팅이 존재하면, 소유권 확인 후 업데이트
+          if (chat.userId !== userId) {
+            throw new Error(`채팅 ID ${finalChatId}에 대한 권한이 없습니다.`);
+          }
+          await tx.chat.update({
+            where: { id: finalChatId },
+            data: {
+              sheetMetaData: { connect: { id: sheetMetaData.id } },
+            },
+          });
+        } else {
+          // 채팅이 없으면, 제공된 ID로 새로 생성
+          await tx.chat.create({
+            data: {
+              id: finalChatId,
+              title: chatTitle,
+              user: { connect: { id: userId } },
+              sheetMetaData: { connect: { id: sheetMetaData.id } },
+            },
+          });
+        }
+      } else {
+        // chatId가 제공되지 않은 경우, 새로운 채팅 생성
         const newChat = await tx.chat.create({
           data: {
             title: chatTitle,
-            user: {
-              connect: { id: userId },
-            },
+            user: { connect: { id: userId } },
             sheetMetaData: {
               connect: { id: sheetMetaData.id },
             },
           },
         });
-        
-        existingChatId = newChat.id;
-      } else {
-        // 5. chatId가 제공된 경우, 채팅과 시트 메타데이터 연결
-        await tx.chat.update({
-          where: { id: existingChatId, userId: userId },
-          data: {
-            sheetMetaData: {
-              connect: { id: sheetMetaData.id },
-            },
-          },
-        });
+        finalChatId = newChat.id;
       }
 
       return {
         ...sheetMetaData,
-        chatId: existingChatId,
+        chatId: finalChatId,
         sheets: sheets.map((s) => ({
           name: s.name,
           index: s.index,

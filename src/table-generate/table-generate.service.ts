@@ -73,6 +73,7 @@ export class TableGenerateService {
       // 3. 데이터베이스에 저장
       const savedResult = await this.saveGeneratedData(
         userId,
+        chatId,
         generatedResult,
         extractedData?.fileName || 'Untitled',
       );
@@ -258,7 +259,7 @@ export class TableGenerateService {
         prompts.maxTokens
       );
 
-      // 4. 응답에서 데이터 추출
+      // 4. 응답에서 데이터 추출 (try-catch 블록 밖으로 이동)
       const extractedResult = this.extractDataFromResponse(aiResponse);
 
       // 5. 결과 반환
@@ -272,31 +273,11 @@ export class TableGenerateService {
       };
 
     } catch (error) {
-      this.logger.error('Claude API 데이터 생성 실패:', error);
-      
-      // 실패 시 fallback 로직
-      this.logger.log('Fallback: 기본 데이터 처리로 전환');
-      const processedData = this.processDataWithMessage(
-        extractedData?.data || [],
-        message,
+      this.logger.error('Claude API 데이터 생성 또는 파싱 실패:', error);
+      // 실패 시에는 에러를 던져서 processChat의 catch 블록에서 처리하도록 함
+      throw new InternalServerErrorException(
+        `AI 데이터 처리 실패: ${error.message}`
       );
-
-      const sheets: GeneratedSheetData[] = [
-        {
-          name: 'Generated Data',
-          index: 0,
-          data: processedData,
-        },
-      ];
-
-      return {
-        sheets,
-        fileName: `generated_${extractedData?.fileName || 'table'}.xlsx`,
-        originalFileName: extractedData?.fileName,
-        fileSize: extractedData?.fileSize,
-        fileType: 'generated',
-        activeSheetIndex: 0,
-      };
     }
   }
 
@@ -330,13 +311,15 @@ export class TableGenerateService {
    */
   private async saveGeneratedData(
     userId: string,
+    chatId: string,
     result: TableGenerationResult,
     originalFileName: string,
   ) {
-    this.logger.log(`데이터베이스 저장 시작 - 새로운 채팅 및 시트 생성`);
+    this.logger.log(`데이터베이스 저장 시작 - chatId: ${chatId}`);
 
     const saveDto = {
       userId,
+      chatId,
       fileName: result.fileName,
       originalFileName: result.originalFileName || originalFileName,
       fileSize: result.fileSize,

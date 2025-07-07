@@ -89,4 +89,37 @@ export class AutoSaveStatusDto {
   @IsString()
   @IsNotEmpty()
   spreadsheetId: string;
+}
+
+export class SaveSpreadsheetDto {
+  @IsString()
+  userId: string;
+
+  @IsString()
+  @IsOptional()
+  chatId?: string;
+
+  @IsString()
+  fileName: string;
+
+  @IsString()
+  @IsOptional()
+  originalFileName?: string;
+
+  @IsInt()
+  @IsOptional()
+  fileSize?: number;
+
+  @IsString()
+  @IsOptional()
+  fileType?: string;
+
+  @IsInt()
+  @IsOptional()
+  activeSheetIndex?: number;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateSheetTableDataDto)
+  sheets: CreateSheetTableDataDto[];
 } 
