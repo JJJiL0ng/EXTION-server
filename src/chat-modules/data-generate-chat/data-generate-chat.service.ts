@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptService, ChatType, PromptData } from '../../prompts/prompt/prompt.service';
 import { ChatDatabaseService, ChatListItem, ChatMessage, AnthropicMessage } from '../chat-database/chat-database.service';
-import { MessageRole, MessageType, MessageMode } from '../../common/dto/chat.dto';
+import { MessageRole, MessageType, MessageMode } from '../../chat.dto/dto/chat.dto';
 import { SpreadsheetService } from '../../sheet-modules/spreadsheet/spreadsheet.service';
 import { CreateSpreadsheetDto } from '../../sheet-modules/spreadsheet/dto/spreadsheet.dto';
 import { v4 as uuidv4 } from 'uuid';

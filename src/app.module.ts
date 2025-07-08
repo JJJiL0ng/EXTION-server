@@ -2,14 +2,6 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { FormulaModule } from './modules/formula/formula.module';
-import { DataGenerationModule } from './modules/datageneration/datageneration.module';
-import { NormalModule } from './modules/normal/normal.module';
-import { DataFixModule } from './modules/datafix/datafix.module';
-import { FirebaseModule } from './common/firebase/firebase.module';
-import { SheetModule } from './common/sheet/sheet.module';
-import { FunctionModule } from './modules/function/function.module';
-import { CacheModule } from './common/cache/cache.module';
 import { DatabaseModule } from './database/database.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { OrchestratorChatModule } from './chat-modules/orchestrator-chat/orchestrator-chat.module';
@@ -33,14 +25,6 @@ import { TableGenerateModule } from './table-generate/table-generate.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    FormulaModule,
-    DataGenerationModule,
-    NormalModule,
-    DataFixModule,
-    FirebaseModule,
-    SheetModule,
-    FunctionModule,
-    CacheModule,
     DatabaseModule,
     PrismaModule,
     OrchestratorChatModule,

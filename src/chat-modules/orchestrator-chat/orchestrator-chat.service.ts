@@ -11,13 +11,13 @@ import {
 
 // 각 서비스 import
 import { GeneralChatService } from '../general-chat/general-chat.service';
-import { VisualizationGenerateChatService } from '../../common/visualization-generate-chat.service';
+import { VisualizationGenerateChatService } from '../visualization-generate-chat/visualization-generate-chat.service';
 import { DataEditChatService } from '../data-edit-chat/data-edit-chat.service';
 import { DataGenerateChatService } from '../data-generate-chat/data-generate-chat.service';
 import { FunctionChatService } from '../function-chat/function-chat.service';
 // import { GenerateChatService } from '../generate-chat/generate-chat.service';
 import { AnalyzeUserIntentService, ChatModule } from '../analyze-user-intent/analyze-user-intent.service';
-import { MessageMode } from '../../common/dto/chat.dto';
+import { MessageMode } from '../../chat.dto/dto/chat.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()

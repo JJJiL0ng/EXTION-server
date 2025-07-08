@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MessageRole } from '../../common/dto/chat.dto';
+import { MessageRole } from '../../chat.dto/dto/chat.dto';
 
 export interface ChatListItem {
   chatId: string;
