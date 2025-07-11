@@ -13,9 +13,8 @@ export class OrchestratorChatController {
 
   @Post('send')
   @HttpCode(HttpStatus.OK)
-  async sendMessage(
-    @Body() requestDto: OrchestratorChatRequestDto
-  ): Promise<OrchestratorChatResponseDto> {
+  async sendMessage(@Body() requestDto: OrchestratorChatRequestDto
+): Promise<OrchestratorChatResponseDto> {
     try {
       // 오케스트레이터 서비스로 전체 처리 위임
       const response = await this.orchestratorChatService.processMessage(requestDto);
