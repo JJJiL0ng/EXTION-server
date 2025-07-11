@@ -13,7 +13,6 @@ import { VisualizationGenerateChatModule } from './chat-modules/visualization-ge
 import { AnalyzeUserIntentModule } from './chat-modules/analyze-user-intent/analyze-user-intent.module';
 import { GeminiApiModule } from './chat-modules/gemini-api/gemini-api.module';
 import { SpreadsheetModule } from './sheet-modules/spreadsheet/spreadsheet.module';
-import { SheetLoadModule } from './sheet-modules/sheet-load/sheet-load.module';
 import { AuthModule } from './auth-modules/auth/auth.module';
 import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.module';
 import { AiutilsModule } from './chat-modules/aiutils/aiutils.module';
@@ -36,7 +35,6 @@ import { TableGenerateModule } from './table-generate/table-generate.module';
     AnalyzeUserIntentModule,
     GeminiApiModule,
     SpreadsheetModule,
-    SheetLoadModule,
     AuthModule,
     ChatDatabaseModule,
     AiutilsModule,
