@@ -8,78 +8,192 @@ datasource db {
 }
 
 model User {
-  id            String          @id
-  email         String?         @unique
-  displayName   String
-  photoURL      String?
-  isGuest       Boolean         @default(false)
-  createdAt     DateTime        @default(now())
-  lastActiveAt  DateTime        @updatedAt
-  preferences   Json?
-  statistics    Json?
-  chats         Chat[]
-  sheetMetaData SheetMetaData[]
+  id           String    @id
+  email        String?   @unique
+  displayName  String
+  photoURL     String?
+  isGuest      Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  lastActiveAt DateTime  @updatedAt
+  preferences  Json?     // UI 설정, 기본값 등
+  statistics   Json?     // 사용 통계
+  
+  // 관계
+  spreadSheets SpreadSheet[]
+  chats        Chat[]
+
+  @@index([createdAt])
 }
 
-model SheetMetaData {
-  id               String           @id @default(cuid())
-  fileName         String
-  originalFileName String?
-  fileSize         Int?
-  fileType         String?
-  activeSheetIndex Int              @default(0)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  userId           String
-  chats            Chat[]
-  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sheetTableData   SheetTableData[]
+// 메인 스프레드시트 모델 (단순화)
+model SpreadSheet {
+  id           String   @id @default(cuid())
+  fileName     String
+  fileSize     Int?     // 바이트 단위
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  lastOpened   DateTime @default(now()) // 최근 열어본 시간
+  version      Int      @default(1)      // 파일 버전
+  status       SpreadSheetStatus @default(ACTIVE)
+  
+  // 외래키
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId       String
+  
+  // 관계
+  data         SpreadSheetData?
+  editHistory  EditHistory[]
+  chats        Chat[]
+
+  @@unique([userId, fileName]) // 사용자별 파일명 고유
+  @@index([userId, updatedAt])
+  @@index([userId, lastOpened])
 }
 
-model SheetTableData {
-  id              String        @id @default(cuid())
-  name            String
-  index           Int
-  data            Json
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  sheetMetaDataId String
-  sheetMetaData   SheetMetaData @relation(fields: [sheetMetaDataId], references: [id], onDelete: Cascade)
+// 스프레드시트 데이터 저장 (압축)
+model SpreadSheetData {
+  id             String      @id @default(cuid())
+  spreadSheetId  String      @unique
+  compressedData Bytes       // GZIP 압축된 JSON 데이터
+  dataHash       String      // SHA-256 해시 (무결성 검증)
+  originalSize   Int         // 압축 전 크기
+  compressedSize Int         // 압축 후 크기
+  sheetCount     Int         @default(1)
+  version        String      @default("18.1.4") // SpreadJS 버전
+  savedAt        DateTime    @default(now())
+  
+  // 관계
+  spreadSheet    SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
-  @@unique([sheetMetaDataId, index])
-  @@unique([sheetMetaDataId, name])
+  @@index([dataHash])
+  @@index([savedAt])
 }
 
+// 편집 히스토리 (단순화된 세션 관리)
+model EditHistory {
+  id            String       @id @default(cuid())
+  spreadSheetId String
+  sessionStart  DateTime     @default(now())
+  sessionEnd    DateTime?    // null이면 진행중
+  deltaCount    Int          @default(0)
+  status        EditStatus   @default(ACTIVE)
+  
+  // 메타데이터
+  metadata      Json?        // 편집 통계, 브라우저 정보 등
+  
+  // 관계
+  spreadSheet   SpreadSheet  @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
+  deltas        DeltaRecord[]
+
+  @@index([spreadSheetId, sessionStart])
+  @@index([status])
+}
+
+// 개별 델타 변경사항 기록
+model DeltaRecord {
+  id            String      @id @default(cuid())
+  editHistoryId String
+  deltaData     Json        // 구체적인 변경사항 (셀 값, 수식, 스타일 등)
+  sequenceNo    Int         // 순서 보장
+  action        DeltaAction // 액션 타입
+  sheetName     String?     // 대상 시트명
+  cellRange     String?     // 대상 셀 범위 (A1:B5 형식)
+  createdAt     DateTime    @default(now())
+  
+  // 관계
+  editHistory   EditHistory @relation(fields: [editHistoryId], references: [id], onDelete: Cascade)
+
+  @@unique([editHistoryId, sequenceNo])
+  @@index([editHistoryId, createdAt])
+}
+
+// 채팅 (AI 대화)
 model Chat {
-  id              String         @id @default(cuid())
-  title           String
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  messageCount    Int            @default(0)
-  status          ChatStatus     @default(ACTIVE)
-  analytics       Json?
-  userId          String
-  sheetMetaDataId String?
-  sheetMetaData   SheetMetaData? @relation(fields: [sheetMetaDataId], references: [id])
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages        Message[]
+  id            String    @id @default(cuid())
+  title         String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  messageCount  Int       @default(0)
+  status        ChatStatus @default(ACTIVE)
+  
+  // 스프레드시트 연결 (옵션)
+  spreadSheetId String?
+  spreadSheet   SpreadSheet? @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
+  
+  // 사용자 연결
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 관계
+  messages      Message[]
+
+  @@index([userId, status, updatedAt])
+  @@index([spreadSheetId, updatedAt])
 }
 
+// 메시지
 model Message {
-  id             String       @id @default(cuid())
-  content        String
-  timestamp      DateTime     @default(now())
-  role           MessageRole
-  type           MessageType
-  mode           MessageMode?
-  sheetContext   Json?
-  formulaData    Json?
-  artifactData   Json?
-  dataChangeInfo Json?
-  fileUploadInfo Json?
-  chatId         String
-  metadata       Json?
-  chat           Chat         @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  id           String      @id @default(cuid())
+  content      String      @db.Text // 긴 텍스트 지원
+  createdAt    DateTime    @default(now())
+  role         MessageRole
+  type         MessageType @default(TEXT)
+  
+  // AI 분석 관련 메타데이터
+  metadata     Json?       // 토큰 수, 처리 시간, 캐시 여부 등
+  
+  // 스프레드시트 컨텍스트 (메시지 작성 시점의 상태)
+  sheetContext Json?       // 관련 시트 정보, 셀 범위 등
+  
+  // 관계
+  chatId       String
+  chat         Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, createdAt])
+}
+
+// 캐시 테이블 (AI 응답 캐싱용)
+model GPTCache {
+  id           String   @id @default(cuid())
+  cacheKey     String   @unique // 데이터 해시 + 질문 해시
+  dataHash     String   // 스프레드시트 데이터 해시
+  questionHash String   // 질문 해시
+  response     String   @db.Text
+  tokenCount   Int?     // 사용된 토큰 수
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime // TTL
+  hitCount     Int      @default(1) // 캐시 히트 횟수
+  
+  @@index([dataHash])
+  @@index([expiresAt])
+}
+
+// Enum 정의
+enum SpreadSheetStatus {
+  ACTIVE    // 활성 상태
+  ARCHIVED  // 보관됨
+  DELETED   // 삭제됨 (소프트 삭제)
+}
+
+enum EditStatus {
+  ACTIVE    // 편집 중
+  COMPLETED // 완료됨
+  ERROR     // 오류 발생
+}
+
+enum DeltaAction {
+  SET_CELL_VALUE    // 셀 값 설정
+  SET_CELL_FORMULA  // 셀 수식 설정
+  SET_CELL_STYLE    // 셀 스타일 설정
+  DELETE_CELLS      // 셀 삭제
+  INSERT_ROWS       // 행 삽입
+  DELETE_ROWS       // 행 삭제
+  INSERT_COLUMNS    // 열 삽입
+  DELETE_COLUMNS    // 열 삭제
+  ADD_SHEET         // 시트 추가
+  DELETE_SHEET      // 시트 삭제
+  RENAME_SHEET      // 시트 이름 변경
 }
 
 enum ChatStatus {
@@ -90,26 +204,13 @@ enum ChatStatus {
 
 enum MessageRole {
   USER
-  EXTION_AI
+  ASSISTANT
   SYSTEM
 }
 
 enum MessageType {
-  TEXT
-  FILE_UPLOAD
-  FORMULA
-  VISUALIZATION
-  DATA_GENERATION
-  FUNCTION
-  DATA_EDIT
-}
-
-enum MessageMode {
-  NORMAL
-  FORMULA
-  VISUALIZATION
-  DATA_GENERATION
-  DATA_FIX
-  DATA_EDIT
-  FUNCTION
+  TEXT              // 일반 텍스트
+  ANALYSIS          // 데이터 분석 결과
+  SUGGESTION        // AI 제안
+  ERROR             // 오류 메시지
 }

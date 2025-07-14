@@ -37,12 +37,14 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
     "@google/generative-ai": "^0.24.1",
+    "@nestjs/bull": "^11.0.2",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
     "@prisma/client": "^6.9.0",
+    "bull": "^4.16.5",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "firebase": "^11.8.1",
@@ -107,6 +109,8 @@
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/$1"
     },
-    "setupFilesAfterEnv": ["<rootDir>/../test/jest-setup.ts"]
+    "setupFilesAfterEnv": [
+      "<rootDir>/../test/jest-setup.ts"
+    ]
   }
 }

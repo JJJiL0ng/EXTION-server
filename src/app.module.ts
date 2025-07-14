@@ -17,6 +17,10 @@ import { AuthModule } from './auth-modules/auth/auth.module';
 import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.module';
 import { AiutilsModule } from './chat-modules/aiutils/aiutils.module';
 import { TableGenerateModule } from './table-generate/table-generate.module';
+import { TableDataJsonParsingModule } from './v2/sheet/table-data-json-parsing/table-data-json-parsing.module';
+import { TableDataJsonSaveModule } from './v2/sheet/table-data-json-save/table-data-json-save.module';
+import { UserModule } from './v2/user/user.module';
+import { TableDataCacheModule } from './v2/cache/table-data-cache/table-data-cache.module';
 
 @Module({
   imports: [
@@ -39,6 +43,10 @@ import { TableGenerateModule } from './table-generate/table-generate.module';
     ChatDatabaseModule,
     AiutilsModule,
     TableGenerateModule,
+    TableDataJsonParsingModule,
+    TableDataJsonSaveModule,
+    UserModule,
+    TableDataCacheModule,
   ],
   controllers: [AppController],
   providers: [AppService],
