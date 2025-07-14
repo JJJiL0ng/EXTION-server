@@ -50,6 +50,56 @@ export class LoadSpreadSheetDto {
 }
 
 // ===============================
+// 셀 스타일 DTO
+// ===============================
+export class CellStyleDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: '올바른 HEX 색상 코드를 입력해주세요. (예: #FF0000)'
+  })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, {
+    message: '올바른 HEX 색상 코드를 입력해주세요. (예: #000000)'
+  })
+  color?: string;
+
+  @IsOptional()
+  @IsString()
+  fontWeight?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(6)
+  @Max(72)
+  fontSize?: number;
+
+  @IsOptional()
+  @IsString()
+  fontFamily?: string;
+
+  @IsOptional()
+  @IsString()
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+
+  @IsOptional()
+  @IsString()
+  verticalAlign?: 'top' | 'middle' | 'bottom';
+
+  @IsOptional()
+  @IsObject()
+  border?: {
+    top?: { style: string; color: string; width: number };
+    right?: { style: string; color: string; width: number };
+    bottom?: { style: string; color: string; width: number };
+    left?: { style: string; color: string; width: number };
+  };
+}
+
+// ===============================
 // 델타 적용 DTO
 // ===============================
 export class ApplyDeltaDto {
@@ -108,56 +158,6 @@ export class ApplyDeltaDto {
   @Min(1)
   @Max(1000)
   count?: number;
-}
-
-// ===============================
-// 셀 스타일 DTO
-// ===============================
-export class CellStyleDto {
-  @IsOptional()
-  @IsString()
-  @Matches(/^#[0-9A-Fa-f]{6}$/, {
-    message: '올바른 HEX 색상 코드를 입력해주세요. (예: #FF0000)'
-  })
-  backgroundColor?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^#[0-9A-Fa-f]{6}$/, {
-    message: '올바른 HEX 색상 코드를 입력해주세요. (예: #000000)'
-  })
-  color?: string;
-
-  @IsOptional()
-  @IsString()
-  fontWeight?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(6)
-  @Max(72)
-  fontSize?: number;
-
-  @IsOptional()
-  @IsString()
-  fontFamily?: string;
-
-  @IsOptional()
-  @IsString()
-  textAlign?: 'left' | 'center' | 'right' | 'justify';
-
-  @IsOptional()
-  @IsString()
-  verticalAlign?: 'top' | 'middle' | 'bottom';
-
-  @IsOptional()
-  @IsObject()
-  border?: {
-    top?: { style: string; color: string; width: number };
-    right?: { style: string; color: string; width: number };
-    bottom?: { style: string; color: string; width: number };
-    left?: { style: string; color: string; width: number };
-  };
 }
 
 // ===============================
