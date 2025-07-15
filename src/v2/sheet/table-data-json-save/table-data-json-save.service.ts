@@ -31,7 +31,7 @@ import {
   isSpreadSheetStructure,
   hasRequiredDeltaFields,
   isValidDeltaAction
-} from './types/spreadsheet.types';
+} from '../types/spreadsheet.types';
 
 const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);

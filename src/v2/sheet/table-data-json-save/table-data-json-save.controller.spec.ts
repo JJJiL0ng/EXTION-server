@@ -14,7 +14,7 @@ import {
   SpreadSheetListItem,
   GPTReadyData,
   SpreadSheetStructure,
-} from './types/spreadsheet.types';
+} from '../types/spreadsheet.types';
 import { DeltaAction } from '@prisma/client';
 
 describe('TableDataJsonSaveController', () => {

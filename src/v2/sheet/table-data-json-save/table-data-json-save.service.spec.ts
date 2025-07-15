@@ -11,7 +11,7 @@ import {
   DeltaValidationError,
   MemoryStateError,
   GPTReadyData,
-} from './types/spreadsheet.types';
+} from '../types/spreadsheet.types';
 import { CreateSpreadSheetDto } from './dto/create-spread-sheet.dto';
 import * as zlib from 'zlib';
 import { createHash } from 'crypto';

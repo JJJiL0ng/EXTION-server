@@ -31,7 +31,7 @@ import {
   GPTReadyData,
   CellStyle,
   CellDelta
-} from './types/spreadsheet.types';
+} from '../types/spreadsheet.types';
 
 @Controller('v2/table-data-json-save')
 export class TableDataJsonSaveController {
