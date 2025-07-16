@@ -21,6 +21,7 @@ import { TableDataJsonParsingModule } from './v2/sheet/table-data-json-parsing/t
 import { TableDataJsonSaveModule } from './v2/sheet/table-data-json-save/table-data-json-save.module';
 import { UserModule } from './v2/user/user.module';
 import { TableDataCacheModule } from './v2/cache/table-data-cache/table-data-cache.module';
+import { MainAiModule } from './v2/chatting/main-ai/main-ai.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { TableDataCacheModule } from './v2/cache/table-data-cache/table-data-cac
     TableDataJsonSaveModule,
     UserModule,
     TableDataCacheModule,
+    MainAiModule,
   ],
   controllers: [AppController],
   providers: [AppService],
