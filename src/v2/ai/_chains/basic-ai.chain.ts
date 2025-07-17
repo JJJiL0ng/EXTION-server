@@ -12,8 +12,8 @@ import { Logger } from '@nestjs/common';
  * 기본 분석 체인
  * 의도 분석 → 프롬프트 선택 → 응답 생성의 순차적 흐름
  */
-export class BasicAnalysisChain {
-  private readonly logger = new Logger(BasicAnalysisChain.name);
+export class BasicAiChain {
+  private readonly logger = new Logger(BasicAiChain.name);
   private readonly chain: RunnableSequence<ChainInput, ChainState>;
   private readonly llm: ChatAnthropic;
 

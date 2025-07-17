@@ -11,14 +11,14 @@ import {
   AIServiceError,
   createSafeError
 } from '../../sheet/types/spreadsheet.types';
-import { BasicAnalysisChain } from '../_chains/basic-analysis.chain';
+import { BasicAiChain } from '../_chains/basic-ai.chain';
 import { ChainInput, StreamUpdate, StreamResult } from '../_types/chain.types';
 
 @Injectable()
 export class MainAiService {
   private readonly logger = new Logger(MainAiService.name);
   private readonly llm: ChatAnthropic;
-  private readonly basicAnalysisChain: BasicAnalysisChain;
+  private readonly basicAiChain: BasicAiChain;
 
   constructor(
     private readonly configService: ConfigService,
@@ -32,8 +32,8 @@ export class MainAiService {
       maxTokens: 4000,
     });
 
-    // 기본 분석 체인 초기화
-    this.basicAnalysisChain = new BasicAnalysisChain(this.llm);
+    // 기본 AI 체인 초기화
+    this.basicAiChain = new BasicAiChain(this.llm);
 
     this.logger.log('AI Service initialized with LCEL chains');
   }
@@ -66,8 +66,8 @@ export class MainAiService {
         options
       };
 
-      // 3. 기본 분석 체인 실행
-      const chainResult = await this.basicAnalysisChain.invoke(chainInput);
+      // 3. 기본 AI 체인 실행
+      const chainResult = await this.basicAiChain.invoke(chainInput);
 
       if (!chainResult.success) {
         throw new Error(chainResult.error || 'Chain execution failed');
@@ -134,7 +134,7 @@ export class MainAiService {
       };
 
       // 3. 스트리밍 분석 체인 실행
-      const streamResult = await this.basicAnalysisChain.stream(chainInput);
+      const streamResult = await this.basicAiChain.stream(chainInput);
 
       const totalTime = Date.now() - startTime;
 
@@ -201,7 +201,7 @@ export class MainAiService {
       };
 
       // 3. 실시간 스트리밍 콜백 실행
-      await this.basicAnalysisChain.streamWithCallback(
+      await this.basicAiChain.streamWithCallback(
         chainInput,
         (update: StreamUpdate) => {
           // 업데이트에 캐시 정보 추가
@@ -268,7 +268,7 @@ export class MainAiService {
       });
 
       // 경량 체인 생성 (캐시 가능)
-      const simpleChain = new BasicAnalysisChain(simpleLLM);
+      const simpleChain = new BasicAiChain(simpleLLM);
 
       const chainInput: ChainInput = {
         userId,
@@ -324,7 +324,7 @@ export class MainAiService {
       });
 
       // 경량 체인 생성
-      const simpleChain = new BasicAnalysisChain(simpleLLM);
+      const simpleChain = new BasicAiChain(simpleLLM);
 
       const chainInput: ChainInput = {
         userId,
@@ -372,7 +372,7 @@ export class MainAiService {
    */
   getChainInfo() {
     return {
-      basicAnalysisChain: this.basicAnalysisChain.getChainInfo(),
+      basicAiChain: this.basicAiChain.getChainInfo(),
       llmConfig: {
         model: this.llm.modelName,
         temperature: this.llm.temperature,
