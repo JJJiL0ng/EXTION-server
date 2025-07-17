@@ -37,9 +37,11 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
     "@google/generative-ai": "^0.24.1",
+    "@langchain/anthropic": "^0.3.24",
+    "@langchain/core": "^0.3.63",
     "@nestjs-modules/ioredis": "^2.0.2",
     "@nestjs/bull": "^11.0.2",
-    "@nestjs/common": "^11.0.1",
+    "@nestjs/common": "^11.1.3",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/mapped-types": "*",

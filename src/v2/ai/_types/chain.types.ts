@@ -1,0 +1,114 @@
+// src/v2/ai/types/chain.types.ts
+
+import { SpreadSheetStructure, AnalysisOptions } from '../../sheet/types/spreadsheet.types';
+
+/**
+ * 의도 분석 결과 타입
+ */
+export type IntentType = 
+  | 'excel_formula'        // 엑셀 공식 관련
+  | 'python_code_generator'        // 데이터 분석을 위한 파이썬 코드 생성
+  | 'whole_data'           // 전체 데이터를 읽어야만 하는 경우
+  | 'general_help'         // 일반 도움말
+
+/**
+ * 체인 입력 타입
+ */
+export interface ChainInput {
+  userId: string;
+  spreadSheetData: SpreadSheetStructure;
+  question: string;
+  options?: AnalysisOptions;
+}
+
+/**
+ * 의도 분석 결과
+ */
+export interface IntentAnalysisResult {
+  intent: IntentType;
+  confidence: number;
+  keywords: string[];
+  reasoning: string;
+}
+
+/**
+ * 선택된 프롬프트 정보
+ */
+export interface SelectedPrompt {
+  id: string;
+  category: string;
+  template: string;
+  variables: Record<string, any>;
+}
+
+/**
+ * 체인 상태 타입 (각 단계를 거치며 누적되는 상태)
+ */
+export interface ChainState {
+  // 원본 입력
+  originalInput: ChainInput;
+  
+  // 의도 분석 결과
+  analyzedIntent?: IntentAnalysisResult;
+  
+  // 선택된 프롬프트
+  selectedPrompt?: SelectedPrompt;
+  
+  // LLM 응답
+  llmResponse?: string;
+  
+  // 최종 응답
+  finalResponse?: string;
+  
+  // 메타데이터
+  metadata: {
+    tokensUsed: number;
+    responseTime: number;
+    cached: boolean;
+    processingSteps: string[];
+  };
+}
+
+/**
+ * 체인 실행 결과
+ */
+export interface ChainResult {
+  success: boolean;
+  data: ChainState;
+  error?: string;
+}
+
+/**
+ * 스트리밍 업데이트 타입
+ */
+export type StreamUpdateType = 
+  | 'step_start'        // 단계 시작
+  | 'step_progress'     // 단계 진행 중
+  | 'step_complete'     // 단계 완료
+  | 'error'             // 에러 발생
+  | 'final_result';     // 최종 결과
+
+/**
+ * 스트리밍 업데이트 데이터
+ */
+export interface StreamUpdate {
+  type: StreamUpdateType;
+  step: string;
+  timestamp: number;
+  data?: Partial<ChainState>;
+  progress?: {
+    current: number;
+    total: number;
+    message?: string;
+  };
+  error?: string;
+}
+
+/**
+ * 스트리밍 결과
+ */
+export interface StreamResult {
+  success: boolean;
+  updates: AsyncIterable<StreamUpdate>;
+  error?: string;
+}

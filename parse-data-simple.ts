@@ -1,4 +1,4 @@
-import { TableDataJsonParsingService } from './src/v2/sheet/table-data-json-parsing/table-data-json-parsing.service';
+import { TableDataJsonParsingService } from './src/v2/sheet/_table-data-json-parsing/table-data-json-parsing.service';
 import * as fs from 'fs';
 import * as path from 'path';
 

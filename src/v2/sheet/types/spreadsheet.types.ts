@@ -299,6 +299,12 @@ export interface AIAnalysisResult {
   model: string;
   cached: boolean;
   confidence?: number;
+  chainMetadata?: {
+    intent?: string;
+    confidence?: number;
+    processingSteps?: string[];
+    promptId?: string;
+  };
 }
 
 export interface PromptOptions {

@@ -17,11 +17,12 @@ import { AuthModule } from './auth-modules/auth/auth.module';
 import { ChatDatabaseModule } from './chat-modules/chat-database/chat-database.module';
 import { AiutilsModule } from './chat-modules/aiutils/aiutils.module';
 import { TableGenerateModule } from './table-generate/table-generate.module';
-import { TableDataJsonParsingModule } from './v2/sheet/table-data-json-parsing/table-data-json-parsing.module';
-import { TableDataJsonSaveModule } from './v2/sheet/table-data-json-save/table-data-json-save.module';
+import { TableDataJsonParsingModule } from './v2/sheet/_table-data-json-parsing/table-data-json-parsing.module';
+import { TableDataJsonSaveModule } from './v2/sheet/_table-data-json-save/table-data-json-save.module';
 import { UserModule } from './v2/user/user.module';
-import { TableDataCacheModule } from './v2/cache/table-data-cache/table-data-cache.module';
-import { MainAiModule } from './v2/chatting/main-ai/main-ai.module';
+import { TableDataCacheModule } from './v2/cache/_table-data-cache/table-data-cache.module';
+import { MainAiModule } from './v2/ai/_main-ai/main-ai.module';
+import { MainChatModule } from './v2/chatting/_main-chat/main-chat.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { MainAiModule } from './v2/chatting/main-ai/main-ai.module';
     UserModule,
     TableDataCacheModule,
     MainAiModule,
+    MainChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

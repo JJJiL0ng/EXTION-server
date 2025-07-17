@@ -1,4 +1,4 @@
-import { TableDataJsonParsingService } from './src/v2/sheet/table-data-json-parsing/table-data-json-parsing.service';
+import { TableDataJsonParsingService } from './src/v2/sheet/_table-data-json-parsing/table-data-json-parsing.service';
 import * as fs from 'fs';
 
 // 서비스 인스턴스 생성
