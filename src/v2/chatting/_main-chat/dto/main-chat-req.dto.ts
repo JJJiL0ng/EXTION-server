@@ -20,9 +20,9 @@ export class MainChatRequestDto {
   timestamp: string;
 
 
-// ===========================
-// // 추후 글로벌 확장에 필요한 필드들
-// ===========================
+  // ===========================
+  // // 추후 글로벌 확장에 필요한 필드들
+  // ===========================
 
   // @IsString()
   // @IsIn(['KR', 'US', 'JP', 'CN', 'DE', 'FR', 'GB', 'ES', 'IT', 'BR', 'IN', 'RU'])
@@ -36,6 +36,4 @@ export class MainChatRequestDto {
   // @IsOptional()
   // @IsString()
   // timezone?: string; // IANA 시간대 (예: 'Asia/Seoul', 'America/New_York')
-
-  
 }

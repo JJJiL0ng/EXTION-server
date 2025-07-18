@@ -4,8 +4,15 @@ import { Runnable } from '@langchain/core/runnables';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { StringOutputParser } from '@langchain/core/output_parsers';
-import { ChainState, StreamUpdate } from '../_types/chain.types';
+import { ChainState, StreamUpdate, IntentType } from '../_types/chain.types';
 import { Logger } from '@nestjs/common';
+import { 
+  BaseAiRequestResult, 
+  ExcelFormulaResult, 
+  PythonCodeGeneratorResult, 
+  WholeDataResult, 
+  GeneralHelpResult 
+} from '../_types/ai-request-result.types';
 
 /**
  * 선택된 프롬프트를 사용하여 최종 응답을 생성하는 Runnable
@@ -93,6 +100,8 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         progress: { current: 4, total: 4, message: '응답을 후처리하고 있습니다...' }
       });
 
+      // 4. JSON 파싱 및 타입별 처리
+      const parsedResponse = this.parseJsonResponse(llmResponse, input);
       const finalResponse = this.postProcessResponse(llmResponse, input);
 
       const processingTime = Date.now() - startTime;
@@ -106,6 +115,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         ...input,
         llmResponse,
         finalResponse,
+        parsedResponse, // 파싱된 타입별 응답 추가
         metadata: {
           ...input.metadata,
           responseTime: input.metadata.responseTime + processingTime,
@@ -159,6 +169,99 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
       });
 
       return fallbackState;
+    }
+  }
+
+  /**
+   * JSON 응답 파싱 및 타입별 처리
+   */
+  private parseJsonResponse(response: string, chainState: ChainState): BaseAiRequestResult | undefined {
+    try {
+      // JSON 블록 추출 (```json...``` 형태)
+      const jsonMatch = response.match(/```json\s*\n([\s\S]*?)\n\s*```/);
+      if (!jsonMatch) {
+        this.logger.warn('No JSON block found in response');
+        return undefined;
+      }
+
+      const jsonString = jsonMatch[1].trim();
+      const parsedJson = JSON.parse(jsonString);
+
+      // 의도에 따른 타입 검증 및 변환
+      const intent = chainState.analyzedIntent?.intent;
+      return this.validateAndTransformResponse(parsedJson, intent);
+
+    } catch (error) {
+      this.logger.error(`Failed to parse JSON response: ${error.message}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * 의도별 응답 검증 및 변환
+   */
+  private validateAndTransformResponse(parsedJson: any, intent?: string): BaseAiRequestResult | undefined {
+    try {
+      // 기본 필드 검증
+      if (!parsedJson || typeof parsedJson !== 'object') {
+        throw new Error('Invalid JSON structure');
+      }
+
+      const baseResult: BaseAiRequestResult = {
+        success: parsedJson.success ?? true,
+        tokensUsed: parsedJson.tokensUsed ?? 0,
+        responseTime: parsedJson.responseTime ?? 0,
+        model: parsedJson.model ?? 'claude',
+        cached: parsedJson.cached ?? false,
+        confidence: parsedJson.confidence ?? 0.9
+      };
+
+      // 의도별 타입 변환
+      switch (intent) {
+        case 'excel_formula':
+          if (!parsedJson.formulaDetails) {
+            throw new Error('Missing formulaDetails in excel_formula response');
+          }
+          return {
+            ...baseResult,
+            formulaDetails: parsedJson.formulaDetails
+          } as ExcelFormulaResult;
+
+        case 'python_code_generator':
+          if (!parsedJson.codeGenerator) {
+            throw new Error('Missing codeGenerator in python_code_generator response');
+          }
+          return {
+            ...baseResult,
+            codeGenerator: parsedJson.codeGenerator
+          } as PythonCodeGeneratorResult;
+
+        case 'whole_data':
+          if (!parsedJson.dataTransformation) {
+            throw new Error('Missing dataTransformation in whole_data response');
+          }
+          return {
+            ...baseResult,
+            dataTransformation: parsedJson.dataTransformation
+          } as WholeDataResult;
+
+        case 'general_help':
+          if (!parsedJson.generalHelp) {
+            throw new Error('Missing generalHelp in general_help response');
+          }
+          return {
+            ...baseResult,
+            generalHelp: parsedJson.generalHelp
+          } as GeneralHelpResult;
+
+        default:
+          this.logger.warn(`Unknown intent: ${intent}, returning base result`);
+          return baseResult;
+      }
+
+    } catch (error) {
+      this.logger.error(`Failed to validate response for intent ${intent}: ${error.message}`);
+      return undefined;
     }
   }
 

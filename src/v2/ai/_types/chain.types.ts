@@ -1,7 +1,8 @@
 // src/v2/ai/types/chain.types.ts
 
 import { SpreadSheetStructure, AnalysisOptions } from '../../sheet/types/spreadsheet.types';
-
+import { BaseAiRequestResult } from './ai-request-result.types';
+import { GPTReadyData } from '../../sheet/types/spreadsheet.types';
 /**
  * 의도 분석 결과 타입
  */
@@ -35,7 +36,7 @@ export interface IntentAnalysisResult {
  * 선택된 프롬프트 정보
  */
 export interface SelectedPrompt {
-  id: string;
+  id: string
   category: string;
   template: string;
   variables: Record<string, any>;
@@ -59,6 +60,9 @@ export interface ChainState {
   
   // 최종 응답
   finalResponse?: string;
+  
+  // 파싱된 타입별 응답
+  parsedResponse?: BaseAiRequestResult;
   
   // 메타데이터
   metadata: {
