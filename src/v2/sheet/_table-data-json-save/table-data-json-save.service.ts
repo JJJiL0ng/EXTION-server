@@ -8,7 +8,7 @@ import { promisify } from 'util';
 import { UserService } from 'src/v2/user/user.service';
 import { createHash } from 'crypto';
 import { SpreadSheetStatus, EditStatus, DeltaAction, Prisma } from '@prisma/client';
-import { CreateSpreadSheetDto } from './dto/create-spread-sheet.dto';
+import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
 import {
   CellDelta,
   MemorySpreadSheetData,
@@ -133,13 +133,12 @@ export class TableDataJsonSaveService {
   /**
    * 새 스프레드시트 생성
    */
-  async createSpreadSheet(dto: CreateSpreadSheetDto): Promise<LoadSpreadSheetResponse> {
+  async createSpreadSheet(dto: CreateSpreadSheetDto & { userId: string }): Promise<LoadSpreadSheetResponse> {
     try {
       // 1. 사용자 검증
       await this.userService.validateUser(dto.userId);
-      if (dto.chatId) {
-        await this.userService.validateChat(dto.chatId, dto.userId);
-      }
+      // chatId는 이제 필수 필드이므로 항상 검증
+      await this.userService.validateChat(dto.chatId, dto.userId);
 
       // 2. 기존 활성 데이터 저장
       if (this.activeSpreadSheet?.metadata.isDirty) {
@@ -152,10 +151,14 @@ export class TableDataJsonSaveService {
       // 4. 초기 데이터 준비
       let initialData: SpreadSheetStructure;
       if (dto.initialData) {
-        if (!isSpreadSheetStructure(dto.initialData)) {
+        // SpreadJS 형식인지 확인하고 변환
+        if (this.isSpreadJSFormat(dto.initialData)) {
+          initialData = this.convertSpreadJSToInternalFormat(dto.initialData);
+        } else if (isSpreadSheetStructure(dto.initialData)) {
+          initialData = dto.initialData;
+        } else {
           throw new ValidationError('Invalid initial data structure provided');
         }
-        initialData = dto.initialData;
       } else {
         initialData = this.getDefaultSpreadSheetStructure();
       }
@@ -166,12 +169,13 @@ export class TableDataJsonSaveService {
 
       // 5. 트랜잭션으로 생성
       const result = await this.prisma.$transaction(async (tx) => {
-        // SpreadSheet 생성
+        // SpreadSheet 생성 - 프론트엔드에서 제공한 ID 사용
         const spreadSheet = await tx.spreadSheet.create({
           data: {
+            id: dto.spreadsheetId, // 프론트엔드에서 제공한 ID 사용
             fileName: dto.fileName,
             userId: dto.userId,
-            chatId: dto.chatId || '',
+            chatId: dto.chatId, // 프론트엔드에서 제공한 chatId 사용
             fileSize: JSON.stringify(initialData).length,
             version: 1,
             status: SpreadSheetStatus.ACTIVE
@@ -876,6 +880,178 @@ export class TableDataJsonSaveService {
       return Object.keys(json.sheets).length;
     }
     return 1;
+  }
+
+  /**
+   * SpreadJS 형식 감지
+   */
+  private isSpreadJSFormat(data: any): boolean {
+    return (
+      data &&
+      typeof data === 'object' &&
+      data.version &&
+      data.sheets &&
+      typeof data.sheets === 'object' &&
+      // SpreadJS 특유의 속성들 확인
+      (data.sheetCount !== undefined || data.docProps !== undefined || data.frc !== undefined)
+    );
+  }
+
+  /**
+   * SpreadJS 형식을 내부 형식으로 변환
+   */
+  private convertSpreadJSToInternalFormat(spreadJSData: any): SpreadSheetStructure {
+    const internalData: SpreadSheetStructure = {
+      version: spreadJSData.version || '18.1.4',
+      sheets: {}
+    };
+
+    if (spreadJSData.sheets) {
+      for (const [sheetName, sheetData] of Object.entries(spreadJSData.sheets) as [string, any][]) {
+        internalData.sheets[sheetName] = {
+          name: sheetData.name || sheetName,
+          data: {
+            dataTable: this.convertSpreadJSDataTable(sheetData.data?.dataTable || {})
+          }
+        };
+      }
+    }
+
+    // 시트가 없다면 기본 시트 추가
+    if (Object.keys(internalData.sheets).length === 0) {
+      internalData.sheets['Sheet1'] = {
+        name: 'Sheet1',
+        data: { dataTable: {} }
+      };
+    }
+
+    return internalData;
+  }
+
+  /**
+   * SpreadJS DataTable을 내부 형식으로 변환
+   */
+  private convertSpreadJSDataTable(spreadJSDataTable: any): DataTable {
+    const internalDataTable: DataTable = {};
+
+    if (!spreadJSDataTable || typeof spreadJSDataTable !== 'object') {
+      return internalDataTable;
+    }
+
+    // SpreadJS는 숫자 인덱스를 사용할 수 있음 (row -> column)
+    for (const [rowKey, rowData] of Object.entries(spreadJSDataTable)) {
+      if (typeof rowData === 'object' && rowData !== null) {
+        for (const [colKey, cellData] of Object.entries(rowData as Record<string, any>)) {
+          // 숫자 인덱스를 A1 형식으로 변환
+          let cellAddress: string;
+          if (/^\d+$/.test(rowKey) && /^\d+$/.test(colKey)) {
+            cellAddress = this.convertNumericToA1(parseInt(rowKey), parseInt(colKey));
+          } else {
+            cellAddress = `${colKey}${rowKey}`;
+          }
+
+          if (cellData && typeof cellData === 'object') {
+            const convertedCell: any = {};
+
+            // 값 변환
+            if (cellData.value !== undefined) {
+              convertedCell.value = cellData.value;
+            }
+
+            // 수식 변환
+            if (cellData.formula !== undefined) {
+              convertedCell.formula = cellData.formula;
+            }
+
+            // 스타일 변환 (기본적인 스타일만 변환)
+            if (cellData.style && typeof cellData.style === 'object') {
+              convertedCell.style = this.convertSpreadJSStyle(cellData.style);
+            }
+
+            // 다른 속성들도 보존
+            for (const [key, value] of Object.entries(cellData)) {
+              if (!['value', 'formula', 'style'].includes(key)) {
+                convertedCell[key] = value;
+              }
+            }
+
+            internalDataTable[cellAddress] = convertedCell;
+          }
+        }
+      }
+    }
+
+    return internalDataTable;
+  }
+
+  /**
+   * 숫자 인덱스를 A1 형식으로 변환
+   */
+  private convertNumericToA1(row: number, col: number): string {
+    let colStr = '';
+    let colNum = col;
+    while (colNum >= 0) {
+      colStr = String.fromCharCode(65 + (colNum % 26)) + colStr;
+      colNum = Math.floor(colNum / 26) - 1;
+    }
+    return `${colStr}${row + 1}`;
+  }
+
+  /**
+   * SpreadJS 스타일을 내부 형식으로 변환
+   */
+  private convertSpreadJSStyle(spreadJSStyle: any): any {
+    const internalStyle: any = {};
+
+    // 기본적인 스타일 속성 매핑
+    const styleMapping: Record<string, string> = {
+      backColor: 'backgroundColor',
+      foreColor: 'color',
+      fontFamily: 'fontFamily',
+      fontSize: 'fontSize',
+      fontWeight: 'fontWeight',
+      hAlign: 'textAlign',
+      vAlign: 'verticalAlign'
+    };
+
+    for (const [spreadJSKey, internalKey] of Object.entries(styleMapping)) {
+      if (spreadJSStyle[spreadJSKey] !== undefined) {
+        internalStyle[internalKey] = spreadJSStyle[spreadJSKey];
+      }
+    }
+
+    // 폰트 크기 단위 처리 (px 제거)
+    if (internalStyle.fontSize && typeof internalStyle.fontSize === 'string') {
+      const fontSize = parseFloat(internalStyle.fontSize.replace('px', ''));
+      if (!isNaN(fontSize)) {
+        internalStyle.fontSize = fontSize;
+      }
+    }
+
+    // hAlign 값 변환
+    if (internalStyle.textAlign === 1) {
+      internalStyle.textAlign = 'center';
+    } else if (internalStyle.textAlign === 2) {
+      internalStyle.textAlign = 'right';
+    } else if (internalStyle.textAlign === 0) {
+      internalStyle.textAlign = 'left';
+    }
+
+    // vAlign 값 변환
+    if (internalStyle.verticalAlign === 1) {
+      internalStyle.verticalAlign = 'middle';
+    } else if (internalStyle.verticalAlign === 2) {
+      internalStyle.verticalAlign = 'bottom';
+    } else if (internalStyle.verticalAlign === 0) {
+      internalStyle.verticalAlign = 'top';
+    }
+
+    // 테두리 처리 (복잡하므로 기본적인 변환만)
+    if (spreadJSStyle.border) {
+      internalStyle.border = spreadJSStyle.border;
+    }
+
+    return internalStyle;
   }
 
   /**

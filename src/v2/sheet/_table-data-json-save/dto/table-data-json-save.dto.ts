@@ -18,6 +18,38 @@ import { Type, Transform } from 'class-transformer';
 import { DeltaAction } from '@prisma/client';
 
 // ===============================
+// SpreadJS Format Interface
+// ===============================
+export interface SpreadJSFormat {
+  version?: string;
+  name?: string;
+  docProps?: any;
+  sheetCount?: number;
+  frc?: number;
+  tabStripRatio?: number;
+  sheets?: {
+    [sheetName: string]: {
+      name: string;
+      isSelected?: boolean;
+      rowCount?: number;
+      columnCount?: number;
+      visible?: number;
+      frozenRowCount?: number;
+      frozenColCount?: number;
+      theme?: any;
+      data?: {
+        dataTable?: {
+          [cellAddress: string]: any;
+        };
+        [key: string]: any;
+      };
+      [key: string]: any;
+    };
+  };
+  [key: string]: any;
+}
+
+// ===============================
 // 스프레드시트 생성 DTO
 // ===============================
 export class CreateSpreadSheetDto {
@@ -29,14 +61,19 @@ export class CreateSpreadSheetDto {
   })
   fileName: string;
 
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
+  @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
+  spreadsheetId: string;
+
+  @IsString()
+  @IsNotEmpty()
   @IsUUID('4', { message: '올바른 채팅 ID 형식이 아닙니다.' })
-  chatId?: string;
+  chatId: string;
 
   @IsOptional()
   @IsObject()
-  initialData?: Record<string, any>;
+  initialData?: Record<string, any> | SpreadJSFormat;
 }
 
 // ===============================

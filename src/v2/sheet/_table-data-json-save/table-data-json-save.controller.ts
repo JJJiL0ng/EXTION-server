@@ -104,7 +104,7 @@ export class TableDataJsonSaveController {
   }> {
     const userId = req.user.sub;
     
-    this.logger.log(`Creating spreadsheet: ${dto.fileName} for user: ${userId}`);
+    this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${userId}`);
     
     const createDto = {
       ...dto,

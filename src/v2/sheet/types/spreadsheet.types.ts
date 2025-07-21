@@ -62,6 +62,65 @@ export interface SpreadSheetStructure {
 }
 
 // ===============================
+// SpreadJS Format Types
+// ===============================
+
+export interface SpreadJSFormat {
+  version?: string;
+  name?: string;
+  docProps?: any;
+  sheetCount?: number;
+  frc?: number;
+  tabStripRatio?: number;
+  sheets?: {
+    [sheetName: string]: SpreadJSSheet;
+  };
+  [key: string]: any;
+}
+
+export interface SpreadJSSheet {
+  name: string;
+  isSelected?: boolean;
+  rowCount?: number;
+  columnCount?: number;
+  visible?: number;
+  frozenRowCount?: number;
+  frozenColCount?: number;
+  theme?: any;
+  data?: {
+    dataTable?: SpreadJSDataTable;
+    [key: string]: any;
+  };
+  [key: string]: any;
+}
+
+export interface SpreadJSDataTable {
+  [rowIndex: string]: {
+    [colIndex: string]: SpreadJSCellData;
+  };
+}
+
+export interface SpreadJSCellData {
+  value?: any;
+  formula?: string;
+  style?: SpreadJSCellStyle;
+  [key: string]: any;
+}
+
+export interface SpreadJSCellStyle {
+  hAlign?: number | string;
+  vAlign?: number | string;
+  font?: string;
+  fontSize?: string | number;
+  fontFamily?: string;
+  fontWeight?: string | number;
+  backColor?: string;
+  foreColor?: string;
+  border?: any;
+  [key: string]: any;
+}
+
+// ===============================
 // Delta Types
 // ===============================
 
