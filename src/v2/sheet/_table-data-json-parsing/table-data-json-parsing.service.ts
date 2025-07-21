@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
   ParsedSheetData,
   ParsedSheetStyle,
@@ -29,7 +29,7 @@ export class TableDataJsonParsingService {
   private readonly tableNameCache = new Map<string, string>();
   private readonly options: Required<ParsingOptions>;
 
-  constructor(options?: ParsingOptions) {
+  constructor(@Optional() options?: ParsingOptions) {
     this.options = { ...DEFAULT_PARSING_OPTIONS, ...options };
   }
 

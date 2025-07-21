@@ -1,7 +1,7 @@
 // src/v2/chatting/_main-chat/main-chat.service.ts
 
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 import { MainAiService } from '../../ai/_main-ai-service/main-ai.service';
 import { TableDataCacheService } from '../../cache/_table-data-cache/table-data-cache.service';
 import { 

@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { RedisModule } from '@nestjs-modules/ioredis';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 // 기존 서비스
 import { TableDataCacheService } from './table-data-cache.service';
@@ -14,6 +16,19 @@ import { RedisPipelineService } from './redis-pipeline.service';
 @Module({
   imports: [
     ScheduleModule.forRoot(), // Cron 작업을 위한 스케줄 모듈
+    RedisModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'single',
+        url: configService.get<string>('REDIS_URL', 'redis://localhost:6379'),
+        options: {
+          retryDelayOnFailover: 100,
+          enableReadyCheck: false,
+          maxRetriesPerRequest: 3,
+        },
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [TableDataCacheController],
   providers: [

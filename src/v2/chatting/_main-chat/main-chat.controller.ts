@@ -1,5 +1,5 @@
 // src/v2/chatting/_main-chat/main-chat.controller.ts
-
+import { Controller } from '@nestjs/common';
 import { 
   Post, 
   Get, 
@@ -24,7 +24,7 @@ interface AuthenticatedRequest extends Request {
     email?: string;
   };
 }
-
+@Controller('v2/main-chat')
 export class MainChatController {
   private readonly logger = new Logger(MainChatController.name);
 

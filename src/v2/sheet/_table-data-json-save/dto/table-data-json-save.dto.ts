@@ -72,6 +72,10 @@ export class CreateSpreadSheetDto {
   chatId: string;
 
   @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
   @IsObject()
   initialData?: Record<string, any> | SpreadJSFormat;
 }
@@ -84,6 +88,10 @@ export class LoadSpreadSheetDto {
   @IsNotEmpty()
   @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
   spreadSheetId: string;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 // ===============================
@@ -195,6 +203,10 @@ export class ApplyDeltaDto {
   @Min(1)
   @Max(1000)
   count?: number;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }
 
 // ===============================

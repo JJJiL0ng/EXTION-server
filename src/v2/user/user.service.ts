@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from 'src/v2/prisma/prisma.service';
 
 @Injectable()
 export class UserService {
@@ -18,16 +18,26 @@ export class UserService {
             throw new NotFoundException(`User not found: ${userId}`);
         }
     }
-    //chat존재 여부 검증
-    public async validateChat(chatId: string, userId: string) {
-        const chat = await this.prisma.chat.findFirst({
+    //chat 생성 또는 존재 확인
+    public async ensureChat(chatId: string, userId: string, title: string = 'New Chat') {
+        let chat = await this.prisma.chat.findFirst({
             where: { id: chatId, userId },
             select: { id: true },
         });
 
         if (!chat) {
-            throw new NotFoundException(`Chat not found or access denied: ${chatId}`);
+            // 채팅이 없으면 새로 생성
+            chat = await this.prisma.chat.create({
+                data: {
+                    id: chatId,
+                    title,
+                    userId,
+                },
+                select: { id: true },
+            });
         }
+
+        return chat;
     }
     //기존 스프레드시트 존재 여부 검증
     public async findExistingSpreadSheet(userId: string, fileName: string, chatId?: string) {
