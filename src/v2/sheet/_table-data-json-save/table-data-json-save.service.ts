@@ -44,7 +44,7 @@ export class TableDataJsonSaveService {
   private readonly SAVE_DEBOUNCE_TIME = 2000; // 2초
   private readonly MAX_PENDING_DELTAS = 100;
   
-  // 메모리 내 활성 스프레드시트 (사용자당 하나)
+  // 메모리 내 활성 스프레드시트 (사용자당 하나) //추후 다중 탭 사용자 확장 예정 todo
   private activeSpreadSheet: MemorySpreadSheetData | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
 
