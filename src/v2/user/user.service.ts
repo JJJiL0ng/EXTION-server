@@ -9,10 +9,30 @@ export class UserService {
 
     //user존재 여부  검증
     public async validateUser(userId: string) {
-        const user = await this.prisma.user.findUnique({
+        let user = await this.prisma.user.findUnique({
             where: { id: userId },
             select: { id: true },
         });
+
+        // 게스트 유저인 경우 자동 생성
+        if (!user && userId.startsWith('guest_')) {
+            try {
+                user = await this.prisma.user.create({
+                    data: {
+                        id: userId,
+                        displayName: `Guest User ${Date.now()}`,
+                        isGuest: true,
+                    },
+                    select: { id: true },
+                });
+            } catch (error) {
+                // 동시 생성으로 인한 중복 에러는 무시하고 다시 조회
+                user = await this.prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { id: true },
+                });
+            }
+        }
 
         if (!user) {
             throw new NotFoundException(`User not found: ${userId}`);

@@ -99,20 +99,9 @@ export class TableDataJsonSaveController {
     data: LoadSpreadSheetResponse;
     message: string;
   }> {
-    // userId가 없으면 guest 유저 생성
-    let userId = dto.userId;
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
+    this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
     
-    this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${userId}`);
-    
-    const createDto = {
-      ...dto,
-      userId: userId as string
-    };
-    
-    const result = await this.tableDataJsonSaveService.createSpreadSheet(createDto);
+    const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
 
     return {
       success: true,
@@ -124,26 +113,21 @@ export class TableDataJsonSaveController {
   /**
    * 스프레드시트 로드
    */
-  @Post('load')
+  @Get('load/:spreadSheetId')
   @HttpCode(HttpStatus.OK)
   async loadSpreadSheet(
-    @Body() dto: LoadSpreadSheetDto,
+    @Param('spreadSheetId') spreadSheetId: string,
+    @Query('userId') userId: string,
   ): Promise<{
     success: boolean;
     data: LoadSpreadSheetResponse;
     message: string;
   }> {
-    // userId가 없으면 guest 유저 생성
-    let userId = dto.userId;
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
-    this.logger.log(`Loading spreadsheet: ${dto.spreadSheetId} for user: ${userId}`);
+    this.logger.log(`Loading spreadsheet: ${spreadSheetId} for user: ${userId}`);
     
     const result = await this.tableDataJsonSaveService.loadSpreadSheet(
-      dto.spreadSheetId,
-      userId as string
+      spreadSheetId,
+      userId
     );
 
     return {
@@ -161,14 +145,8 @@ export class TableDataJsonSaveController {
   async applyDelta(
     @Body() dto: ApplyDeltaDto,
   ) {
-    // userId가 없으면 guest 유저 생성
-    let userId = dto.userId;
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
     const deltaData = this.convertDtoToDelta(dto);
-    const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(userId as string, {
+    const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(dto.userId, {
       ...deltaData,
       timestamp: Date.now()
     });
@@ -189,20 +167,14 @@ export class TableDataJsonSaveController {
   @Put('deltas/batch')
   @HttpCode(HttpStatus.OK)
   async applyBatchDeltas(
-    @Body() dto: { deltas: ApplyDeltaDto[]; userId?: string },
+    @Body() dto: { deltas: ApplyDeltaDto[]; userId: string },
   ) {
-    // userId가 없으면 guest 유저 생성
-    let userId = dto.userId;
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
-    this.logger.log(`Applying ${dto.deltas.length} deltas for user: ${userId}`);
+    this.logger.log(`Applying ${dto.deltas.length} deltas for user: ${dto.userId}`);
     
     const results: ApplyDeltaResponse[] = [];
     for (const deltaDto of dto.deltas) {
       const deltaData = this.convertDtoToDelta(deltaDto);
-      const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(userId as string, {
+      const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(dto.userId, {
         ...deltaData,
         timestamp: Date.now()
       });
@@ -223,13 +195,8 @@ export class TableDataJsonSaveController {
    * 현재 상태 조회 (GPT용)
    */
   @Get('current-state')
-  async getCurrentState(@Query('userId') userId?: string) {
-    // userId가 없으면 guest 유저 생성
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
-    const currentState = await this.tableDataJsonSaveService.getCurrentState(userId as string);
+  async getCurrentState(@Query('userId') userId: string) {
+    const currentState = await this.tableDataJsonSaveService.getCurrentState(userId);
 
     return {
       success: true,
@@ -242,13 +209,8 @@ export class TableDataJsonSaveController {
    * GPT용 파싱된 데이터 조회
    */
   @Get('gpt-data')
-  async getGPTReadyData(@Query('userId') userId?: string) {
-    // userId가 없으면 guest 유저 생성
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
-    const gptData: GPTReadyData = await this.tableDataJsonSaveService.getGPTReadyData(userId as string);
+  async getGPTReadyData(@Query('userId') userId: string) {
+    const gptData: GPTReadyData = await this.tableDataJsonSaveService.getGPTReadyData(userId);
 
     return {
       success: true,
@@ -273,14 +235,8 @@ export class TableDataJsonSaveController {
    */
   @Post('save')
   @HttpCode(HttpStatus.OK)
-  async forceSave(@Body() body: { userId?: string } = {}) {
-    // userId가 없으면 guest 유저 생성
-    let userId = body.userId;
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
-    this.logger.log(`Force saving for user: ${userId}`);
+  async forceSave(@Body() body: { userId: string }) {
+    this.logger.log(`Force saving for user: ${body.userId}`);
     
     const result: ForceSaveResponse = await this.tableDataJsonSaveService.forceSave();
 
@@ -298,16 +254,11 @@ export class TableDataJsonSaveController {
    */
   @Get('list')
   async getUserSpreadSheets(
-    @Query('userId') userId?: string,
+    @Query('userId') userId: string,
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 20,
   ) {
-    // userId가 없으면 guest 유저 생성
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-
-    const spreadSheets: SpreadSheetListItem[] = await this.tableDataJsonSaveService.getUserSpreadSheets(userId as string);
+    const spreadSheets: SpreadSheetListItem[] = await this.tableDataJsonSaveService.getUserSpreadSheets(userId);
 
     // 간단한 페이지네이션
     const startIndex = (page - 1) * limit;
@@ -336,18 +287,13 @@ export class TableDataJsonSaveController {
   @HttpCode(HttpStatus.OK)
   async deleteSpreadSheet(
     @Param('id') spreadSheetId: string,
-    @Query('userId') userId?: string,
+    @Query('userId') userId: string,
   ) {
-    // userId가 없으면 guest 유저 생성
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
     this.logger.log(`Deleting spreadsheet: ${spreadSheetId} for user: ${userId}`);
 
     const result: DeleteResponse = await this.tableDataJsonSaveService.deleteSpreadSheet(
       spreadSheetId,
-      userId as string
+      userId
     );
 
     return {
@@ -361,14 +307,8 @@ export class TableDataJsonSaveController {
    */
   @Post('cleanup')
   @HttpCode(HttpStatus.OK)
-  async cleanup(@Body() body: { userId?: string } = {}) {
-    // userId가 없으면 guest 유저 생성
-    let userId = body.userId;
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
-    this.logger.log(`Cleaning up memory for user: ${userId}`);
+  async cleanup(@Body() body: { userId: string }) {
+    this.logger.log(`Cleaning up memory for user: ${body.userId}`);
 
     await this.tableDataJsonSaveService.cleanup();
 
@@ -382,15 +322,10 @@ export class TableDataJsonSaveController {
    * 스프레드시트 상태 조회
    */
   @Get('status')
-  async getStatus(@Query('userId') userId?: string) {
-    // userId가 없으면 guest 유저 생성
-    if (!userId) {
-      userId = await this.tableDataJsonSaveService.createGuestUser();
-    }
-    
+  async getStatus(@Query('userId') userId: string) {
     // 현재 활성 스프레드시트 정보 조회
     try {
-      const gptData: GPTReadyData = await this.tableDataJsonSaveService.getGPTReadyData(userId as string);
+      const gptData: GPTReadyData = await this.tableDataJsonSaveService.getGPTReadyData(userId);
 
       return {
         success: true,

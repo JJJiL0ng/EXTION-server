@@ -157,7 +157,7 @@ export class TableDataJsonSaveService {
   /**
    * 새 스프레드시트 생성
    */
-  async createSpreadSheet(dto: CreateSpreadSheetDto & { userId: string }): Promise<LoadSpreadSheetResponse> {
+  async createSpreadSheet(dto: CreateSpreadSheetDto): Promise<LoadSpreadSheetResponse> {
     try {
       // 1. 사용자 검증
       await this.userService.validateUser(dto.userId);

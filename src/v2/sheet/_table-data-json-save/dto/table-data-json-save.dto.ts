@@ -71,9 +71,9 @@ export class CreateSpreadSheetDto {
   @IsUUID('4', { message: '올바른 채팅 ID 형식이 아닙니다.' })
   chatId: string;
 
-  @IsOptional()
   @IsString()
-  userId?: string;
+  @IsNotEmpty()
+  userId: string;
 
   @IsOptional()
   @IsObject()
@@ -89,9 +89,9 @@ export class LoadSpreadSheetDto {
   @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
   spreadSheetId: string;
 
-  @IsOptional()
   @IsString()
-  userId?: string;
+  @IsNotEmpty()
+  userId: string;
 }
 
 // ===============================
@@ -206,7 +206,8 @@ export class ApplyDeltaDto {
 
   @IsOptional()
   @IsString()
-  userId?: string;
+  @IsNotEmpty()
+  userId: string;
 }
 
 // ===============================
