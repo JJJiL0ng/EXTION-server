@@ -170,7 +170,7 @@ export class TableDataJsonSaveService {
       }
 
       // 3. 파일명 중복 검사
-      await this.validateUniqueFileName(dto.userId, dto.fileName);
+      // await this.validateUniqueFileName(dto.userId, dto.fileName);
 
       // 4. 초기 데이터 준비
       let initialData: SpreadSheetStructure;

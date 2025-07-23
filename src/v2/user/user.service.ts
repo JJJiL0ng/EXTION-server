@@ -1,74 +1,101 @@
+// src/v2/user/user.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/v2/prisma/prisma.service';
+import { randomUUID } from 'crypto';
+import { ChatStatus } from '@prisma/client';
 
 @Injectable()
 export class UserService {
-    constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-    // user 관련 검증 로직들 모음 (Userid로 검증하는 모든 검증 로직)
+  /**
+   * 사용자 존재 여부 검증
+   * - 게스트 ID(`guest_<timestamp>_<rand>`)는 자동 생성
+   */
+  public async validateUser(userId: string): Promise<void> {
+    let user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
 
-    //user존재 여부  검증
-    public async validateUser(userId: string) {
-        let user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true },
-        });
-
-        // 게스트 유저인 경우 자동 생성
-        if (!user && userId.startsWith('guest_')) {
-            try {
-                user = await this.prisma.user.create({
-                    data: {
-                        id: userId,
-                        displayName: `Guest User ${Date.now()}`,
-                        isGuest: true,
-                    },
-                    select: { id: true },
-                });
-            } catch (error) {
-                // 동시 생성으로 인한 중복 에러는 무시하고 다시 조회
-                user = await this.prisma.user.findUnique({
-                    where: { id: userId },
-                    select: { id: true },
-                });
-            }
-        }
-
-        if (!user) {
-            throw new NotFoundException(`User not found: ${userId}`);
-        }
-    }
-    //chat 생성 또는 존재 확인
-    public async ensureChat(chatId: string, userId: string, title: string = 'New Chat') {
-        let chat = await this.prisma.chat.findFirst({
-            where: { id: chatId, userId },
-            select: { id: true },
-        });
-
-        if (!chat) {
-            // 채팅이 없으면 새로 생성
-            chat = await this.prisma.chat.create({
-                data: {
-                    id: chatId,
-                    title,
-                    userId,
-                },
-                select: { id: true },
-            });
-        }
-
-        return chat;
-    }
-    //기존 스프레드시트 존재 여부 검증
-    public async findExistingSpreadSheet(userId: string, fileName: string, chatId?: string) {
-        return await this.prisma.spreadSheet.findFirst({
-          where: {
-            userId,
-            fileName,
-            chatId,
+    if (!user && userId.startsWith('guest_')) {
+      // ▼ 동시 요청 race condition 방어
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            id: userId,
+            displayName: `Guest User ${Date.now()}`,
+            isGuest: true,
           },
           select: { id: true },
         });
+      } catch {
+        // PK 충돌이면 이미 생성된 것 → 다시 조회
+        user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true },
+        });
       }
-}
+    }
 
+    if (!user) {
+      throw new NotFoundException(`User not found: ${userId}`);
+    }
+  }
+
+  /**
+   * 채팅 조회 또는 생성
+   * - chatId가 주어지면 해당 채팅이 존재 + 소유자 일치 여부 확인
+   * - chatId가 없으면 서버에서 UUID를 발급해 새 채팅을 만든 뒤 반환
+   */
+  public async ensureChat(
+    chatId: string | undefined,
+    userId: string,
+    title: string = 'New Chat',
+  ) {
+    if (chatId) {
+      // 기존 채팅 검증
+      const chat = await this.prisma.chat.findFirst({
+        where: { id: chatId, userId, status: ChatStatus.ACTIVE },
+        select: { id: true },
+      });
+
+      if (!chat) {
+        throw new NotFoundException('Chat not found or access denied');
+      }
+      return chat; // { id: ... }
+    }
+
+    // 새 채팅 생성
+    return this.prisma.chat.create({
+      data: {
+        id: randomUUID(),      // ← 서버에서 안전하게 생성
+        title,
+        userId,
+        status: ChatStatus.ACTIVE,
+        messageCount: 0,
+      },
+      select: { id: true },
+    });
+  }
+
+  /**
+   * (선택) 스프레드시트 ID 기반 소유·존재 확인 헬퍼
+   *  ─ 이름 중복과 무관하게 ID 절대 키만 사용
+   */
+  public async assertSpreadsheetOwner(
+    spreadsheetId: string,
+    userId: string,
+  ): Promise<void> {
+    const sheet = await this.prisma.spreadSheet.findFirst({
+      where: { id: spreadsheetId, userId },
+      select: { id: true },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException(
+        `Spreadsheet not found or access denied: ${spreadsheetId}`,
+      );
+    }
+  }
+}
