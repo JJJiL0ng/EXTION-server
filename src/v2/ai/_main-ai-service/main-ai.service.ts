@@ -407,18 +407,38 @@ getChainInfo() {
   spreadSheetData: SpreadSheetStructure,
   options: AnalysisOptions
 ) {
-  const cacheOptions = {
-    includeFormulas: options.includeFormulas || false,
-    includeStyles: options.includeStyles || false,
-    maxSheets: options.maxSheets || 5,
-    sheetNames: options.sheetNames
-  };
+  try {
+    if (!userId) {
+      throw new Error('userId is required for cache operations');
+    }
+    
+    if (!spreadSheetData) {
+      throw new Error('spreadSheetData is required for cache operations');
+    }
 
-  return await this.cacheService.getGPTReadyData(
-    userId,
-    spreadSheetData,
-    cacheOptions
-  );
+    this.logger.debug(`Getting cached data for user: ${userId}, sheet: ${spreadSheetData.id || 'unknown'}`);
+
+    const cacheOptions = {
+      includeFormulas: options.includeFormulas || false,
+      includeStyles: options.includeStyles || false,
+      maxSheets: options.maxSheets || 5,
+      sheetNames: options.sheetNames
+    };
+
+    return await this.cacheService.getGPTReadyData(
+      userId,
+      spreadSheetData,
+      cacheOptions
+    );
+  } catch (error) {
+    const safeError = createSafeError(error);
+    this.logger.error(`Failed to get cached data: ${safeError.message}`, {
+      userId,
+      spreadSheetId: spreadSheetData?.id,
+      error: safeError.details
+    });
+    throw error;
+  }
 }
 
   /**

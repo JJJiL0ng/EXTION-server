@@ -3,7 +3,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MainAiService } from '../../ai/_main-ai-service/main-ai.service';
-import { TableDataCacheService } from '../../cache/_table-data-cache/table-data-cache.service';
+import { TableDataJsonSaveService } from '../../sheet/_table-data-json-save/table-data-json-save.service';
 import { 
   MainChatRequestDto 
 } from './dto/main-chat-req.dto';
@@ -24,7 +24,7 @@ import {
 } from '../../ai/_types/ai-request-result.types';
 import { StreamUpdate } from '../../ai/_types/chain.types';
 import { SpreadSheetStructure, createSafeError } from '../../sheet/types/spreadsheet.types';
-import { Subject, Observable } from 'rxjs';
+import { Observable } from 'rxjs';
 import { MessageRole, MessageType, ChatStatus } from '@prisma/client';
 
 @Injectable()
@@ -34,61 +34,68 @@ export class MainChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mainAiService: MainAiService,
-    private readonly cacheService: TableDataCacheService,
+    private readonly tableDataService: TableDataJsonSaveService,
   ) {}
 
   /**
    * SSE 스트리밍 채팅 처리 - 메인 엔드포인트
    */
-  async streamChat(
+  streamChat(
     request: MainChatRequestDto,
-  ): Promise<Observable<string>> {
-    const subject = new Subject<string>();
-    
-    try {
-      this.logger.log(
-        `Starting SSE chat stream for user: ${request.userId}, ` +
-        `chatId: ${request.chatId || 'new'}, ` +
-        `message: "${request.chatInputMessage.substring(0, 50)}..."`
-      );
+  ): Observable<string> {
+    return new Observable(observer => {
+      const processRequest = async () => {
+        try {
+          // userId 검증 추가
+          if (!request.userId) {
+            throw new BadRequestException('userId is required');
+          }
 
-      // 1. 채팅 및 사용자 메시지 생성/저장
-      const { chat, userMessage } = await this.createChatAndUserMessage(request, request.userId);
+          this.logger.log(
+            `Starting SSE chat stream for user: ${request.userId}, ` +
+            `chatId: ${request.chatId || 'new'}, ` +
+            `message: "${request.chatInputMessage.substring(0, 50)}..."`
+          );
 
-      // SSE 연결 시작 이벤트
-      this.sendSSEEvent(subject, 'chat_started', {
-        chatId: chat.id,
-        messageId: userMessage.id,
-        timestamp: new Date().toISOString()
-      });
+          const { chat, userMessage } = await this.createChatAndUserMessage(request, request.userId);
 
-      // 2. 스프레드시트 데이터 로드 (있는 경우)
-      const spreadsheetData = await this.loadSpreadsheetData(request.spreadsheetId, request.userId);
+          this.sendSSEEvent(observer, 'chat_started', {
+            chatId: chat.id,
+            messageId: userMessage.id,
+            timestamp: new Date().toISOString()
+          });
 
-      // 3. AI 스트리밍 처리 시작
-      this.processAIStreaming(
-        chat.id,
-        userMessage.id,
-        request.chatInputMessage,
-        spreadsheetData,
-        request.userId,
-        subject
-      );
+          const spreadsheetData = await this.loadSpreadsheetData(request.spreadsheetId, request.userId);
 
-      return subject.asObservable();
+          // 이 함수가 완전히 끝날 때까지 기다립니다.
+          await this.processAIStreaming(
+            chat.id,
+            userMessage.id,
+            request.chatInputMessage,
+            spreadsheetData,
+            request.userId,
+            observer
+          );
 
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to start chat stream: ${safeError.message}`, safeError.details);
-      
-      this.sendSSEEvent(subject, 'error', {
-        error: safeError.message,
-        timestamp: new Date().toISOString()
-      });
-      
-      subject.complete();
-      return subject.asObservable();
-    }
+        } catch (error) {
+          const safeError = createSafeError(error);
+          this.logger.error(`Failed to start chat stream: ${safeError.message}`, safeError.details);
+          
+          this.sendSSEEvent(observer, 'error', {
+            error: safeError.message,
+            timestamp: new Date().toISOString()
+          });
+          
+          observer.complete();
+        }
+      };
+
+      processRequest();
+
+      return () => {
+        this.logger.log(`Client disconnected from chat stream for user: ${request.userId}`);
+      };
+    });
   }
 
   /**
@@ -101,7 +108,6 @@ export class MainChatService {
     offset: number = 0
   ) {
     try {
-      // 채팅 소유권 확인
       const chat = await this.prisma.chat.findFirst({
         where: {
           id: chatId,
@@ -114,7 +120,6 @@ export class MainChatService {
         throw new NotFoundException('Chat not found or access denied');
       }
 
-      // 메시지 조회
       const messages = await this.prisma.message.findMany({
         where: {
           chatId
@@ -208,10 +213,8 @@ export class MainChatService {
     userId: string
   ) {
     return await this.prisma.$transaction(async (tx) => {
-      // 채팅 생성 또는 조회
       let chat: any;
       if (request.chatId) {
-        // 기존 채팅 조회
         chat = await tx.chat.findFirst({
           where: {
             id: request.chatId,
@@ -224,7 +227,6 @@ export class MainChatService {
           throw new NotFoundException('Chat not found or access denied');
         }
       } else {
-        // 새 채팅 생성
         const title = this.generateChatTitle(request.chatInputMessage);
         chat = await tx.chat.create({
           data: {
@@ -237,7 +239,6 @@ export class MainChatService {
         });
       }
       
-      // 사용자 메시지 저장
       const userMessage = await tx.message.create({
         data: {
           content: request.chatInputMessage,
@@ -254,7 +255,6 @@ export class MainChatService {
         }
       });
 
-      // 채팅 메시지 카운트 업데이트
       await tx.chat.update({
         where: { id: chat.id },
         data: {
@@ -279,60 +279,14 @@ export class MainChatService {
     }
 
     try {
-      // 스프레드시트 접근 권한 확인
-      const spreadsheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: spreadsheetId,
-          userId
-        },
-        include: {
-          data: true
-        }
-      });
-
-      if (!spreadsheet?.data) {
-        this.logger.warn(`Spreadsheet not found or no data: ${spreadsheetId}`);
-        return null;
-      }
-
-      // 캐시에서 구조화된 데이터 조회
-      const cachedData = await this.cacheService.getGPTReadyData(
-        userId,
-        {
-          version: '1.0',
-          sheets: {},
-          id: spreadsheet.id,
-          fileName: spreadsheet.fileName
-        } as SpreadSheetStructure,
-        {
-          includeFormulas: true,
-          includeStyles: false,
-          maxSheets: 5
-        }
-      );
-
-      // cachedData.data가 있으면 SpreadSheetStructure 형식으로 변환
-      if (cachedData.data && typeof cachedData.data === 'object') {
-        // GPTReadyData의 Map을 객체로 변환
-        const sheetsObj: { [sheetName: string]: any } = {};
-        if (cachedData.data.sheets instanceof Map) {
-          for (const [sheetName, sheetData] of cachedData.data.sheets.entries()) {
-            sheetsObj[sheetName] = sheetData;
-          }
-        }
-
-        return {
-          version: '1.0', // 기본 버전
-          sheets: sheetsObj,
-          id: spreadsheet.id,
-          fileName: spreadsheet.fileName,
-          totalCells: cachedData.data.totalCells,
-          dataHash: cachedData.data.dataHash,
-          parsedAt: cachedData.data.parsedAt
-        } as SpreadSheetStructure;
-      }
+      this.logger.log(`Loading spreadsheet data for id: ${spreadsheetId}, user: ${userId}`);
       
-      return null;
+      // 정식 TableDataJsonSaveService를 사용하여 스프레드시트 데이터 로드
+      const loadResult = await this.tableDataService.loadSpreadSheet(spreadsheetId, userId);
+      
+      this.logger.log(`Successfully loaded spreadsheet: ${loadResult.fileName} with ${Object.keys(loadResult.data.sheets).length} sheets`);
+      
+      return loadResult.data;
 
     } catch (error) {
       const safeError = createSafeError(error);
@@ -350,101 +304,77 @@ export class MainChatService {
     question: string,
     spreadsheetData: SpreadSheetStructure | null,
     userId: string,
-    subject: Subject<string>
+    observer: { next: (value: string) => void; complete: () => void; }
   ): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        this.sendSSEEvent(observer, 'ai_processing_started', {
+          chatId,
+          userMessageId,
+          timestamp: new Date().toISOString()
+        });
 
-    try {
-      // AI 처리 시작 이벤트
-      this.sendSSEEvent(subject, 'ai_processing_started', {
-        chatId,
-        userMessageId,
-        timestamp: new Date().toISOString()
-      });
+        const finalSpreadsheetData: SpreadSheetStructure = spreadsheetData || {
+          version: '1.0',
+          sheets: {},
+          id: 'temp',
+          fileName: 'no-file'
+        };
 
-      // 기본 스프레드시트 구조 (없으면 빈 구조체)
-      const finalSpreadsheetData: SpreadSheetStructure = spreadsheetData || {
-        version: '1.0',
-        sheets: {},
-        id: 'temp',
-        fileName: 'no-file'
-      };
-
-      // AI 스트리밍 실행
-      await this.mainAiService.realtimeSpreadSheetAiAgent(
-        userId,
-        finalSpreadsheetData,
-        question,
-        (update: StreamUpdate) => {
-          // 실시간 AI 처리 상태 전송
-          this.sendSSEEvent(subject, 'ai_update', {
-            chatId,
-            userMessageId,
-            step: update.step,
-            progress: update.progress,
-            timestamp: new Date().toISOString(),
-            updateType: update.type
-          });
-        },
-        async (result: BaseAiRequestResult) => {
-          // AI 처리 완료 - 응답 저장 및 전송
-          try {
-            const assistantMessage = await this.saveAssistantMessage(
-              chatId,
-              result,
-              spreadsheetData ? { spreadsheetId: spreadsheetData.id } : null
-            );
-            // assistantMessageId 저장은 필요시 사용
-
-            // 타입별 응답 생성
-            const typedResponse = this.createTypedResponse(result, chatId, assistantMessage.id);
-
-            // 최종 응답 전송
-            this.sendSSEEvent(subject, 'chat_response', typedResponse);
-            this.sendSSEEvent(subject, 'chat_completed', {
-              chatId,
-              assistantMessageId: assistantMessage.id,
-              timestamp: new Date().toISOString()
+        this.mainAiService.realtimeSpreadSheetAiAgent(
+          userId,
+          finalSpreadsheetData,
+          question,
+          (update: StreamUpdate) => {
+            this.sendSSEEvent(observer, 'ai_update', {
+              chatId, userMessageId, step: update.step, progress: update.progress,
+              timestamp: new Date().toISOString(), updateType: update.type
             });
+          },
+          async (result: BaseAiRequestResult) => {
+            try {
+              const assistantMessage = await this.saveAssistantMessage(
+                chatId, result, spreadsheetData ? { spreadsheetId: spreadsheetData.id } : null
+              );
+              const typedResponse = this.createTypedResponse(result, chatId, assistantMessage.id);
 
-          } catch (saveError) {
-            const safeError = createSafeError(saveError);
-            this.logger.error(`Failed to save assistant message: ${safeError.message}`, safeError.details);
-            
-            this.sendSSEEvent(subject, 'error', {
-              error: 'Failed to save AI response',
-              details: safeError.message,
-              timestamp: new Date().toISOString()
+              this.sendSSEEvent(observer, 'chat_response', typedResponse);
+              this.sendSSEEvent(observer, 'chat_completed', {
+                chatId, assistantMessageId: assistantMessage.id, timestamp: new Date().toISOString()
+              });
+
+              observer.complete();
+              resolve();
+            } catch (saveError) {
+              const safeError = createSafeError(saveError);
+              this.logger.error(`Failed to save assistant message: ${safeError.message}`, safeError.details);
+              this.sendSSEEvent(observer, 'error', {
+                error: 'Failed to save AI response', details: safeError.message, timestamp: new Date().toISOString()
+              });
+              observer.complete();
+              reject(saveError);
+            }
+          },
+          (error: string) => {
+            this.logger.error(`AI processing failed: ${error}`);
+            this.sendSSEEvent(observer, 'error', {
+              error: 'AI processing failed', details: error, timestamp: new Date().toISOString()
             });
+            observer.complete();
+            reject(new Error(error));
           }
+        );
 
-          subject.complete();
-        },
-        (error: string) => {
-          // AI 처리 에러
-          this.logger.error(`AI processing failed: ${error}`);
-          
-          this.sendSSEEvent(subject, 'error', {
-            error: 'AI processing failed',
-            details: error,
-            timestamp: new Date().toISOString()
-          });
-
-          subject.complete();
-        }
-      );
-
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`AI streaming failed: ${safeError.message}`, safeError.details);
-      
-      this.sendSSEEvent(subject, 'error', {
-        error: 'AI streaming failed',
-        details: safeError.message,
-        timestamp: new Date().toISOString()
-      });
-
-      subject.complete();
-    }
+      } catch (error) {
+        const safeError = createSafeError(error);
+        this.logger.error(`AI streaming failed: ${safeError.message}`, safeError.details);
+        this.sendSSEEvent(observer, 'error', {
+          error: 'AI streaming failed', details: safeError.message, timestamp: new Date().toISOString()
+        });
+        observer.complete();
+        reject(error);
+      }
+    });
   }
 
   /**
@@ -456,7 +386,6 @@ export class MainChatService {
     sheetContext: any = null
   ) {
     return await this.prisma.$transaction(async (tx) => {
-      // AI 응답 메시지 저장
       const assistantMessage = await tx.message.create({
         data: {
           content: this.extractContentFromAIResult(aiResult),
@@ -475,7 +404,6 @@ export class MainChatService {
         }
       });
 
-      // 채팅 메시지 카운트 업데이트
       await tx.chat.update({
         where: { id: chatId },
         data: {
@@ -502,7 +430,6 @@ export class MainChatService {
       message: this.extractContentFromAIResult(aiResult)
     };
 
-    // 타입별 응답 생성
     if ('formulaDetails' in aiResult) {
       const result = aiResult as ExcelFormulaResult;
       return {
@@ -513,7 +440,7 @@ export class MainChatService {
           description: result.formulaDetails.description,
           syntax: result.formulaDetails.syntax,
           parameters: result.formulaDetails.parameters,
-          examples: [] // DTO에 맞게 추가 필요시
+          examples: []
         }
       } as ExcelFormulaResponseDto;
     }
@@ -526,7 +453,7 @@ export class MainChatService {
         codeGenerator: {
           pythonCode: result.codeGenerator.pythonCode,
           explanation: result.codeGenerator.explanation,
-          importedLibraries: [] // AI 응답에서 추출 필요
+          importedLibraries: []
         }
       } as PythonCodeGeneratorResponseDto;
     }
@@ -556,7 +483,6 @@ export class MainChatService {
       } as GeneralHelpResponseDto;
     }
 
-    // 기본 응답 - GeneralHelpResponseDto로 폴백
     return {
       ...baseResponse,
       intent: ChatIntentType.GENERAL_HELP,
@@ -596,9 +522,13 @@ export class MainChatService {
   /**
    * SSE 이벤트 전송
    */
-  private sendSSEEvent(subject: Subject<string>, event: string, data: any): void {
+  private sendSSEEvent(
+    observer: { next: (value: string) => void; }, 
+    event: string, 
+    data: any
+  ): void {
     const sseData = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-    subject.next(sseData);
+    observer.next(sseData);
   }
 
   /**

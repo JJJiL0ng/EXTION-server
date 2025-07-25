@@ -85,12 +85,37 @@ export class TableDataJsonSaveService {
       // 1. 사용자 검증
       await this.userService.validateUser(userId);
 
-      // 2. 기존 활성 데이터가 있다면 저장
+      // 2. 캐시된 활성 스프레드시트 확인 (우선순위 1)
+      if (this.activeSpreadSheet && 
+          this.activeSpreadSheet.id === spreadSheetId && 
+          this.activeSpreadSheet.userId === userId) {
+        
+        this.logger.log(`Using cached spreadsheet data for: ${spreadSheetId}`);
+        
+        // 현재 상태 (베이스라인 + 펜딩 델타) 조회
+        const currentState = await this.getCurrentState(userId);
+        
+        // fileName을 위해 DB에서 메타데이터만 조회 (캐시된 데이터가 있어도 파일명은 필요)
+        const sheetMetadata = await this.prisma.spreadSheet.findFirst({
+          where: { id: spreadSheetId, userId },
+          select: { fileName: true, updatedAt: true }
+        });
+        
+        return {
+          id: this.activeSpreadSheet.id,
+          fileName: sheetMetadata?.fileName || 'cached-sheet',
+          data: currentState,
+          version: this.activeSpreadSheet.metadata.version,
+          lastModified: sheetMetadata?.updatedAt || this.activeSpreadSheet.metadata.lastActivity
+        };
+      }
+
+      // 3. 기존 활성 데이터가 있다면 저장 (다른 시트로 전환하는 경우)
       if (this.activeSpreadSheet?.metadata.isDirty) {
         await this.forceSave();
       }
 
-      // 3. 데이터베이스에서 로드
+      // 4. 데이터베이스에서 로드
       const spreadSheet = await this.prisma.spreadSheet.findFirst({
         where: { 
           id: spreadSheetId,

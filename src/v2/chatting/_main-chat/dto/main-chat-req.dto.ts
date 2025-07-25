@@ -4,11 +4,13 @@ export class MainChatRequestDto {
   @IsString()
   chatInputMessage: string;
 
+  @IsOptional()
   @IsString()
-  spreadsheetId: string;
+  spreadsheetId?: string;
 
+  @IsOptional()
   @IsString()
-  chatId: string;
+  chatId?: string;
 
   @IsString()
   userId: string;

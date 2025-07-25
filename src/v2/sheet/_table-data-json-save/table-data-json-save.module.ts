@@ -8,5 +8,6 @@ import { PrismaModule } from '../../prisma/prisma.module';
   imports: [UserModule, PrismaModule],
   controllers: [TableDataJsonSaveController],
   providers: [TableDataJsonSaveService],
+  exports: [TableDataJsonSaveService],
 })
 export class TableDataJsonSaveModule {}

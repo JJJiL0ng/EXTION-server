@@ -429,7 +429,13 @@ export class TableDataCacheService implements OnModuleInit, OnModuleDestroy {
     }
 
     // 사용자 검증
-    if (entry.metadata.userId !== userId) {
+    if (!entry.metadata || entry.metadata.userId !== userId) {
+      this.logger.warn(`Cache entry validation failed`, {
+        cacheKey,
+        hasMetadata: !!entry.metadata,
+        expectedUserId: userId,
+        actualUserId: entry.metadata?.userId
+      });
       this.memoryCache.delete(cacheKey);
       this.stats.l1Misses++;
       return null;
@@ -788,12 +794,16 @@ export class TableDataCacheService implements OnModuleInit, OnModuleDestroy {
    */
   private onCacheEvict(entry: MemoryCacheEntry, key: string): void {
     // 사용자 캐시 키 목록에서 제거
-    const userKeys = this.userCacheKeys.get(entry.metadata.userId);
-    if (userKeys) {
-      userKeys.delete(key);
-      if (userKeys.size === 0) {
-        this.userCacheKeys.delete(entry.metadata.userId);
+    if (entry?.metadata?.userId) {
+      const userKeys = this.userCacheKeys.get(entry.metadata.userId);
+      if (userKeys) {
+        userKeys.delete(key);
+        if (userKeys.size === 0) {
+          this.userCacheKeys.delete(entry.metadata.userId);
+        }
       }
+    } else {
+      this.logger.warn(`Cache eviction: entry metadata missing`, { key, hasEntry: !!entry });
     }
     
     this.logger.debug(`Cache entry evicted: ${key}`);
