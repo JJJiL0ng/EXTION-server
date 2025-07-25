@@ -16,14 +16,9 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { MainChatService } from './main-chat.service';
-import { MainChatRequestDto } from './dto/main-chat-req.dto';
+import { MainChatRequestDto, GetChatHistoryDto, GetUserChatList } from './dto/main-chat-req.dto';
 
-interface AuthenticatedRequest extends Request {
-  user: {
-    uid: string;
-    email?: string;
-  };
-}
+
 @Controller('v2/main-chat')
 export class MainChatController {
   private readonly logger = new Logger(MainChatController.name);
@@ -36,17 +31,15 @@ export class MainChatController {
   @Sse('stream')
   async streamChat(
     @Body() request: MainChatRequestDto,
-    @Req() req: AuthenticatedRequest
   ): Promise<Observable<string>> {
-    const userId = req.user.uid;
-
+    const userId = request.userId;
     this.logger.log(
       `SSE chat stream request from user: ${userId}, ` +
       `chatId: ${request.chatId || 'new'}, ` +
       `spreadsheetId: ${request.spreadsheetId || 'none'}`
     );
 
-    return this.mainChatService.streamChat(request, userId);
+    return this.mainChatService.streamChat(request);
   }
 
   /**
@@ -55,12 +48,12 @@ export class MainChatController {
   @Get(':chatId/history')
   async getChatHistory(
     @Param('chatId') chatId: string,
+    @Body() request: GetChatHistoryDto,
     @Query('limit', new DefaultValuePipe(50), new ParseIntPipe()) limit: number,
     @Query('offset', new DefaultValuePipe(0), new ParseIntPipe()) offset: number,
-    @Req() req: AuthenticatedRequest
   ) {
-    const userId = req.user.uid;
-    
+    const userId = request.userId;
+
     // 한번에 가져올 수 있는 메시지 수 제한
     const maxLimit = Math.min(limit, 100);
     
@@ -77,12 +70,12 @@ export class MainChatController {
    */
   @Get('list')
   async getUserChats(
+    @Body() request: GetUserChatList,
     @Query('limit', new DefaultValuePipe(20), new ParseIntPipe()) limit: number,
     @Query('offset', new DefaultValuePipe(0), new ParseIntPipe()) offset: number,
-    @Req() req: AuthenticatedRequest
   ) {
-    const userId = req.user.uid;
-    
+    const userId = request.userId;
+
     // 한번에 가져올 수 있는 채팅 수 제한
     const maxLimit = Math.min(limit, 50);
     

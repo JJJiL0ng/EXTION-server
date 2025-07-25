@@ -42,19 +42,18 @@ export class MainChatService {
    */
   async streamChat(
     request: MainChatRequestDto,
-    userId: string
   ): Promise<Observable<string>> {
     const subject = new Subject<string>();
     
     try {
       this.logger.log(
-        `Starting SSE chat stream for user: ${userId}, ` +
+        `Starting SSE chat stream for user: ${request.userId}, ` +
         `chatId: ${request.chatId || 'new'}, ` +
         `message: "${request.chatInputMessage.substring(0, 50)}..."`
       );
 
       // 1. 채팅 및 사용자 메시지 생성/저장
-      const { chat, userMessage } = await this.createChatAndUserMessage(request, userId);
+      const { chat, userMessage } = await this.createChatAndUserMessage(request, request.userId);
 
       // SSE 연결 시작 이벤트
       this.sendSSEEvent(subject, 'chat_started', {
@@ -64,7 +63,7 @@ export class MainChatService {
       });
 
       // 2. 스프레드시트 데이터 로드 (있는 경우)
-      const spreadsheetData = await this.loadSpreadsheetData(request.spreadsheetId, userId);
+      const spreadsheetData = await this.loadSpreadsheetData(request.spreadsheetId, request.userId);
 
       // 3. AI 스트리밍 처리 시작
       this.processAIStreaming(
@@ -72,7 +71,7 @@ export class MainChatService {
         userMessage.id,
         request.chatInputMessage,
         spreadsheetData,
-        userId,
+        request.userId,
         subject
       );
 
