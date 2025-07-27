@@ -54,19 +54,30 @@ export class UserService {
     title: string = 'New Chat',
   ) {
     if (chatId) {
-      // 기존 채팅 검증
-      const chat = await this.prisma.chat.findFirst({
+      // 기존 채팅 확인
+      const existingChat = await this.prisma.chat.findFirst({
         where: { id: chatId, userId, status: ChatStatus.ACTIVE },
         select: { id: true },
       });
 
-      if (!chat) {
-        throw new NotFoundException('Chat not found or access denied');
+      if (existingChat) {
+        return existingChat; // 기존 채팅 반환
       }
-      return chat; // { id: ... }
+
+      // 기존 채팅이 없으면 해당 chatId로 새 채팅 생성
+      return this.prisma.chat.create({
+        data: {
+          id: chatId,          // ← 프론트에서 제공한 UUID 사용
+          title,
+          userId,
+          status: ChatStatus.ACTIVE,
+          messageCount: 0,
+        },
+        select: { id: true },
+      });
     }
 
-    // 새 채팅 생성
+    // chatId가 없으면 서버에서 UUID 생성하여 새 채팅 생성
     return this.prisma.chat.create({
       data: {
         id: randomUUID(),      // ← 서버에서 안전하게 생성

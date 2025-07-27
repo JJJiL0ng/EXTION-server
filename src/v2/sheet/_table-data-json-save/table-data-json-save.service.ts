@@ -194,8 +194,8 @@ export class TableDataJsonSaveService {
         await this.forceSave();
       }
 
-      // 3. 파일명 중복 검사
-      // await this.validateUniqueFileName(dto.userId, dto.fileName);
+      // 3. 스프레드시트 ID 중복 검사 (userId + spreadsheetId unique constraint)
+      // Prisma에서 @@unique([userId, id])로 처리하므로 별도 검사 불필요
 
       // 4. 초기 데이터 준비
       let initialData: SpreadSheetStructure;

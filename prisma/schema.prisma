@@ -46,7 +46,7 @@ model SpreadSheet {
   editHistory  EditHistory[]
   chats        Chat[]
 
-  @@unique([userId, fileName]) // 사용자별 파일명 고유
+  @@unique([userId, id]) // 사용자별 스프레드시트 ID 고유
   @@index([userId, updatedAt])
   @@index([userId, lastOpened])
 }
