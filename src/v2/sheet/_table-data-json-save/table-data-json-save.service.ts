@@ -53,29 +53,6 @@ export class TableDataJsonSaveService {
     private readonly userService: UserService,
   ) {}
 
-  /**
-   * Guest 유저 생성
-   */
-  async createGuestUser(): Promise<string> {
-    try {
-      const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-      
-      const guestUser = await this.prisma.user.create({
-        data: {
-          id: guestId,
-          displayName: `Guest User ${Date.now()}`,
-          isGuest: true,
-        }
-      });
-
-      this.logger.log(`Created guest user: ${guestUser.id}`);
-      return guestUser.id;
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to create guest user: ${safeError.message}`, safeError.details);
-      throw error;
-    }
-  }
 
   /**
    * 스프레드시트 로드 (메모리로)
@@ -186,8 +163,11 @@ export class TableDataJsonSaveService {
     try {
       // 1. 사용자 검증
       await this.userService.validateUser(dto.userId);
+      this.logger.log(`User validated: ${dto.userId}`);
+      
       // chatId가 있으면 채팅 생성 또는 확인
       await this.userService.ensureChat(dto.chatId, dto.userId, `Chat for ${dto.fileName}`);
+      this.logger.log(`Chat ensured: ${dto.chatId} for user: ${dto.userId}`);
 
       // 2. 기존 활성 데이터 저장
       if (this.activeSpreadSheet?.metadata.isDirty) {

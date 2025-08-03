@@ -9,8 +9,44 @@ export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * 사용자 생성
+   * - 프론트엔드에서 제공한 userId로 사용자 생성
+   */
+  public async createUser(userId: string, displayName?: string, isGuest: boolean = false): Promise<{ id: string; displayName: string; isGuest: boolean }> {
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          id: userId,
+          displayName: displayName || (isGuest ? `Guest User ${Date.now()}` : `User ${userId}`),
+          isGuest,
+        }
+      });
+
+      return {
+        id: user.id,
+        displayName: user.displayName,
+        isGuest: user.isGuest
+      };
+    } catch (error) {
+      // 이미 존재하는 사용자인 경우
+      if (error.code === 'P2002') {
+        const existingUser = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { id: true, displayName: true, isGuest: true }
+        });
+        
+        if (existingUser) {
+          return existingUser;
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
    * 사용자 존재 여부 검증
-   * - 게스트 ID(`guest_<timestamp>_<rand>`)는 자동 생성
+   * - guest 사용자는 자동 생성
+   * - 일반 사용자는 프론트엔드에서 미리 생성되어야 함
    */
   public async validateUser(userId: string): Promise<void> {
     let user = await this.prisma.user.findUnique({
@@ -18,8 +54,8 @@ export class UserService {
       select: { id: true },
     });
 
+    // guest 사용자가 없으면 자동 생성
     if (!user && userId.startsWith('guest_')) {
-      // ▼ 동시 요청 race condition 방어
       try {
         user = await this.prisma.user.create({
           data: {
@@ -29,12 +65,16 @@ export class UserService {
           },
           select: { id: true },
         });
-      } catch {
-        // PK 충돌이면 이미 생성된 것 → 다시 조회
-        user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true },
-        });
+      } catch (error) {
+        // 동시 요청으로 이미 생성된 경우 다시 조회
+        if (error.code === 'P2002') {
+          user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { id: true },
+          });
+        } else {
+          throw error;
+        }
       }
     }
 
