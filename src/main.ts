@@ -26,6 +26,7 @@ async function bootstrap() {
  ];
 
  // CORS 설정
+  // CORS 설정
  app.enableCors({
    origin: (origin, callback) => {
      // origin이 없는 경우 (same-origin 요청 등) 허용
@@ -56,13 +57,13 @@ async function bootstrap() {
      'Accept',
      'Origin',
      'Access-Control-Request-Method',
-     'Access-Control-Request-Headers'
+     'Access-Control-Request-Headers',
+     'cache-control' // 허용할 헤더 추가
    ],
    exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
-   optionsSuccessStatus: 200, // 일부 레거시 브라우저 (IE11, various SmartTVs) choke on 204
+   optionsSuccessStatus: 200,
    preflightContinue: false,
  });
-
  // 전역 파이프 설정 (DTO 유효성 검증)
  app.useGlobalPipes(
    new ValidationPipe({
