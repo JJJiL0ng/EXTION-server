@@ -58,8 +58,8 @@ export interface ChainState {
   // LLM 응답
   llmResponse?: string;
   
-  // 최종 응답
-  finalResponse?: string;
+  // 최종 응답 - string 또는 구조화된 객체
+  finalResponse?: string | BaseAiRequestResult;
   
   // 파싱된 타입별 응답
   parsedResponse?: BaseAiRequestResult;

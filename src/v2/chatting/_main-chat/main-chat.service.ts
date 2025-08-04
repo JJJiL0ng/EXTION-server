@@ -417,80 +417,20 @@ export class MainChatService {
   }
 
   /**
-   * AI 결과에서 타입별 응답 생성
+   * AI 결과를 원본 형식 그대로 반환 (채팅 래퍼 없이)
    */
   private createTypedResponse(
     aiResult: BaseAiRequestResult,
     chatId: string,
     _messageId: string
-  ): ChatResponseDto {
-    const baseResponse = {
-      chatId,
-      timestamp: new Date().toISOString(),
-      message: this.extractContentFromAIResult(aiResult)
-    };
-
-    if ('formulaDetails' in aiResult) {
-      const result = aiResult as ExcelFormulaResult;
-      return {
-        ...baseResponse,
-        intent: ChatIntentType.EXCEL_FORMULA,
-        formulaDetails: {
-          name: result.formulaDetails.name,
-          description: result.formulaDetails.description,
-          syntax: result.formulaDetails.syntax,
-          parameters: result.formulaDetails.parameters,
-          examples: []
-        }
-      } as ExcelFormulaResponseDto;
-    }
-    
-    if ('codeGenerator' in aiResult) {
-      const result = aiResult as PythonCodeGeneratorResult;
-      return {
-        ...baseResponse,
-        intent: ChatIntentType.PYTHON_CODE_GENERATOR,
-        codeGenerator: {
-          pythonCode: result.codeGenerator.pythonCode,
-          explanation: result.codeGenerator.explanation,
-          importedLibraries: []
-        }
-      } as PythonCodeGeneratorResponseDto;
-    }
-    
-    if ('dataTransformation' in aiResult) {
-      const transformResult = aiResult as WholeDataResult;
-      return {
-        ...baseResponse,
-        intent: ChatIntentType.WHOLE_DATA,
-        dataTransformation: {
-          transformationMethod: 'AI-powered data transformation',
-          processingSteps: transformResult.dataTransformation.transformedJsonData,
-          validationMethod: 'Schema validation'
-        }
-      } as WholeDataResponseDto;
-    }
-    
-    if ('generalHelp' in aiResult) {
-      const result = aiResult as GeneralHelpResult;
-      return {
-        ...baseResponse,
-        intent: ChatIntentType.GENERAL_HELP,
-        generalHelp: {
-          directAnswer: result.generalHelp.directAnswer,
-          additionalResources: result.generalHelp.additionalResources
-        }
-      } as GeneralHelpResponseDto;
-    }
-
+  ): any {
+    // 원본 AI 응답을 그대로 반환하되, 채팅 메타데이터만 추가
     return {
-      ...baseResponse,
-      intent: ChatIntentType.GENERAL_HELP,
-      generalHelp: {
-        directAnswer: this.extractContentFromAIResult(aiResult),
-        additionalResources: []
-      }
-    } as GeneralHelpResponseDto;
+      ...aiResult,
+      // 채팅 컨텍스트를 위한 최소한의 메타데이터만 추가
+      chatId,
+      timestamp: new Date().toISOString()
+    };
   }
 
   /**

@@ -230,7 +230,9 @@ export class MainAiService {
       this.logger.debug(
         `Simple query completed in ${result.data.metadata.responseTime}ms`
       );
-      return result.data.finalResponse;
+      return typeof result.data.finalResponse === 'string' 
+        ? result.data.finalResponse 
+        : JSON.stringify(result.data.finalResponse);
     } else {
       throw new Error(result.error || 'Simple query failed');
     }
@@ -291,7 +293,10 @@ export class MainAiService {
           this.logger.debug(
             `Simple streaming query completed in ${finalChainState.metadata.responseTime}ms`
           );
-          onComplete?.(finalChainState.finalResponse);
+          const response = typeof finalChainState.finalResponse === 'string' 
+            ? finalChainState.finalResponse 
+            : JSON.stringify(finalChainState.finalResponse);
+          onComplete?.(response);
         } else {
           onError?.('No response generated');
         }

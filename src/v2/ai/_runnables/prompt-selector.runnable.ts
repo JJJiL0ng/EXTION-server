@@ -159,10 +159,19 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
   private preparePromptVariables(chainState: ChainState, template: PromptTemplate): Record<string, any> {
     try {
       const variables: Record<string, any> = {};
+      const intent = chainState.analyzedIntent?.intent;
 
       // 기본 변수들
       variables.question = chainState.originalInput.question;
-      variables.dataContext = this.buildDataContext(chainState.originalInput.spreadSheetData);
+      
+      // Intent에 따라 전체 데이터 또는 요약 데이터 사용
+      if (intent === 'excel_formula' || intent === 'python_code_generator' || intent === 'whole_data') {
+        this.logger.debug(`Using full data context for intent: ${intent}`);
+        variables.dataContext = this.buildFullDataContext(chainState.originalInput.spreadSheetData);
+      } else {
+        this.logger.debug(`Using summary data context for intent: ${intent}`);
+        variables.dataContext = this.buildSummaryDataContext(chainState.originalInput.spreadSheetData);
+      }
 
       // 템플릿별 특수 변수 처리
       for (const varName of template.variables) {
@@ -194,7 +203,12 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
         return chainState.originalInput.question;
 
       case 'dataContext':
-        return this.buildDataContext(chainState.originalInput.spreadSheetData);
+        const intent = chainState.analyzedIntent?.intent;
+        if (intent === 'excel_formula' || intent === 'python_code_generator' || intent === 'whole_data') {
+          return this.buildFullDataContext(chainState.originalInput.spreadSheetData);
+        } else {
+          return this.buildSummaryDataContext(chainState.originalInput.spreadSheetData);
+        }
 
       case 'intent':
         return chainState.analyzedIntent?.intent || 'unknown';
@@ -215,9 +229,29 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
   }
 
   /**
-   * 스프레드시트 데이터를 프롬프트용 컨텍스트로 변환
+   * 전체 스프레드시트 데이터를 프롬프트용 컨텍스트로 변환 (실제 수정 작업용)
    */
-  private buildDataContext(spreadSheetData: any): string {
+  private buildFullDataContext(spreadSheetData: any): string {
+    try {
+      if (!spreadSheetData || !spreadSheetData.sheets) {
+        return 'No spreadsheet data available';
+      }
+
+      this.logger.debug('Building full data context for modification operations');
+      
+      // 전체 데이터를 JSON 형태로 직렬화하여 반환
+      return JSON.stringify(spreadSheetData, null, 2);
+
+    } catch (error) {
+      this.logger.error(`Failed to build full data context: ${error.message}`);
+      return 'Error building full data context';
+    }
+  }
+
+  /**
+   * 요약된 스프레드시트 데이터를 프롬프트용 컨텍스트로 변환 (일반 도움말용)
+   */
+  private buildSummaryDataContext(spreadSheetData: any): string {
     try {
       if (!spreadSheetData || !spreadSheetData.sheets) {
         return 'No spreadsheet data available';
@@ -251,8 +285,8 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
       return context;
 
     } catch (error) {
-      this.logger.error(`Failed to build data context: ${error.message}`);
-      return 'Error building data context';
+      this.logger.error(`Failed to build summary data context: ${error.message}`);
+      return 'Error building summary data context';
     }
   }
 }

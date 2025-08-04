@@ -259,9 +259,11 @@ export class BasicAiChain {
       }
 
       // 4. 응답 길이 검증
-      if (state.finalResponse && state.finalResponse.length > 5000) {
-        this.logger.warn('Response too long, truncating');
-        state.finalResponse = state.finalResponse.substring(0, 4800) + '\n\n...(응답이 길어 일부 생략됨)';
+      if (state.finalResponse) {
+        if (typeof state.finalResponse === 'string' && state.finalResponse.length > 5000) {
+          this.logger.warn('Response too long, truncating');
+          state.finalResponse = state.finalResponse.substring(0, 4800) + '\n\n...(응답이 길어 일부 생략됨)';
+        }
       }
 
       return state;
