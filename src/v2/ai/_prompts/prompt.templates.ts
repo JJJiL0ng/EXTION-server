@@ -47,12 +47,14 @@ export const INTENT_ANALYSIS_PROMPT = `
  */
 export const PROMPT_TEMPLATES: PromptTemplate[] = [
   // excel 함수 기반 데이터 수정 및 변환
-  {
-    id: 'excel_formula_advanced',
-    category: 'excel_formula', 
-    name: '스프레드시트 데이터 분석 및 수정',
-    description: 'SpreadJS 기반 스프레드시트 데이터 분석, 계산 및 자동화',
-    template: `
+  // 개선된 excel_formula_advanced 템플릿
+
+{
+  id: 'excel_formula_advanced',
+  category: 'excel_formula', 
+  name: '스프레드시트 데이터 분석 및 수정',
+  description: 'SpreadJS 기반 스프레드시트 데이터 분석, 계산, 정렬, 필터링 및 자동화',
+  template: `
 다음은 사용자의 스프레드시트 데이터입니다:
 {dataContext}
 
@@ -63,88 +65,143 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 \`\`\`json
 {{
   "success": true,
-  "tokensUsed": 245,
-  "responseTime": 1350,
+  "tokensUsed": 0,
+  "responseTime": 0,
   "model": "claude",
   "cached": false,
   "confidence": 0.95,
   "analysis": {{
-    "detectedOperation": "요청된 작업 유형 (예: 계산, 집계, 데이터변환, 조건부포맷팅 등)",
-    "dataRange": "분석된 데이터 범위 (예: A1:D10)",
-    "targetCells": "결과가 적용될 셀 위치 (예: E1 또는 E1:E10)",
+    "detectedOperation": "요청된 작업의 구체적 설명 (예: 매출 데이터 내림차순 정렬, 급여 합계 계산, 부서별 필터링 등)",
+    "dataRange": "분석 대상 데이터 범위 (예: A1:E56, B2:D100)",
+    "targetCells": "결과가 적용될 셀 위치 (예: A1:E56, F57, 전체범위)",
     "operationType": "single_cell | multiple_cells | range_operation"
   }},
   "formulaDetails": {{
-    "name": "사용할 함수명 (예: SUM, VLOOKUP, AVERAGE 등)",
-    "description": "함수의 상세 설명과 사용 목적",
-    "syntax": "함수 문법 (예: =SUM(A1:A10))",
+    "name": "주요 사용 기능명 (예: SUM, sortRange, HideRowFilter, conditionalFormats)",
+    "description": "작업에 대한 상세 설명과 사용 목적 및 기대 결과",
+    "syntax": "핵심 문법 또는 공식 (예: =SUM(A1:A10) 또는 sortRange(row,col,rowCount,colCount,byRows,sortInfo))",
     "parameters": [
       {{
         "name": "매개변수명",
         "description": "매개변수 설명",
         "required": true,
-        "example": "A1:A10"
+        "example": "구체적 예시값"
       }}
     ],
-    "spreadjsCommand": "실제 SpreadJS에서 실행할 JavaScript 코드"
+    "spreadjsCommand": "완전한 실행 가능한 JavaScript 코드"
   }},
   "implementation": {{
     "steps": [
-      "1단계: 데이터 유효성 검사",
-      "2단계: 공식 또는 값 적용",
-      "3단계: 결과 확인"
+      "1단계: 데이터 유효성 검사 및 범위 확인",
+      "2단계: 핵심 작업 실행 (공식 적용/정렬/필터링 등)",
+      "3단계: 결과 검증 및 사용자 피드백"
     ],
     "cellLocations": {{
-      "source": "A1:A10",
-      "target": "B11",
-      "description": "A1:A10 범위의 합계를 B11 셀에 표시"
+      "source": "입력 데이터 범위 (예: A1:E56)",
+      "target": "결과 출력 위치 (예: F57 또는 A1:E56)",
+      "description": "작업 전체 요약 (예: A1:E56 매출 데이터를 C열 기준 내림차순 정렬)"
     }}
   }}
 }}
 \`\`\`
 
-spreadjsCommand 필드에는 반드시 다음 SpreadJS API 패턴 중 하나를 사용해주세요:
+**spreadjsCommand 작성 규칙:**
 
-**단일 셀 공식 설정:**
-- worksheet.setFormula(row, col, "=SUM(A1:A10)")
-- worksheet.getCell(row, col).formula("=AVERAGE(B1:B5)")
+**🔢 계산/집계 작업 (공식 적용):**
+- worksheet.setFormula(row, col, "=SUM(A2:A56)", GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.setFormula(row, col, "=AVERAGE(C2:C56)", GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.setFormula(row, col, "=COUNTIFS(B:B,\\"영업팀\\",C:C,\\">3000\\")", GC.Spread.Sheets.SheetArea.viewport)
 
-**다중 셀 처리:**
-- worksheet.getRange(startRow, startCol, rowCount, colCount).formula("=A1*B1")  
+**🔄 정렬 작업:**
+- worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}])
+- worksheet.sortRange(startRow, startCol, rowCount, colCount, true, sortInfo)
+
+**🔍 필터링 작업:**
+- var hideRowFilter = new GC.Spread.Sheets.Filter.HideRowFilter(new GC.Spread.Sheets.Range(0, 0, 56, 5));
+- worksheet.rowFilter(hideRowFilter);
+- rowFilter.addFilterItem(columnIndex, condition);
+
+**🎨 조건부 서식:**
+- var style = new GC.Spread.Sheets.Style(); style.backColor = '#FFFF99';
+- worksheet.conditionalFormats.addCellValueRule(operator, value, style, ranges);
+
+**📊 다중 셀 처리:**
+- worksheet.getRange(startRow, startCol, rowCount, colCount).formula("=FORMULA")
 - for(let i = startRow; i <= endRow; i++) {{ worksheet.setFormula(i, col, formula); }}
 
-**값 설정:**
-- worksheet.setValue(row, col, value)
-- worksheet.getCell(row, col).value(calculatedValue)
-
-**범위 작업:**
-- var range = worksheet.getRange(row1, col1, rowCount, colCount)
-- range.formula("=SUM(A:A)")
-
-**조건부 서식:**
-- worksheet.conditionalFormats.addCellValueRule(operator, value, style, ranges)
-
-**테이블 작업:**
-- var table = worksheet.tables.add("A1:D10", true)
-- table.setColumnDataFormula(columnIndex, "=SUM([Column1])")
-
-다음 사항을 반드시 포함해주세요:
-
-1. **정확한 셀 주소 계산**: 사용자가 제공한 데이터를 기반으로 올바른 행/열 인덱스 계산
-2. **에러 처리**: try-catch 구문을 포함한 안전한 코드
-3. **성능 최적화**: 대량 데이터 처리시 suspendPaint()/resumePaint() 사용
-4. **사용자 피드백**: 실행 결과를 사용자에게 알려주는 방법
+**완전한 코드 템플릿:**
+\`\`\`javascript
+try {{
+  // 1. 성능 최적화
+  worksheet.suspendPaint();
+  
+  // 2. 입력 데이터 유효성 검사
+  var rowCount = worksheet.getRowCount();
+  var colCount = worksheet.getColumnCount();
+  
+  if (targetRow >= rowCount || targetCol >= colCount) {{
+    throw new Error(\`대상 셀(\${{targetRow}}, \${{targetCol}})이 시트 범위(\${{rowCount}}, \${{colCount}})를 벗어났습니다.\`);
+  }}
+  
+  // 3. 핵심 로직 실행 (작업 유형에 따라 선택)
+  
+  // 공식 적용 예시:
+  worksheet.setFormula(targetRow, targetCol, '=SUM(A2:A56)', GC.Spread.Sheets.SheetArea.viewport);
+  
+  // 정렬 실행 예시:
+  // worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}]);
+  
+  // 필터링 실행 예시:
+  // var hideRowFilter = new GC.Spread.Sheets.Filter.HideRowFilter(new GC.Spread.Sheets.Range(0, 0, 56, 5));
+  // worksheet.rowFilter(hideRowFilter);
+  
+  // 4. 결과 검증
+  var result = worksheet.getValue(targetRow, targetCol); // 공식 적용의 경우
+  
+  // 5. 성능 최적화 해제
+  worksheet.resumePaint();
+  
+  // 6. 성공 로그
+  console.log('✅ 작업 완료: ' + operationDescription);
+  console.log('📍 적용 위치: ' + targetRange);
+  console.log('📊 결과: ' + (result || '정렬/필터링 완료'));
+  
+}} catch(error) {{
+  // 7. 에러 처리
+  worksheet.resumePaint();
+  console.error('❌ SpreadJS 작업 실패:', error.message);
+  console.error('🔍 대상 위치:', targetRow + ', ' + targetCol);
+  throw new Error('SpreadJS 실행 실패: ' + error.message);
+}}
+\`\`\`
 
 **중요 주의사항:**
-- SpreadJS는 0-based 인덱스를 사용합니다 (첫 번째 행/열은 0)
-- 공식에서는 A1 스타일 참조를 사용하지만, API에서는 숫자 인덱스 사용
-- 복잡한 작업의 경우 단계별로 나누어 처리
-- 실제 환경에서 바로 적용 가능한 완전한 JavaScript 코드 제공
+1. **0-based 인덱스**: SpreadJS는 행/열 인덱스가 0부터 시작 (A1 = 0,0)
+2. **구체적 범위**: 실제 데이터 기반으로 정확한 셀 범위 계산 (A2:A56, B1:E100 등)
+3. **SheetArea 명시**: 가능한 모든 곳에 GC.Spread.Sheets.SheetArea.viewport 사용
+4. **완전한 에러 처리**: try-catch와 resumePaint() 보장
+5. **작업별 특화**: 계산은 setFormula, 정렬은 sortRange, 필터는 rowFilter 사용
 
-예시 spreadjsCommand:
-"try {{ worksheet.suspendPaint(); worksheet.setFormula(10, 1, '=SUM(A1:A10)'); worksheet.resumePaint(); }} catch(e) {{ console.error('Formula application failed:', e); }}"
+**작업 유형별 예시:**
+
+**합계 계산 요청:** "총 매출 합계를 구해줘"
+- detectedOperation: "C2:C56 범위의 매출 데이터 합계 계산"
+- name: "SUM"
+- spreadjsCommand: "worksheet.setFormula(56, 2, '=SUM(C2:C56)', GC.Spread.Sheets.SheetArea.viewport);"
+
+**정렬 요청:** "매출 높은 순으로 정렬해줘"  
+- detectedOperation: "전체 데이터를 C열(매출) 기준 내림차순 정렬"
+- name: "sortRange"
+- spreadjsCommand: "worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}]);"
+
+**필터링 요청:** "영업팀만 필터링해서 보여줘"
+- detectedOperation: "B열(부서)에서 영업팀 데이터만 필터링"
+- name: "HideRowFilter" 
+- spreadjsCommand: "var filter = new GC.Spread.Sheets.Filter.HideRowFilter(range); worksheet.rowFilter(filter);"
+
+모든 명령에서 실제 데이터 범위를 기반으로 구체적인 셀 주소와 인덱스를 사용해주세요.
 `,
-    variables: ['dataContext', 'question']
+  variables: ['dataContext', 'question']
 },
 
   // 파이썬 코드 생성 관련
