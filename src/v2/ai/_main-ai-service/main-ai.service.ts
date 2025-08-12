@@ -204,7 +204,7 @@ export class MainAiService {
         // 간단한 질의는 경량화된 LLM 설정 사용
         const simpleLLM = new ChatAnthropic({
           anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
-          modelName: 'claude-3-haiku-20240307', // 더 빠른 모델
+          modelName: 'claude-3-5-haiku-20241022',
           temperature: 0.3,
           maxTokens: 1000,
         });
@@ -262,12 +262,12 @@ export class MainAiService {
     // 간단한 질의는 경량화된 LLM 설정 사용
     const simpleLLM = new ChatAnthropic({
       anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
-      modelName: 'claude-3-haiku-20240307', // 더 빠른 모델
+      modelName: 'claude-3-5-haiku-20241022',
       temperature: 0.3,
       maxTokens: 1000,
     });
 
-    // 경량 체인 생성
+    // 경량 체인 생성 
     const simpleChain = new BasicAiChain(simpleLLM);
 
     const chainInput: ChainInput = {
