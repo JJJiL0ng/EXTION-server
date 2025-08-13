@@ -1,7 +1,8 @@
 // src/v2/ai/runnables/intent-analyzer.runnable.ts
 
 import { Runnable } from '@langchain/core/runnables';
-import { ChatAnthropic } from '@langchain/anthropic';
+// import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { JsonOutputParser } from '@langchain/core/output_parsers';
 import { ChainInput, ChainState, IntentAnalysisResult, StreamUpdate } from '../_types/chain.types';
@@ -15,12 +16,12 @@ import { Logger } from '@nestjs/common';
 export class IntentAnalyzerRunnable extends Runnable<ChainInput, ChainState> {
 lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
   private readonly logger = new Logger(IntentAnalyzerRunnable.name);
-  private readonly llm: ChatAnthropic;
+  private readonly llm: ChatGoogleGenerativeAI;
   private readonly promptTemplate: ChatPromptTemplate;
   private readonly outputParser: JsonOutputParser;
   private streamCallback?: (update: StreamUpdate) => void;
 
-  constructor(llm: ChatAnthropic) {
+  constructor(llm: ChatGoogleGenerativeAI) {
     super();
     this.llm = llm;
     this.promptTemplate = ChatPromptTemplate.fromTemplate(INTENT_ANALYSIS_PROMPT);

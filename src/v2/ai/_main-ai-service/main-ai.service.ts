@@ -2,7 +2,8 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ChatAnthropic } from '@langchain/anthropic';
+// import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { TableDataCacheService } from '../../cache/_table-data-cache/table-data-cache.service';
 import {
   SpreadSheetStructure,
@@ -23,25 +24,33 @@ import { ChainInput, StreamUpdate, StreamResult } from '../_types/chain.types';
 @Injectable()
 export class MainAiService {
   private readonly logger = new Logger(MainAiService.name);
-  private readonly llm: ChatAnthropic;
+  private readonly llm: ChatGoogleGenerativeAI;
   private readonly basicAiChain: BasicAiChain;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly cacheService: TableDataCacheService,
   ) {
-    // LLM 초기화
-    this.llm = new ChatAnthropic({
-      anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
-      modelName: 'claude-3-5-haiku-20241022',
+    // LLM 초기화 - Gemini 2.5 Flash
+    this.llm = new ChatGoogleGenerativeAI({
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      model: 'gemini-2.0-flash-lite',
       temperature: 0.7,
-      maxTokens: 4000,
+      maxOutputTokens: 4000,
     });
+
+    // Claude 설정 (주석 처리)
+    // this.llm = new ChatAnthropic({
+    //   anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
+    //   modelName: 'claude-3-5-haiku-20241022',
+    //   temperature: 0.7,
+    //   maxTokens: 4000,
+    // });
 
     // 기본 AI 체인 초기화
     this.basicAiChain = new BasicAiChain(this.llm);
 
-    this.logger.log('AI Service initialized with LCEL chains');
+    this.logger.log('AI Service initialized with LCEL chains using Gemini 2.5 Flash');
   }
 
   /**
@@ -202,12 +211,20 @@ export class MainAiService {
         this.logger.debug(`Processing simple query: "${question.substring(0, 50)}..."`);
 
         // 간단한 질의는 경량화된 LLM 설정 사용
-        const simpleLLM = new ChatAnthropic({
-          anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
-          modelName: 'claude-3-5-haiku-20241022',
+        const simpleLLM = new ChatGoogleGenerativeAI({
+          apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+          model: 'gemini-2.5-flash-lite',
           temperature: 0.3,
-          maxTokens: 1000,
+          maxOutputTokens: 1000,
         });
+
+        // Claude 설정 (주석 처리)
+        // const simpleLLM = new ChatAnthropic({
+        //   anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
+        //   modelName: 'claude-3-5-haiku-20241022',
+        //   temperature: 0.3,
+        //   maxTokens: 1000,
+        // });
 
         // 경량 체인 생성 (캐시 가능)
         const simpleChain = new BasicAiChain(simpleLLM);
@@ -240,7 +257,7 @@ export class MainAiService {
   } catch(error) {
     const safeError = createSafeError(error);
     this.logger.error(`Simple query failed: ${safeError.message}`, safeError.details);
-    throw new AIServiceError('Failed to process simple query', 'anthropic');
+    throw new AIServiceError('Failed to process simple query', 'google');
   }
 }
 
@@ -260,12 +277,20 @@ export class MainAiService {
     this.logger.debug(`Processing simple streaming query: "${question.substring(0, 50)}..."`);
 
     // 간단한 질의는 경량화된 LLM 설정 사용
-    const simpleLLM = new ChatAnthropic({
-      anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
-      modelName: 'claude-3-5-haiku-20241022',
+    const simpleLLM = new ChatGoogleGenerativeAI({
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      model: 'gemini-2.5-flash-lite',
       temperature: 0.3,
-      maxTokens: 1000,
+      maxOutputTokens: 1000,
     });
+
+    // Claude 설정 (주석 처리)
+    // const simpleLLM = new ChatAnthropic({
+    //   anthropicApiKey: this.configService.get<string>('ANTHROPIC_API_KEY'),
+    //   modelName: 'claude-3-5-haiku-20241022',
+    //   temperature: 0.3,
+    //   maxTokens: 1000,
+    // });
 
     // 경량 체인 생성 
     const simpleChain = new BasicAiChain(simpleLLM);
@@ -389,18 +414,16 @@ export class MainAiService {
 /**
  * 체인 상태 조회 (개발/디버깅용)
  */
-getChainInfo() {
-  return {
-    basicAiChain: this.basicAiChain.getChainInfo(),
-    llmConfig: {
-      model: this.llm.modelName,
-      temperature: this.llm.temperature,
-      maxTokens: this.llm.maxTokens
-    }
-  };
-}
-
-  // ==============================================================
+  getChainInfo() {
+    return {
+      basicAiChain: this.basicAiChain.getChainInfo(),
+      llmConfig: {
+        model: 'gemini-2.5-flash-lite',
+        temperature: this.llm.temperature,
+        maxOutputTokens: 4000
+      }
+    };
+  }  // ==============================================================
   // Private Helper Methods
   // ==============================================================
 
@@ -461,7 +484,7 @@ getChainInfo() {
       ...chainState.parsedResponse,
       tokensUsed: chainState.metadata.tokensUsed || chainState.parsedResponse.tokensUsed,
       responseTime: totalTime,
-      model: options.model || chainState.parsedResponse.model || 'claude-3-5-haiku-20241022',
+      model: options.model || chainState.parsedResponse.model || 'gemini-2.5-flash-lite',
       cached,
       success: !!chainState.finalResponse
     };
@@ -472,7 +495,7 @@ getChainInfo() {
     success: !!chainState.finalResponse,
     tokensUsed: chainState.metadata.tokensUsed || 0,
     responseTime: totalTime,
-    model: options.model || 'claude-3-5-haiku-20241022',
+    model: options.model || 'gemini-2.5-flash-lite',
     cached,
   };
 }

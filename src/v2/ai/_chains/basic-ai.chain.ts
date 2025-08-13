@@ -1,7 +1,8 @@
 // src/v2/ai/chains/basic-analysis.chain.ts
 
 import { RunnableSequence } from '@langchain/core/runnables';
-import { ChatAnthropic } from '@langchain/anthropic';
+// import { ChatAnthropic } from '@langchain/anthropic';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChainInput, ChainState, ChainResult, StreamUpdate, StreamResult } from '../_types/chain.types';
 import { IntentAnalyzerRunnable } from '../_runnables/intent-analyzer.runnable';
 import { PromptSelectorRunnable } from '../_runnables/prompt-selector.runnable';
@@ -15,9 +16,9 @@ import { Logger } from '@nestjs/common';
 export class BasicAiChain {
   private readonly logger = new Logger(BasicAiChain.name);
   private readonly chain: RunnableSequence<ChainInput, ChainState>;
-  private readonly llm: ChatAnthropic;
+  private readonly llm: ChatGoogleGenerativeAI;
 
-  constructor(llm: ChatAnthropic) {
+  constructor(llm: ChatGoogleGenerativeAI) {
     this.llm = llm;
     this.chain = this.buildChain(llm);
   }
@@ -25,7 +26,7 @@ export class BasicAiChain {
   /**
    * 체인 구성
    */
-  private buildChain(llm: ChatAnthropic): RunnableSequence<ChainInput, ChainState> {
+  private buildChain(llm: ChatGoogleGenerativeAI): RunnableSequence<ChainInput, ChainState> {
     // 각 단계별 Runnable 생성
     const intentAnalyzer = new IntentAnalyzerRunnable(llm);
     const promptSelector = new PromptSelectorRunnable();

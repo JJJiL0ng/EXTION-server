@@ -39,6 +39,7 @@
     "@google/generative-ai": "^0.24.1",
     "@langchain/anthropic": "^0.3.24",
     "@langchain/core": "^0.3.63",
+    "@langchain/google-genai": "^0.2.16",
     "@nestjs-modules/ioredis": "^2.0.2",
     "@nestjs/bull": "^11.0.2",
     "@nestjs/common": "^11.1.3",
