@@ -29,9 +29,8 @@ export const INTENT_ANALYSIS_PROMPT = `
 
 가능한 의도 유형:
 1. excel_formula: 엑셀 공식 함수로 처리 가능한 경우
-2. python_code_generator: 데이터 분석을 위한 파이썬 코드 생성 요청
-3. whole_data: 전체 데이터를 읽어야만 하는 경우
-4. general_help: 전체 데이터를 읽지 않아도 답변가능한 가벼운 서비스 사용법 문의
+2. whole_data: 전체 데이터를 읽어야만 답변 가능한 경우
+3. general_help: 전체 데이터를 읽지 않아도 답변 가능한 가벼운 서비스 사용법 문의
 
 다음 JSON 형식으로 응답해주세요:
 {{
@@ -113,7 +112,7 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 - worksheet.setFormula(row, col, "=COUNTIFS(B:B,\\"영업팀\\",C:C,\\">3000\\")", GC.Spread.Sheets.SheetArea.viewport)
 
 **🔄 정렬 작업:**
-- worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}])
+- worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}]) //헤더가 있을시 B1에서 시작하고 없으면 A1에서 시작
 - worksheet.sortRange(startRow, startCol, rowCount, colCount, true, sortInfo)
 
 **🔍 필터링 작업:**
@@ -129,50 +128,19 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 - worksheet.getRange(startRow, startCol, rowCount, colCount).formula("=FORMULA")
 - for(let i = startRow; i <= endRow; i++) {{ worksheet.setFormula(i, col, formula); }}
 
-**완전한 코드 템플릿:**
-\`\`\`javascript
-try {{
-  // 1. 성능 최적화
-  worksheet.suspendPaint();
-  
-  // 2. 입력 데이터 유효성 검사
-  var rowCount = worksheet.getRowCount();
-  var colCount = worksheet.getColumnCount();
-  
-  if (targetRow >= rowCount || targetCol >= colCount) {{
-    throw new Error(\`대상 셀(\${{targetRow}}, \${{targetCol}})이 시트 범위(\${{rowCount}}, \${{colCount}})를 벗어났습니다.\`);
-  }}
-  
-  // 3. 핵심 로직 실행 (작업 유형에 따라 선택)
-  
-  // 공식 적용 예시:
-  worksheet.setFormula(targetRow, targetCol, '=SUM(A2:A56)', GC.Spread.Sheets.SheetArea.viewport);
-  
-  // 정렬 실행 예시:
-  // worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}]);
-  
-  // 필터링 실행 예시:
-  // var hideRowFilter = new GC.Spread.Sheets.Filter.HideRowFilter(new GC.Spread.Sheets.Range(0, 0, 56, 5));
-  // worksheet.rowFilter(hideRowFilter);
-  
-  // 4. 결과 검증
-  var result = worksheet.getValue(targetRow, targetCol); // 공식 적용의 경우
-  
-  // 5. 성능 최적화 해제
-  worksheet.resumePaint();
-  
-  // 6. 성공 로그
-  console.log('✅ 작업 완료: ' + operationDescription);
-  console.log('📍 적용 위치: ' + targetRange);
-  console.log('📊 결과: ' + (result || '정렬/필터링 완료'));
-  
-}} catch(error) {{
-  // 7. 에러 처리
-  worksheet.resumePaint();
-  console.error('❌ SpreadJS 작업 실패:', error.message);
-  console.error('🔍 대상 위치:', targetRow + ', ' + targetCol);
-  throw new Error('SpreadJS 실행 실패: ' + error.message);
-}}
+**🔢 기본 데이터 입력:**
+- worksheet.setValue(row, col, value, GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.setValue(row, col, "텍스트", GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.setValue(row, col, 123.45, GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.setValue(row, col, true, GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.setValue(row, col, new Date(), GC.Spread.Sheets.SheetArea.viewport)
+
+**🎨 스타일링 작업:**
+- var style = new GC.Spread.Sheets.Style(); style.backColor = '#FFFF00'; style.foreColor = '#000000';
+- worksheet.setStyle(row, col, style, GC.Spread.Sheets.SheetArea.viewport)
+- worksheet.getRange(startRow, startCol, rowCount, colCount).backColor("#FFFF00")
+- worksheet.getRange(startRow, startCol, rowCount, colCount).foreColor("#000000")
+
 \`\`\`
 
 **중요 주의사항:**
@@ -181,6 +149,8 @@ try {{
 3. **SheetArea 명시**: 가능한 모든 곳에 GC.Spread.Sheets.SheetArea.viewport 사용
 4. **완전한 에러 처리**: try-catch와 resumePaint() 보장
 5. **작업별 특화**: 계산은 setFormula, 정렬은 sortRange, 필터는 rowFilter 사용
+6. **기존 데이터 유지**: 사용자의 요청이 데이터의 기본구조를 바꾸도록 요청하지 않았다면 기본주조를 유지해야함
+7. **데이터 삽입 위치 확인**: 새로운 데이터를 추가하거나 데이터에 대한 통계를 제시할때는 비어있는 셀에 데이터를 넣어야함
 
 **작업 유형별 예시:**
 
@@ -204,7 +174,7 @@ try {{
   variables: ['dataContext', 'question']
 },
 
-  // 파이썬 코드 생성 관련
+  // 파이썬 코드 생성 관련 현재는 사용하지 않고 있음
   {
     id: 'python_code_generator_basic',
     category: 'python_code_generator',
