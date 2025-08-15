@@ -140,8 +140,9 @@ export class MainAiService {
         `question: "${question.substring(0, 100)}..."`
       );
 
+      //현재 캐싱 시트 로직은 비활성화
       // 1. 캐시된 데이터 확인
-      const cacheResult = await this.getCachedData(userId, spreadSheetData, options);
+      // const cacheResult = await this.getCachedData(userId, spreadSheetData, options);
 
       // 2. 체인 입력 준비
       const chainInput: ChainInput = {
@@ -156,8 +157,8 @@ export class MainAiService {
           chainInput,
           (update: StreamUpdate) => {
             // 업데이트에 캐시 정보 추가
-            const enrichedUpdate = this.enrichStreamUpdateWithCacheInfo(update, cacheResult.cached);
-            onUpdate(enrichedUpdate);
+            // const enrichedUpdate = this.enrichStreamUpdateWithCacheInfo(update, cacheResult.cached);
+            // onUpdate(enrichedUpdate);
           },
           (finalChainState) => {
             // 최종 결과를 AIRequestResult로 변환
@@ -166,7 +167,8 @@ export class MainAiService {
               finalChainState,
               totalTime,
               options,
-              cacheResult.cached
+              // cacheResult.cached
+              false
             );
 
             this.logger.log(
