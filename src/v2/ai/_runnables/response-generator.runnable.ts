@@ -39,7 +39,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   }
 
   /**
-   * 최종 응답 생성 실행
+   * 최종 응답 생성 실행 - 실시간 토큰 스트리밍
    */
   async invoke(input: ChainState): Promise<ChainState> {
     const startTime = Date.now();
@@ -50,75 +50,89 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
       }
 
       this.logger.debug(
-        `Generating response using prompt: ${input.selectedPrompt.id}`
+        `Starting real-time token streaming for prompt: ${input.selectedPrompt.id}`
       );
 
-      // 스트리밍 업데이트: 단계 시작
+      // 스트리밍 업데이트: 응답 생성 시작
       this.streamCallback?.({
         type: 'step_start',
         step: 'response_generation',
-        timestamp: Date.now(),
-        progress: { current: 0, total: 4, message: '응답 생성을 시작합니다...' }
-      });
-
-      // 1. 프롬프트 템플릿 생성
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'response_generation',
-        timestamp: Date.now(),
-        progress: { current: 1, total: 4, message: '프롬프트 템플릿을 생성하고 있습니다...' }
+        timestamp: Date.now()
       });
 
       const promptTemplate = ChatPromptTemplate.fromTemplate(input.selectedPrompt.template);
-
-      // 2. LLM 체인 구성
+      
+      // 실시간 스트리밍 변수들
+      let accumulatedResponse = '';
+      let tokenCount = 0;
+      
+      // 프롬프트 준비
+      const formattedPrompt = await promptTemplate.format(input.selectedPrompt.variables);
+      
+      this.logger.debug('Starting Gemini streaming with prompt:', formattedPrompt.substring(0, 100) + '...');
+      
+      // Gemini 스트리밍 직접 호출
+      const stream = await this.llm.stream(formattedPrompt);
+      
+      let llmResponse = '';
+      
+      // 스트림에서 각 chunk 처리
+      for await (const chunk of stream) {
+        const content = chunk.content;
+        if (typeof content === 'string' && content.length > 0) {
+          tokenCount++;
+          accumulatedResponse += content;
+          llmResponse += content;
+          
+          this.logger.debug(`Token ${tokenCount}: "${content}" (Accumulated: ${accumulatedResponse.length} chars)`);
+          
+          // 각 토큰/chunk를 즉시 전송
+          this.streamCallback?.({
+            type: 'token_stream',
+            step: 'response_generation',
+            timestamp: Date.now(),
+            token: content,
+            partialResponse: accumulatedResponse,
+            tokenCount,
+            isFinal: false
+          });
+          
+          // 지연 시간 추가 (시각적 효과를 위해)
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+      
+      // 최종 토큰 전송
       this.streamCallback?.({
-        type: 'step_progress',
+        type: 'token_stream',
         step: 'response_generation',
         timestamp: Date.now(),
-        progress: { current: 2, total: 4, message: 'AI 모델 체인을 구성하고 있습니다...' }
+        partialResponse: accumulatedResponse,
+        tokenCount,
+        isFinal: true
       });
+      
+      this.logger.debug(`Streaming completed: ${tokenCount} tokens, ${llmResponse.length} characters`);
 
-      const responseChain = promptTemplate
-        .pipe(this.llm)
-        .pipe(this.outputParser);
-
-      // 3. 응답 생성
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'response_generation',
-        timestamp: Date.now(),
-        progress: { current: 3, total: 4, message: 'AI 모델이 응답을 생성하고 있습니다...' }
-      });
-
-      const llmResponse = await responseChain.invoke(input.selectedPrompt.variables);
-
-      // 4. 응답 후처리
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'response_generation',
-        timestamp: Date.now(),
-        progress: { current: 4, total: 4, message: '응답을 후처리하고 있습니다...' }
-      });
-
-      // 4. JSON 파싱 및 타입별 처리
+      // JSON 파싱 및 후처리
       const parsedResponse = this.parseJsonResponse(llmResponse, input);
       const finalResponse = this.postProcessResponse(llmResponse, input);
 
       const processingTime = Date.now() - startTime;
       this.logger.debug(
-        `Response generated successfully in ${processingTime}ms ` +
-        `(${llmResponse.length} characters)`
+        `Response generation completed in ${processingTime}ms ` +
+        `(${tokenCount} tokens, ${llmResponse.length} characters)`
       );
 
-      // 5. ChainState 업데이트 - parsedResponse를 최종 응답으로 사용
+      // ChainState 업데이트
       const updatedState = {
         ...input,
         llmResponse,
-        finalResponse: parsedResponse || finalResponse, // parsedResponse를 우선 사용
-        parsedResponse, // 파싱된 타입별 응답 추가
+        finalResponse: parsedResponse || finalResponse,
+        parsedResponse,
         metadata: {
           ...input.metadata,
+          tokensUsed: tokenCount,
           responseTime: input.metadata.responseTime + processingTime,
           processingSteps: [...input.metadata.processingSteps, 'response_generation']
         }
@@ -129,14 +143,13 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         type: 'step_complete',
         step: 'response_generation',
         timestamp: Date.now(),
-        data: updatedState,
-        progress: { current: 4, total: 4, message: '응답 생성이 완료되었습니다!' }
+        data: updatedState
       });
 
       return updatedState;
 
     } catch (error) {
-      this.logger.error(`Response generation failed: ${error.message}`, error.stack);
+      this.logger.error(`Token streaming failed: ${error.message}`, error.stack);
 
       // 스트리밍 업데이트: 에러 발생
       this.streamCallback?.({
@@ -165,8 +178,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         type: 'step_complete',
         step: 'response_generation',
         timestamp: Date.now(),
-        data: fallbackState,
-        progress: { current: 4, total: 4, message: '응답 생성 실패, 기본 응답으로 폴백' }
+        data: fallbackState
       });
 
       return fallbackState;

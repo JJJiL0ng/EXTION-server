@@ -31,12 +31,13 @@ export class MainAiService {
     private readonly configService: ConfigService,
     private readonly cacheService: TableDataCacheService,
   ) {
-    // LLM 초기화 - Gemini 2.5 Flash
+    // LLM 초기화 - Gemini 2.0 Flash 스트리밍 설정
     this.llm = new ChatGoogleGenerativeAI({
       apiKey: this.configService.get<string>('GEMINI_API_KEY'),
       model: 'gemini-2.0-flash-lite',
       temperature: 0.7,
       maxOutputTokens: 4000,
+      streaming: true,  // 스트리밍 활성화
     });
 
     // Claude 설정 (주석 처리)
@@ -156,9 +157,8 @@ export class MainAiService {
         await this.basicAiChain.streamWithCallback(
           chainInput,
           (update: StreamUpdate) => {
-            // 업데이트에 캐시 정보 추가
-            // const enrichedUpdate = this.enrichStreamUpdateWithCacheInfo(update, cacheResult.cached);
-            // onUpdate(enrichedUpdate);
+            // 실시간 업데이트를 즉시 전달
+            onUpdate(update);
           },
           (finalChainState) => {
             // 최종 결과를 AIRequestResult로 변환

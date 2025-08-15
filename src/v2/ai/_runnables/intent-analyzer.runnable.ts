@@ -44,31 +44,8 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
     try {
       this.logger.debug(`Analyzing intent for question: ${input.question.substring(0, 100)}...`);
 
-      // 스트리밍 업데이트: 단계 시작
-      this.streamCallback?.({
-        type: 'step_start',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        progress: { current: 0, total: 4, message: '의도 분석을 시작합니다...' }
-      });
-
-      // 1. 데이터 컨텍스트 생성
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        progress: { current: 1, total: 4, message: '데이터 컨텍스트를 생성하고 있습니다...' }
-      });
       
       const dataContext = this.buildDataContext(input.spreadSheetData);
-
-      // 2. 프롬프트 변수 준비
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        progress: { current: 2, total: 4, message: '적절한 툴을 준비하고 있습니다...' }
-      });
 
       const promptVariables = {
         question: input.question,
@@ -76,14 +53,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         totalCells: this.calculateTotalCells(input.spreadSheetData),
         dataPreview: dataContext.preview
       };
-
-      // 3. LLM 체인 구성 및 실행
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        progress: { current: 3, total: 4, message: 'AI 모델을 통해 의도를 분석하고 있습니다...' }
-      });
 
       const intentChain = this.promptTemplate
         .pipe(this.llm)
@@ -99,13 +68,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       // Debug: LLM 결과 확인
       this.logger.debug(`LLM raw result: ${JSON.stringify(result)}`);
 
-      // 5. 결과 검증 및 파싱
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        progress: { current: 4, total: 4, message: '결과를 검증하고 파싱하고 있습니다...' }
-      });
 
       const analyzedIntent = this.validateAndParseResult(result);
 
@@ -127,14 +89,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         }
       };
 
-      // 스트리밍 업데이트: 단계 완료
-      this.streamCallback?.({
-        type: 'step_complete',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        data: chainState,
-        progress: { current: 4, total: 4, message: `의도 분석 완료: ${analyzedIntent.intent}` }
-      });
 
       return chainState;
 
@@ -165,15 +119,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
           processingSteps: ['intent_analysis_failed']
         }
       };
-
-      // 스트리밍 업데이트: 폴백 결과
-      this.streamCallback?.({
-        type: 'step_complete',
-        step: 'intent_analysis',
-        timestamp: Date.now(),
-        data: fallbackState,
-        progress: { current: 4, total: 4, message: '의도 분석 실패, 기본값으로 폴백' }
-      });
 
       return fallbackState;
     }

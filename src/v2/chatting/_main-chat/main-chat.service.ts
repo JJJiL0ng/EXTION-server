@@ -326,10 +326,33 @@ export class MainChatService {
           finalSpreadsheetData,
           question,
           (update: StreamUpdate) => {
-            this.sendSSEEvent(observer, 'ai_update', {
-              chatId, userMessageId, step: update.step, progress: update.progress,
-              timestamp: new Date().toISOString(), updateType: update.type
-            });
+            // 토큰 스트리밍 업데이트 처리
+            if (update.type === 'token_stream') {
+              this.sendSSEEvent(observer, 'ai_token', {
+                chatId, userMessageId,
+                token: update.token,
+                partialResponse: update.partialResponse,
+                tokenCount: update.tokenCount,
+                isFinal: update.isFinal,
+                timestamp: new Date().toISOString()
+              });
+            } else if (update.type === 'step_start') {
+              this.sendSSEEvent(observer, 'ai_step_start', {
+                chatId, userMessageId, step: update.step,
+                timestamp: new Date().toISOString()
+              });
+            } else if (update.type === 'step_complete') {
+              this.sendSSEEvent(observer, 'ai_step_complete', {
+                chatId, userMessageId, step: update.step,
+                timestamp: new Date().toISOString()
+              });
+            } else {
+              // 기존 업데이트 처리 (하위 호환성)
+              this.sendSSEEvent(observer, 'ai_update', {
+                chatId, userMessageId, step: update.step,
+                timestamp: new Date().toISOString(), updateType: update.type
+              });
+            }
           },
           async (result: BaseAiRequestResult) => {
             try {

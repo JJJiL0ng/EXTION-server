@@ -87,8 +87,9 @@ export interface ChainResult {
  */
 export type StreamUpdateType = 
   | 'step_start'        // 단계 시작
-  | 'step_progress'     // 단계 진행 중
   | 'step_complete'     // 단계 완료
+  | 'token_stream'      // 실시간 토큰 스트리밍
+  | 'partial_response'  // 부분 응답
   | 'error'             // 에러 발생
   | 'final_result';     // 최종 결과
 
@@ -100,11 +101,11 @@ export interface StreamUpdate {
   step: string;
   timestamp: number;
   data?: Partial<ChainState>;
-  progress?: {
-    current: number;
-    total: number;
-    message?: string;
-  };
+  // 토큰 스트리밍 관련 필드
+  token?: string;              // 개별 토큰
+  partialResponse?: string;    // 누적된 부분 응답
+  tokenCount?: number;         // 현재까지 받은 토큰 수
+  isFinal?: boolean;          // 최종 토큰 여부
   error?: string;
 }
 

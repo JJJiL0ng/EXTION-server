@@ -111,7 +111,7 @@ export class BasicAiChain {
   }
   
   /**
-   * 실시간 스트리밍 실행 - 콜백 함수로 즉시 업데이트 전송 - 현재 main-ai.service에서 사용
+   * 실시간 토큰 스트리밍 실행 - Gemini에서 받은 토큰을 즉시 전달
    */
   async streamWithCallback(
     input: ChainInput,
@@ -123,33 +123,21 @@ export class BasicAiChain {
 
     try {
       this.logger.log(
-        `Starting real-time streaming analysis for user: ${input.userId}, ` +
+        `Starting token streaming analysis for user: ${input.userId}, ` +
         `question: "${input.question.substring(0, 50)}..."`
       );
-
-      // 실시간 스트리밍 콜백 함수
-      const streamCallback = (update: StreamUpdate) => {
-        onUpdate(update);
-      };
 
       // 각 Runnable에 스트리밍 콜백 설정
       const intentAnalyzer = new IntentAnalyzerRunnable(this.llm);
       const promptSelector = new PromptSelectorRunnable();
       const responseGenerator = new ResponseGeneratorRunnable(this.llm);
 
-      intentAnalyzer.setStreamCallback(streamCallback);
-      promptSelector.setStreamCallback(streamCallback);
-      responseGenerator.setStreamCallback(streamCallback);
+      // 토큰 스트리밍은 responseGenerator에서만 발생
+      intentAnalyzer.setStreamCallback(onUpdate);
+      promptSelector.setStreamCallback(onUpdate);
+      responseGenerator.setStreamCallback(onUpdate);
 
-      // 전체 체인 시작 알림
-      onUpdate({
-        type: 'step_start',
-        step: 'chain_execution',
-        timestamp: Date.now(),
-        progress: { current: 0, total: 3, message: '분석 체인을 시작합니다...' }
-      });
-
-      // 1단계: 의도 분석
+      // 1단계: 의도 분석 (빠른 처리, 스트리밍 없음)
       let currentState: ChainState = {
         originalInput: input,
         metadata: {
@@ -162,10 +150,10 @@ export class BasicAiChain {
 
       currentState = await intentAnalyzer.invoke(input);
 
-      // 2단계: 프롬프트 선택
+      // 2단계: 프롬프트 선택 (빠른 처리, 스트리밍 없음)
       currentState = await promptSelector.invoke(currentState);
 
-      // 3단계: 응답 생성
+      // 3단계: 응답 생성 (실제 토큰 스트리밍 발생)
       currentState = await responseGenerator.invoke(currentState);
 
       // 실행 시간 업데이트
@@ -177,12 +165,11 @@ export class BasicAiChain {
         type: 'final_result',
         step: 'chain_execution',
         timestamp: Date.now(),
-        data: currentState,
-        progress: { current: 3, total: 3, message: '분석 체인이 완료되었습니다!' }
+        data: currentState
       });
 
       this.logger.log(
-        `Real-time streaming analysis completed successfully in ${totalTime}ms. ` +
+        `Token streaming analysis completed successfully in ${totalTime}ms. ` +
         `Steps: ${currentState.metadata.processingSteps.join(' → ')}`
       );
 
@@ -192,7 +179,7 @@ export class BasicAiChain {
     } catch (error) {
       const errorTime = Date.now() - startTime;
       this.logger.error(
-        `Real-time streaming analysis failed after ${errorTime}ms: ${error.message}`,
+        `Token streaming analysis failed after ${errorTime}ms: ${error.message}`,
         error.stack
       );
 
@@ -291,10 +278,10 @@ export class BasicAiChain {
     const validIntents = [
       'excel_formula',
       'data_analysis',
-      'chart_creation',
       'general_help',
-      'calculation',
-      'data_formatting'
+      // 'chart_creation',
+      // 'calculation',
+      // 'data_formatting'
     ];
     return validIntents.includes(intent);
   }

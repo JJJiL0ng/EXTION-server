@@ -40,41 +40,9 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
         `(confidence: ${input.analyzedIntent.confidence})`
       );
 
-      // 스트리밍 업데이트: 단계 시작
-      this.streamCallback?.({
-        type: 'step_start',
-        step: 'prompt_selection',
-        timestamp: Date.now(),
-        progress: { current: 0, total: 3, message: '프롬프트 선택을 시작합니다...' }
-      });
-
-      // 1. 의도에 따른 프롬프트 템플릿 선택
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'prompt_selection',
-        timestamp: Date.now(),
-        progress: { current: 1, total: 3, message: '의도에 맞는 프롬프트 템플릿을 선택하고 있습니다...' }
-      });
-
       const template = PromptSelector.selectByIntent(input.analyzedIntent.intent);
 
-      // 2. 프롬프트 변수 준비
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'prompt_selection',
-        timestamp: Date.now(),
-        progress: { current: 2, total: 3, message: '프롬프트 변수를 준비하고 있습니다...' }
-      });
-
       const variables = this.preparePromptVariables(input, template);
-
-      // 3. 선택된 프롬프트 정보 생성
-      this.streamCallback?.({
-        type: 'step_progress',
-        step: 'prompt_selection',
-        timestamp: Date.now(),
-        progress: { current: 3, total: 3, message: '프롬프트 정보를 생성하고 있습니다...' }
-      });
 
       const selectedPrompt: SelectedPrompt = {
         id: template.id,
@@ -98,15 +66,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
           processingSteps: [...input.metadata.processingSteps, 'prompt_selection']
         }
       };
-
-      // 스트리밍 업데이트: 단계 완료
-      this.streamCallback?.({
-        type: 'step_complete',
-        step: 'prompt_selection',
-        timestamp: Date.now(),
-        data: updatedState,
-        progress: { current: 3, total: 3, message: `프롬프트 선택 완료: ${template.id}` }
-      });
 
       return updatedState;
 
@@ -139,15 +98,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
           processingSteps: [...input.metadata.processingSteps, 'prompt_selection_failed']
         }
       };
-
-      // 스트리밍 업데이트: 폴백 결과
-      this.streamCallback?.({
-        type: 'step_complete',
-        step: 'prompt_selection',
-        timestamp: Date.now(),
-        data: fallbackState,
-        progress: { current: 3, total: 3, message: '프롬프트 선택 실패, 기본 프롬프트로 폴백' }
-      });
 
       return fallbackState;
     }
