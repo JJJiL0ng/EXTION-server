@@ -90,7 +90,14 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         .pipe(this.outputParser);
 
       // 4. 의도 분석 실행
+      // Debug: 프롬프트 확인
+      const debugPrompt = await this.promptTemplate.format(promptVariables);
+      this.logger.debug(`Final prompt preview: ${debugPrompt.substring(0, 500)}...`);
+      
       const result = await intentChain.invoke(promptVariables);
+      
+      // Debug: LLM 결과 확인
+      this.logger.debug(`LLM raw result: ${JSON.stringify(result)}`);
 
       // 5. 결과 검증 및 파싱
       this.streamCallback?.({
@@ -248,14 +255,12 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         return defaultResult;
       }
 
-      // 유효한 의도 타입 목록
+      // 유효한 의도 타입 목록 - IntentType과 일치해야 함
       const validIntents = [
         'excel_formula',
-        'data_analysis', 
-        'chart_creation',
-        'general_help',
-        'calculation',
-        'data_formatting'
+        'python_code_generator',
+        'whole_data',
+        'general_help'
       ];
 
       return {

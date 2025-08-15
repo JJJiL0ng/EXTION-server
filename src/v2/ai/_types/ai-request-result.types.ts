@@ -62,9 +62,9 @@ export interface PythonCodeGeneratorResult extends BaseAiRequestResult {
 
 // 전체 데이터 처리 관련 결과 인터페이스(전체 json을 수정하여 반영)
 export interface WholeDataResult extends BaseAiRequestResult {
-  dataTransformation: {
-    transformedJsonData: string;
-    };
+  answerAfterReadWholeData: {
+    response: string;
+  };
 }
 
 // 일반 도움말 관련 결과 인터페이스

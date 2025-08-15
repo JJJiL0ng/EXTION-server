@@ -447,8 +447,9 @@ export class MainChatService {
       return `**Python Code Generated:**\n\n\`\`\`python\n${result.codeGenerator.pythonCode}\n\`\`\`\n\n**Explanation:**\n${result.codeGenerator.explanation}`;
     }
     
-    if ('dataTransformation' in aiResult) {
-      return `**Data Transformation Complete**\n\nThe spreadsheet data has been transformed according to your request.`;
+    if ('answerAfterReadWholeData' in aiResult) {
+      const result = aiResult as WholeDataResult;
+      return result.answerAfterReadWholeData.response;
     }
     
     if ('generalHelp' in aiResult) {

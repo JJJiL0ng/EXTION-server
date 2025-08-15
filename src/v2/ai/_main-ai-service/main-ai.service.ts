@@ -377,23 +377,34 @@ export class MainAiService {
 //   throw new AIServiceError('Response is not a Python code generator result', 'anthropic');
 // }
 
-// /**
-//  * 전체 데이터 변환 관련 응답 추출
-//  */
-// async getWholeDataResponse(
-//   userId: string,
-//   spreadSheetData: SpreadSheetStructure,
-//   question: string,
-//   options: AnalysisOptions = {}
-// ): Promise<WholeDataResult> {
-//   const result = await this.basicSpreadSheetAiAgent(userId, spreadSheetData, question, options);
-
-//   if ('dataTransformation' in result) {
-//     return result as WholeDataResult;
-//   }
-
-//   throw new AIServiceError('Response is not a whole data result', 'anthropic');
-// }
+/**
+ * 전체 데이터 변환 관련 응답 추출
+ */
+async getWholeDataResponse(
+  userId: string,
+  spreadSheetData: SpreadSheetStructure,
+  question: string,
+  onUpdate: (update: StreamUpdate) => void,
+  onComplete?: (result: WholeDataResult) => void,
+  onError?: (error: string) => void,
+  options: AnalysisOptions = {}
+): Promise<void> {
+  await this.realtimeSpreadSheetAiAgent(
+    userId, 
+    spreadSheetData, 
+    question, 
+    onUpdate,
+    (result: BaseAiRequestResult) => {
+      if ('answerAfterReadWholeData' in result) {
+        onComplete?.(result as WholeDataResult);
+      } else {
+        onError?.('Response is not a whole data result');
+      }
+    },
+    onError,
+    options
+  );
+}
 
 // /**
 //  * 일반 도움말 관련 응답 추출

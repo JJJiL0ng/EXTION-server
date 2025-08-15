@@ -132,29 +132,18 @@ export class PythonCodeGeneratorResponseDto extends BaseChatResponseDto {
   codeGenerator: CodeGeneratorDto;
 }
 
-// 데이터 변환 DTO
-export class DataTransformationDto {
+// 전체 데이터 분석 응답 DTO
+export class AnswerAfterReadWholeDataDto {
   @IsString()
-  transformationMethod: string;
-  
-  @IsString()
-  processingSteps: string;
-  
-  @IsOptional()
-  @IsString()
-  validationMethod?: string;
-  
-  @IsOptional()
-  @IsArray()
-  dataUsageTips?: string[];
+  response: string;
 }
 
 // 전체 데이터 관련 응답 DTO
 export class WholeDataResponseDto extends BaseChatResponseDto {
   @IsObject()
   @ValidateNested()
-  @Type(() => DataTransformationDto)
-  dataTransformation: DataTransformationDto;
+  @Type(() => AnswerAfterReadWholeDataDto)
+  answerAfterReadWholeData: AnswerAfterReadWholeDataDto;
 }
 
 // 일반 도움말 예제 DTO

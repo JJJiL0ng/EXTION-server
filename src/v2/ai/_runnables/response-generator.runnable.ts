@@ -341,8 +341,8 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
       model: 'claude',
       cached: false,
       confidence: 0.95,
-      dataTransformation: {
-        transformedJsonData: '{}' // 실제 변환된 데이터
+      answerAfterReadWholeData: {
+        response: '{}' // 실제 변환된 데이터
       }
     };
   }
@@ -424,8 +424,8 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         case 'whole_data':
           return {
             ...baseResult,
-            dataTransformation: parsedJson.dataTransformation || {
-              transformedJsonData: '{}'
+            answerAfterReadWholeData: parsedJson.answerAfterReadWholeData || {
+              response: '{}'
             }
           } as WholeDataResult;
 
