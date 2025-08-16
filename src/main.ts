@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 
 async function bootstrap() {
@@ -73,6 +74,27 @@ async function bootstrap() {
      disableErrorMessages: process.env.NODE_ENV === 'production', // 프로덕션에서 에러 메시지 숨김
    }),
  );
+
+ // Swagger 설정
+ const config = new DocumentBuilder()
+   .setTitle('Extion Server API')
+   .setDescription('AI-powered spreadsheet processing system API documentation')
+   .setVersion('2.0')
+   .addTag('Main Chat', 'AI 채팅 관련 API')
+   .addBearerAuth()
+   .build();
+ 
+ const document = SwaggerModule.createDocument(app, config);
+ SwaggerModule.setup('docs', app, document, {
+   swaggerOptions: {
+     persistAuthorization: true,
+     displayRequestDuration: true,
+     tryItOutEnabled: true,
+   },
+   customSiteTitle: 'Extion API Docs',
+   customfavIcon: '/favicon.ico',
+   customCss: '.swagger-ui .topbar { display: none }',
+ });
 
  // 포트 설정 (기본값: 8080)
  const port = process.env.PORT || 8080;
