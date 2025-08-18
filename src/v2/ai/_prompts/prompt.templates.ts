@@ -77,49 +77,53 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식으로 정확히 응답해주세요:
 
 \`\`\`json
-{{
+{{{{
   "success": true,
   "tokensUsed": 0,
   "responseTime": 0,
   "model": "claude",
   "cached": false,
   "confidence": 0.95,
-  "analysis": {{
+  "analysis": {{{{
     "detectedOperation": "요청된 작업의 구체적 설명 (예: 매출 데이터 내림차순 정렬, 급여 합계 계산, 부서별 필터링 등)",
     "dataRange": "분석 대상 데이터 범위 (예: A1:E56, B2:D100)",
     "targetCells": "결과가 적용될 셀 위치 (예: A1:E56, F57, 전체범위)",
     "operationType": "single_cell | multiple_cells | range_operation"
-  }},
-  "formulaDetails": {{
+  }}}},
+  "formulaDetails": {{{{
     "name": "주요 사용 기능명 (예: SUM, sortRange, HideRowFilter, conditionalFormats)",
     "description": "작업에 대한 상세 설명과 사용 목적 및 기대 결과",
     "syntax": "핵심 문법 또는 공식 (예: =SUM(A1:A10) 또는 sortRange(row,col,rowCount,colCount,byRows,sortInfo))",
     "parameters": [
-      {{
+      {{{{
         "name": "매개변수명",
         "description": "매개변수 설명",
         "required": true,
         "example": "구체적 예시값"
-      }}
+      }}}}
     ],
     "spreadjsCommand": "완전한 실행 가능한 JavaScript 코드"
-  }},
-  "implementation": {{
+  }}}},
+  "implementation": {{{{
     "steps": [
       "1단계: 데이터 유효성 검사 및 범위 확인",
       "2단계: 핵심 작업 실행 (공식 적용/정렬/필터링 등)",
       "3단계: 결과 검증 및 사용자 피드백"
     ],
-    "cellLocations": {{
+    "cellLocations": {{{{
       "source": "입력 데이터 범위 (예: A1:E56)",
       "target": "결과 출력 위치 (예: F57 또는 A1:E56)",
       "description": "작업 전체 요약 (예: A1:E56 매출 데이터를 C열 기준 내림차순 정렬)"
-    }}
-  }}
-}}
+    }}}}
+  }}}}
+}}}}
 \`\`\`
 
 **spreadjsCommand 작성 규칙:**
+
+---
+
+** 단일 셀 적용 예시:**
 
 **🔢 계산/집계 작업 (공식 적용):**
 - worksheet.setFormula(row, col, "=SUM(A2:A56)", GC.Spread.Sheets.SheetArea.viewport)
@@ -127,7 +131,7 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 - worksheet.setFormula(row, col, "=COUNTIFS(B:B,\\"영업팀\\",C:C,\\">3000\\")", GC.Spread.Sheets.SheetArea.viewport)
 
 **🔄 정렬 작업:**
-- worksheet.sortRange(0, 0, 56, 5, true, [{{index: 2, ascending: false}}]) //헤더가 있을시 B1에서 시작하고 없으면 A1에서 시작
+- worksheet.sortRange(0, 0, 56, 5, true, [{{{{index: 2, ascending: false}}}}]) //헤더가 있을시 B1에서 시작하고 없으면 A1에서 시작
 - worksheet.sortRange(startRow, startCol, rowCount, colCount, true, sortInfo)
 
 **🔍 필터링 작업:**
@@ -141,7 +145,7 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 
 **📊 다중 셀 처리:**
 - worksheet.getRange(startRow, startCol, rowCount, colCount).formula("=FORMULA")
-- for(let i = startRow; i <= endRow; i++) {{ worksheet.setFormula(i, col, formula); }}
+- for(let i = startRow; i <= endRow; i++) {{{{ worksheet.setFormula(i, col, formula); }}}}
 
 **🔢 기본 데이터 입력:**
 - worksheet.setValue(row, col, value, GC.Spread.Sheets.SheetArea.viewport)
@@ -156,6 +160,16 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 - worksheet.getRange(startRow, startCol, rowCount, colCount).backColor("#FFFF00")
 - worksheet.getRange(startRow, startCol, rowCount, colCount).foreColor("#000000")
 
+---
+
+**멀티 셀(multi cell)**
+
+**  전체 범위 작업 예시**
+- javascript/for (let i = 1; i <= 51; i++) {{{{ let name = worksheet.getValue(i, 0); if (name) {{{{ let middleIndex = Math.floor(name.length / 2); let newName = name.slice(0, middleIndex) + '*' + name.slice(middleIndex); worksheet.setValue(i, 0, newName, GC.Spread.Sheets.SheetArea.viewport); }}}} }}}}
+- Javascript/[실제 Js 코드 형식으로 반환]
+
+
+
 \`\`\`
 
 **중요 주의사항:**
@@ -166,6 +180,7 @@ SpreadJS 전문가로서 사용자의 요청을 분석하고, 다음 JSON 형식
 5. **작업별 특화**: 계산은 setFormula, 정렬은 sortRange, 필터는 rowFilter 사용
 6. **기존 데이터 유지**: 사용자의 요청이 데이터의 기본구조를 바꾸도록 요청하지 않았다면 기본구조를 유지해야함
 7. **데이터 삽입 위치 확인**: 새로운 데이터를 추가하거나 데이터에 대한 통계를 제시할때는 비어있는 셀(최대한 연관성이 높은 셀)에 데이터를 넣어야함
+8. **멀티셀 수정의 경우** javascript 코드를 반환하고 그 spreadjsComand 앞에는 javascript/를 붙여야함
 
 **작업 유형별 예시:**
 
