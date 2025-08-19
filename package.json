@@ -12,7 +12,7 @@
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main",
+    "start:prod": "node dist/main.js",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
@@ -23,6 +23,7 @@
     "db:push": "prisma db push",
     "deploy": "npm run build && npm run db:migrate && npm run start:prod",
     "deploy:railway": "npm run build && npx prisma migrate deploy && npm run start:prod",
+    
     "deploy:safe": "npm run build && npm run db:migrate:safe && npm run start:prod",
     "db:migrate:safe": "npm run db:migrate:status && (prisma migrate deploy || npm run db:migrate:fix)",
     "db:migrate:fix": "npm run db:fix:enum && prisma migrate resolve --rolled-back 20250624130705_update_message_mode_enum && prisma migrate deploy",
