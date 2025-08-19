@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 
 async function bootstrap() {
@@ -26,6 +27,7 @@ async function bootstrap() {
  ];
 
  // CORS 설정
+  // CORS 설정
  app.enableCors({
    origin: (origin, callback) => {
      // origin이 없는 경우 (same-origin 요청 등) 허용
@@ -56,13 +58,13 @@ async function bootstrap() {
      'Accept',
      'Origin',
      'Access-Control-Request-Method',
-     'Access-Control-Request-Headers'
+     'Access-Control-Request-Headers',
+     'cache-control' // 허용할 헤더 추가
    ],
    exposedHeaders: ['Content-Length', 'X-Foo', 'X-Bar'],
-   optionsSuccessStatus: 200, // 일부 레거시 브라우저 (IE11, various SmartTVs) choke on 204
+   optionsSuccessStatus: 200,
    preflightContinue: false,
  });
-
  // 전역 파이프 설정 (DTO 유효성 검증)
  app.useGlobalPipes(
    new ValidationPipe({
@@ -72,6 +74,27 @@ async function bootstrap() {
      disableErrorMessages: process.env.NODE_ENV === 'production', // 프로덕션에서 에러 메시지 숨김
    }),
  );
+
+ // Swagger 설정
+ const config = new DocumentBuilder()
+   .setTitle('Extion Server API')
+   .setDescription('AI-powered spreadsheet processing system API documentation')
+   .setVersion('2.0')
+   .addTag('Main Chat', 'AI 채팅 관련 API')
+   .addBearerAuth()
+   .build();
+ 
+ const document = SwaggerModule.createDocument(app, config);
+ SwaggerModule.setup('docs', app, document, {
+   swaggerOptions: {
+     persistAuthorization: true,
+     displayRequestDuration: true,
+     tryItOutEnabled: true,
+   },
+   customSiteTitle: 'Extion API Docs',
+   customfavIcon: '/favicon.ico',
+   customCss: '.swagger-ui .topbar { display: none }',
+ });
 
  // 포트 설정 (기본값: 8080)
  const port = process.env.PORT || 8080;
