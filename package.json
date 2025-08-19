@@ -22,7 +22,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "deploy": "npm run build && npm run db:migrate && npm run start:prod",
-    "deploy:railway": "npm run build && npx prisma migrate deploy && npm run start:prod",
+    "deploy:railway": "npm run build && echo '--- DIST TREE ---' && ls -R dist || true && node -e \"console.log('start:prod=', require('./package.json').scripts['start:prod'])\" && npx prisma migrate deploy && echo '--- AFTER MIGRATE, DIST ---' && ls -R dist || true && node --enable-source-maps dist/main.js",
     
     "deploy:safe": "npm run build && npm run db:migrate:safe && npm run start:prod",
     "db:migrate:safe": "npm run db:migrate:status && (prisma migrate deploy || npm run db:migrate:fix)",
