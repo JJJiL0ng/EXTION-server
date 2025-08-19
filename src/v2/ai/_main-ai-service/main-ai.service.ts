@@ -443,44 +443,44 @@ async getWholeDataResponse(
   /**
    * 캐시된 데이터 조회 (기존 로직 유지)
    */
-  private async getCachedData(
-  userId: string,
-  spreadSheetData: SpreadSheetStructure,
-  options: AnalysisOptions
-) {
-  try {
-    if (!userId) {
-      throw new Error('userId is required for cache operations');
-    }
+//   private async getCachedData(
+//   userId: string,
+//   spreadSheetData: SpreadSheetStructure,
+//   options: AnalysisOptions
+// ) {
+//   try {
+//     if (!userId) {
+//       throw new Error('userId is required for cache operations');
+//     }
     
-    if (!spreadSheetData) {
-      throw new Error('spreadSheetData is required for cache operations');
-    }
+//     if (!spreadSheetData) {
+//       throw new Error('spreadSheetData is required for cache operations');
+//     }
 
-    this.logger.debug(`Getting cached data for user: ${userId}, sheet: ${spreadSheetData.id || 'unknown'}`);
+//     this.logger.debug(`Getting cached data for user: ${userId}, sheet: ${spreadSheetData.id || 'unknown'}`);
 
-    const cacheOptions = {
-      includeFormulas: options.includeFormulas || false,
-      includeStyles: options.includeStyles || false,
-      maxSheets: options.maxSheets || 5,
-      sheetNames: options.sheetNames
-    };
+//     const cacheOptions = {
+//       includeFormulas: options.includeFormulas || false,
+//       includeStyles: options.includeStyles || false,
+//       maxSheets: options.maxSheets || 5,
+//       sheetNames: options.sheetNames
+//     };
 
-    return await this.cacheService.getGPTReadyData(
-      userId,
-      spreadSheetData,
-      cacheOptions
-    );
-  } catch (error) {
-    const safeError = createSafeError(error);
-    this.logger.error(`Failed to get cached data: ${safeError.message}`, {
-      userId,
-      spreadSheetId: spreadSheetData?.id,
-      error: safeError.details
-    });
-    throw error;
-  }
-}
+//     return await this.cacheService.getGPTReadyData(
+//       userId,
+//       spreadSheetData,
+//       cacheOptions
+//     );
+//   } catch (error) {
+//     const safeError = createSafeError(error);
+//     this.logger.error(`Failed to get cached data: ${safeError.message}`, {
+//       userId,
+//       spreadSheetId: spreadSheetData?.id,
+//       error: safeError.details
+//     });
+//     throw error;
+//   }
+// }
 
   /**
    * 체인 결과를 AI 요청 결과로 변환
