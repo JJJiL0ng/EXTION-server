@@ -4,7 +4,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 // import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { TableDataCacheService } from '../../cache/_table-data-cache/table-data-cache.service';
+// import { TableDataCacheService } from '../../cache/_table-data-cache/table-data-cache.service';
 import {
   SpreadSheetStructure,
   AnalysisOptions,
@@ -29,7 +29,7 @@ export class MainAiService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly cacheService: TableDataCacheService,
+    // private readonly cacheService: TableDataCacheService,
   ) {
     // LLM 초기화 - Gemini 2.0 Flash 스트리밍 설정
     this.llm = new ChatGoogleGenerativeAI({

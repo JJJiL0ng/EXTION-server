@@ -8,7 +8,6 @@ import { AuthModule } from './v2/auth/_auth/auth.module';
 import { TableDataJsonParsingModule } from './v2/sheet/_table-data-json-parsing/table-data-json-parsing.module';
 import { TableDataJsonSaveModule } from './v2/sheet/_table-data-json-save/table-data-json-save.module';
 import { UserModule } from './v2/user/user.module';
-import { TableDataCacheModule } from './v2/cache/_table-data-cache/table-data-cache.module';
 import { MainAiModule } from './v2/ai/_main-ai-service/main-ai.module';
 import { MainChatModule } from './v2/chatting/_main-chat/main-chat.module';
 
@@ -23,7 +22,7 @@ import { MainChatModule } from './v2/chatting/_main-chat/main-chat.module';
     TableDataJsonParsingModule,
     TableDataJsonSaveModule,
     UserModule,
-    TableDataCacheModule,
+    // TableDataCacheModule,
     MainAiModule,
     MainChatModule,
   ],
