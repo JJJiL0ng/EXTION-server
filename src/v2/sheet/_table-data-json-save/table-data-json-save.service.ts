@@ -1,11 +1,11 @@
 // src/v2/sheet/table-data-json-save/table-data-json-save.service.ts
 
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/v2/prisma/prisma.service';
+import { PrismaService } from '../../prisma/prisma.service';
 // Queue imports removed as not currently used
 import * as zlib from 'zlib';
 import { promisify } from 'util';
-import { UserService } from 'src/v2/user/user.service';
+import { UserService } from '../../user/user.service';
 import { createHash } from 'crypto';
 import { SpreadSheetStatus, EditStatus, DeltaAction, Prisma } from '@prisma/client';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
