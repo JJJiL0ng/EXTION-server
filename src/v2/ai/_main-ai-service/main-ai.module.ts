@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MainAiService } from './main-ai.service';
-import { TableDataCacheModule } from '../../cache/_table-data-cache/table-data-cache.module';
+// import { TableDataCacheModule } from '../../cache/_table-data-cache/table-data-cache.module';
 
 @Module({
-  imports: [TableDataCacheModule],
+  // imports: [TableDataCacheModule],
   providers: [MainAiService],
   exports: [MainAiService],
 })
