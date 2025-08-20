@@ -1,6 +1,6 @@
 // src/v2/user/user.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from 'src/v2/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { randomUUID } from 'crypto';
 import { ChatStatus } from '@prisma/client';
 
