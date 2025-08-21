@@ -34,12 +34,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
       if (!input.analyzedIntent) {
         throw new Error('No analyzed intent found in chain state');
       }
-
-      this.logger.debug(
-        `Selecting prompt for intent: ${input.analyzedIntent.intent} ` +
-        `(confidence: ${input.analyzedIntent.confidence})`
-      );
-
       const template = PromptSelector.selectByIntent(input.analyzedIntent.intent);
 
       const variables = this.preparePromptVariables(input, template);
@@ -160,9 +154,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
 
       case 'intent':
         return chainState.analyzedIntent?.intent || 'unknown';
-
-      case 'confidence':
-        return chainState.analyzedIntent?.confidence || 0;
 
       case 'userId':
         return chainState.originalInput.userId;

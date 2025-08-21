@@ -355,10 +355,8 @@ export interface AIAnalysisResult {
   analysis: string;
   responseTime: number;
   model: string;
-  confidence?: number;
   chainMetadata?: {
     intent?: string;
-    confidence?: number;
     processingSteps?: string[];
     promptId?: string;
   };

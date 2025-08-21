@@ -4,7 +4,6 @@ import { ChatIntentType } from '../../chatting/_main-chat/dto/main-chat-res.dto'
 export interface BaseAiRequestResult {
   success: boolean;
   model: string;
-  confidence?: number;
 }
 
 // 분석 정보 인터페이스

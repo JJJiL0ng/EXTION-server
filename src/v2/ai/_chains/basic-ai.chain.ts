@@ -95,7 +95,6 @@ export class BasicAiChain {
       originalInput: input,
       analyzedIntent: {
         intent: 'general_help',
-        confidence: 0,
         reasoning: 'Chain execution failed'
       },
       finalResponse: `죄송합니다. 요청을 처리하는 중 오류가 발생했습니다: ${error.message}`,

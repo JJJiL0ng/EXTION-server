@@ -72,10 +72,7 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       const analyzedIntent = this.validateAndParseResult(result);
 
       const processingTime = Date.now() - startTime;
-      this.logger.debug(
-        `Intent analysis completed: ${analyzedIntent.intent} ` +
-        `(confidence: ${analyzedIntent.confidence}) in ${processingTime}ms`
-      );
+      
 
       // 6. ChainState 생성
       const chainState = {
@@ -106,7 +103,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         originalInput: input,
         analyzedIntent: {
           intent: 'general_help' as const,
-          confidence: 0.5,
           reasoning: 'Failed to analyze intent, using fallback'
         },
         metadata: {
@@ -185,7 +181,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       // 기본값 설정
       const defaultResult: IntentAnalysisResult = {
         intent: 'general_help',
-        confidence: 0.5,
         reasoning: 'Default fallback'
       };
 
@@ -204,10 +199,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
 
       return {
         intent: validIntents.includes(result.intent) ? result.intent : defaultResult.intent,
-        confidence: typeof result.confidence === 'number' && 
-                   result.confidence >= 0 && 
-                   result.confidence <= 1 ? 
-                   result.confidence : defaultResult.confidence,
         reasoning: typeof result.reasoning === 'string' ? result.reasoning : defaultResult.reasoning
       };
 
@@ -215,7 +206,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       this.logger.error(`Failed to parse intent analysis result: ${error.message}`);
       return {
         intent: 'general_help',
-        confidence: 0.5,
         reasoning: 'Parsing failed'
       };
     }

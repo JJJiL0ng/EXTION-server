@@ -269,7 +269,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      confidence: 0.95,
       analysis: {
         detectedOperation: this.extractValue(response, /작업 유형[:\s]*([^\n]+)/) || '데이터 처리',
         dataRange: this.extractValue(response, /범위[:\s]*([A-Z]+\d+:[A-Z]+\d+)/) || 'A1:D6',
@@ -325,7 +324,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      confidence: 0.95,
       codeGenerator: {
         pythonCode: this.extractCodeBlock(response) || 'print("데이터 처리 완료")',
         explanation: '사용자 요청에 따른 Python 코드가 생성되었습니다.'
@@ -340,7 +338,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      confidence: 0.95,
       answerAfterReadWholeData: {
         response: '{}' // 실제 변환된 데이터
       }
@@ -354,7 +351,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      confidence: 0.95,
       generalHelp: {
         directAnswer: response.split('\n')[0] || '답변을 생성했습니다.',
         additionalResources: []
@@ -375,7 +371,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
       const baseResult: BaseAiRequestResult = {
         success: parsedJson.success ?? true,
         model: parsedJson.model ?? 'claude',
-        confidence: parsedJson.confidence ?? 0.95
       };
 
       // 의도별 타입 변환 (완화된 검증)
@@ -475,7 +470,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      confidence: 0.95,
       analysis: {
         detectedOperation: '데이터 처리',
         dataRange: 'A1:A1',

@@ -27,7 +27,6 @@ export interface ChainInput {
  */
 export interface IntentAnalysisResult {
   intent: IntentType;
-  confidence: number;
   reasoning: string;
 }
 
