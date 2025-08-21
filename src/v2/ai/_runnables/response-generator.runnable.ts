@@ -132,7 +132,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         parsedResponse,
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + processingTime,
           processingSteps: [...input.metadata.processingSteps, 'response_generation']
         }
       };
@@ -167,7 +166,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         finalResponse: fallbackResponse,
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + (Date.now() - startTime),
           processingSteps: [...input.metadata.processingSteps, 'response_generation_failed']
         }
       };
@@ -270,7 +268,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructExcelFormulaResponse(response: string): ExcelFormulaResult {
     return {
       success: true,
-      responseTime: 1350,
       model: 'claude',
       cached: false,
       confidence: 0.95,
@@ -328,7 +325,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructPythonCodeResponse(response: string): PythonCodeGeneratorResult {
     return {
       success: true,
-      responseTime: 1350,
       model: 'claude',
       cached: false,
       confidence: 0.95,
@@ -345,7 +341,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructWholeDataResponse(response: string): WholeDataResult {
     return {
       success: true,
-      responseTime: 1350,
       model: 'claude',
       cached: false,
       confidence: 0.95,
@@ -361,7 +356,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructGeneralHelpResponse(response: string): GeneralHelpResult {
     return {
       success: true,
-      responseTime: 1350,
       model: 'claude',
       cached: false,
       confidence: 0.95,
@@ -384,7 +378,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
 
       const baseResult: BaseAiRequestResult = {
         success: parsedJson.success ?? true,
-        responseTime: parsedJson.responseTime ?? 1350,
         model: parsedJson.model ?? 'claude',
         cached: parsedJson.cached ?? false,
         confidence: parsedJson.confidence ?? 0.95
@@ -486,7 +479,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private createFallbackExcelResponse(intent: string = 'excel_formula'): ExcelFormulaResult {
     return {
       success: true,
-      responseTime: 1350,
       model: 'claude',
       cached: false,
       confidence: 0.95,

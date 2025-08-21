@@ -62,7 +62,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
         selectedPrompt,
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + processingTime,
           processingSteps: [...input.metadata.processingSteps, 'prompt_selection']
         }
       };
@@ -94,7 +93,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
         },
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + (Date.now() - startTime),
           processingSteps: [...input.metadata.processingSteps, 'prompt_selection_failed']
         }
       };

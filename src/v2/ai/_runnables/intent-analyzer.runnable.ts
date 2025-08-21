@@ -83,7 +83,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         analyzedIntent,
         metadata: {
           tokensUsed: 0, // LLM에서 계산된 토큰 수는 나중에 추가
-          responseTime: processingTime,
           cached: false,
           processingSteps: ['intent_analysis']
         }
@@ -113,7 +112,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         },
         metadata: {
           tokensUsed: 0,
-          responseTime: Date.now() - startTime,
           cached: false,
           processingSteps: ['intent_analysis_failed']
         }

@@ -3,7 +3,6 @@ import { ChatIntentType } from '../../chatting/_main-chat/dto/main-chat-res.dto'
 // 기본 AI 요청 결과 인터페이스
 export interface BaseAiRequestResult {
   success: boolean;
-  responseTime: number;
   model: string;
   cached: boolean;
   confidence?: number;

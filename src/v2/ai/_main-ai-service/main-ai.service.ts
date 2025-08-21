@@ -246,9 +246,7 @@ export class MainAiService {
         const result = await simpleChain.invoke(chainInput);
 
         if(result.success && result.data.finalResponse) {
-      this.logger.debug(
-        `Simple query completed in ${result.data.metadata.responseTime}ms`
-      );
+   
       return typeof result.data.finalResponse === 'string' 
         ? result.data.finalResponse 
         : JSON.stringify(result.data.finalResponse);
@@ -317,9 +315,6 @@ export class MainAiService {
       },
       (finalChainState) => {
         if (finalChainState.finalResponse) {
-          this.logger.debug(
-            `Simple streaming query completed in ${finalChainState.metadata.responseTime}ms`
-          );
           const response = typeof finalChainState.finalResponse === 'string' 
             ? finalChainState.finalResponse 
             : JSON.stringify(finalChainState.finalResponse);
@@ -495,7 +490,6 @@ async getWholeDataResponse(
   if (chainState.parsedResponse) {
     return {
       ...chainState.parsedResponse,
-      responseTime: totalTime,
       model: options.model || chainState.parsedResponse.model || 'gemini-2.5-flash-lite',
       cached,
       success: !!chainState.finalResponse
@@ -505,7 +499,6 @@ async getWholeDataResponse(
   // 파싱된 응답이 없다면 기본 응답 반환
   return {
     success: !!chainState.finalResponse,
-    responseTime: totalTime,
     model: options.model || 'gemini-2.5-flash-lite',
     cached,
   };
@@ -523,7 +516,6 @@ async getWholeDataResponse(
       metadata: {
         ...update.data.metadata,
         cached,
-        responseTime: update.data.metadata?.responseTime || 0,
         processingSteps: update.data.metadata?.processingSteps || []
       }
     } : undefined
