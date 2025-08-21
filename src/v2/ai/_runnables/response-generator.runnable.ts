@@ -132,7 +132,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         parsedResponse,
         metadata: {
           ...input.metadata,
-          tokensUsed: tokenCount,
           responseTime: input.metadata.responseTime + processingTime,
           processingSteps: [...input.metadata.processingSteps, 'response_generation']
         }
@@ -271,7 +270,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructExcelFormulaResponse(response: string): ExcelFormulaResult {
     return {
       success: true,
-      tokensUsed: 245,
       responseTime: 1350,
       model: 'claude',
       cached: false,
@@ -330,7 +328,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructPythonCodeResponse(response: string): PythonCodeGeneratorResult {
     return {
       success: true,
-      tokensUsed: 245,
       responseTime: 1350,
       model: 'claude',
       cached: false,
@@ -348,7 +345,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructWholeDataResponse(response: string): WholeDataResult {
     return {
       success: true,
-      tokensUsed: 245,
       responseTime: 1350,
       model: 'claude',
       cached: false,
@@ -365,7 +361,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructGeneralHelpResponse(response: string): GeneralHelpResult {
     return {
       success: true,
-      tokensUsed: 245,
       responseTime: 1350,
       model: 'claude',
       cached: false,
@@ -389,7 +384,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
 
       const baseResult: BaseAiRequestResult = {
         success: parsedJson.success ?? true,
-        tokensUsed: parsedJson.tokensUsed ?? 245,
         responseTime: parsedJson.responseTime ?? 1350,
         model: parsedJson.model ?? 'claude',
         cached: parsedJson.cached ?? false,
@@ -492,7 +486,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private createFallbackExcelResponse(intent: string = 'excel_formula'): ExcelFormulaResult {
     return {
       success: true,
-      tokensUsed: 245,
       responseTime: 1350,
       model: 'claude',
       cached: false,

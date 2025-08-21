@@ -97,12 +97,10 @@ export class BasicAiChain {
       analyzedIntent: {
         intent: 'general_help',
         confidence: 0,
-        keywords: [],
         reasoning: 'Chain execution failed'
       },
       finalResponse: `죄송합니다. 요청을 처리하는 중 오류가 발생했습니다: ${error.message}`,
       metadata: {
-        tokensUsed: 0,
         responseTime,
         cached: false,
         processingSteps: ['chain_failed']
@@ -141,7 +139,6 @@ export class BasicAiChain {
       let currentState: ChainState = {
         originalInput: input,
         metadata: {
-          tokensUsed: 0,
           responseTime: 0,
           cached: false,
           processingSteps: []
@@ -233,7 +230,6 @@ export class BasicAiChain {
       if (!state.metadata) {
         this.logger.warn('Missing metadata in chain state, creating default');
         state.metadata = {
-          tokensUsed: 0,
           responseTime: 0,
           cached: false,
           processingSteps: []
@@ -262,7 +258,6 @@ export class BasicAiChain {
       return {
         originalInput: state.originalInput || {} as ChainInput,
         metadata: {
-          tokensUsed: 0,
           responseTime: 0,
           cached: false,
           processingSteps: ['state_recovery']

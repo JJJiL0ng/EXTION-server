@@ -109,7 +109,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         analyzedIntent: {
           intent: 'general_help' as const,
           confidence: 0.5,
-          keywords: [],
           reasoning: 'Failed to analyze intent, using fallback'
         },
         metadata: {
@@ -191,7 +190,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       const defaultResult: IntentAnalysisResult = {
         intent: 'general_help',
         confidence: 0.5,
-        keywords: [],
         reasoning: 'Default fallback'
       };
 
@@ -214,7 +212,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
                    result.confidence >= 0 && 
                    result.confidence <= 1 ? 
                    result.confidence : defaultResult.confidence,
-        keywords: Array.isArray(result.keywords) ? result.keywords : defaultResult.keywords,
         reasoning: typeof result.reasoning === 'string' ? result.reasoning : defaultResult.reasoning
       };
 
@@ -223,7 +220,6 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       return {
         intent: 'general_help',
         confidence: 0.5,
-        keywords: [],
         reasoning: 'Parsing failed'
       };
     }

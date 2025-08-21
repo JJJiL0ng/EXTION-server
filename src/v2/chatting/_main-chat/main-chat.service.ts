@@ -416,7 +416,6 @@ export class MainChatService {
           type: MessageType.ANALYSIS,
           chatId,
           metadata: {
-            tokensUsed: aiResult.tokensUsed,
             responseTime: aiResult.responseTime,
             model: aiResult.model,
             cached: aiResult.cached,

@@ -166,9 +166,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
       case 'confidence':
         return chainState.analyzedIntent?.confidence || 0;
 
-      case 'keywords':
-        return chainState.analyzedIntent?.keywords?.join(', ') || '';
-
       case 'userId':
         return chainState.originalInput.userId;
 

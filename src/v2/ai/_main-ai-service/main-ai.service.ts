@@ -495,7 +495,6 @@ async getWholeDataResponse(
   if (chainState.parsedResponse) {
     return {
       ...chainState.parsedResponse,
-      tokensUsed: chainState.metadata.tokensUsed || chainState.parsedResponse.tokensUsed,
       responseTime: totalTime,
       model: options.model || chainState.parsedResponse.model || 'gemini-2.5-flash-lite',
       cached,
@@ -506,7 +505,6 @@ async getWholeDataResponse(
   // 파싱된 응답이 없다면 기본 응답 반환
   return {
     success: !!chainState.finalResponse,
-    tokensUsed: chainState.metadata.tokensUsed || 0,
     responseTime: totalTime,
     model: options.model || 'gemini-2.5-flash-lite',
     cached,
@@ -525,7 +523,6 @@ async getWholeDataResponse(
       metadata: {
         ...update.data.metadata,
         cached,
-        tokensUsed: update.data.metadata?.tokensUsed || 0,
         responseTime: update.data.metadata?.responseTime || 0,
         processingSteps: update.data.metadata?.processingSteps || []
       }

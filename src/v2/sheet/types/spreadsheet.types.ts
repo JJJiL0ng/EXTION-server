@@ -353,7 +353,6 @@ export interface AnalysisOptions {
 
 export interface AIAnalysisResult {
   analysis: string;
-  tokensUsed: number;
   responseTime: number;
   model: string;
   cached: boolean;

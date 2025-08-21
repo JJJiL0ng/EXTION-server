@@ -28,7 +28,6 @@ export interface ChainInput {
 export interface IntentAnalysisResult {
   intent: IntentType;
   confidence: number;
-  keywords: string[];
   reasoning: string;
 }
 
@@ -66,7 +65,6 @@ export interface ChainState {
   
   // 메타데이터
   metadata: {
-    tokensUsed: number;
     responseTime: number;
     cached: boolean;
     processingSteps: string[];
