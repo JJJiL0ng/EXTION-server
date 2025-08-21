@@ -355,7 +355,6 @@ export interface AIAnalysisResult {
   analysis: string;
   responseTime: number;
   model: string;
-  cached: boolean;
   confidence?: number;
   chainMetadata?: {
     intent?: string;

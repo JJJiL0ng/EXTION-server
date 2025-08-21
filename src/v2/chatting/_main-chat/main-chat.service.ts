@@ -417,7 +417,6 @@ export class MainChatService {
           chatId,
           metadata: {
             model: aiResult.model,
-            cached: aiResult.cached,
             confidence: aiResult.confidence,
             success: aiResult.success
           },

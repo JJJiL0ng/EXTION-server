@@ -100,7 +100,6 @@ export class BasicAiChain {
       },
       finalResponse: `죄송합니다. 요청을 처리하는 중 오류가 발생했습니다: ${error.message}`,
       metadata: {
-        cached: false,
         processingSteps: ['chain_failed']
       }
     };
@@ -137,7 +136,6 @@ export class BasicAiChain {
       let currentState: ChainState = {
         originalInput: input,
         metadata: {
-          cached: false,
           processingSteps: []
         }
       };
@@ -226,7 +224,6 @@ export class BasicAiChain {
       if (!state.metadata) {
         this.logger.warn('Missing metadata in chain state, creating default');
         state.metadata = {
-          cached: false,
           processingSteps: []
         };
       }
@@ -253,7 +250,6 @@ export class BasicAiChain {
       return {
         originalInput: state.originalInput || {} as ChainInput,
         metadata: {
-          cached: false,
           processingSteps: ['state_recovery']
         }
       };

@@ -4,7 +4,6 @@ import { ChatIntentType } from '../../chatting/_main-chat/dto/main-chat-res.dto'
 export interface BaseAiRequestResult {
   success: boolean;
   model: string;
-  cached: boolean;
   confidence?: number;
 }
 

@@ -500,7 +500,6 @@ async getWholeDataResponse(
   return {
     success: !!chainState.finalResponse,
     model: options.model || 'gemini-2.5-flash-lite',
-    cached,
   };
 }
 
@@ -515,7 +514,6 @@ async getWholeDataResponse(
       ...update.data,
       metadata: {
         ...update.data.metadata,
-        cached,
         processingSteps: update.data.metadata?.processingSteps || []
       }
     } : undefined

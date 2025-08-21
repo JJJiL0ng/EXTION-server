@@ -269,7 +269,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      cached: false,
       confidence: 0.95,
       analysis: {
         detectedOperation: this.extractValue(response, /작업 유형[:\s]*([^\n]+)/) || '데이터 처리',
@@ -326,7 +325,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      cached: false,
       confidence: 0.95,
       codeGenerator: {
         pythonCode: this.extractCodeBlock(response) || 'print("데이터 처리 완료")',
@@ -342,7 +340,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      cached: false,
       confidence: 0.95,
       answerAfterReadWholeData: {
         response: '{}' // 실제 변환된 데이터
@@ -357,7 +354,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      cached: false,
       confidence: 0.95,
       generalHelp: {
         directAnswer: response.split('\n')[0] || '답변을 생성했습니다.',
@@ -379,7 +375,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
       const baseResult: BaseAiRequestResult = {
         success: parsedJson.success ?? true,
         model: parsedJson.model ?? 'claude',
-        cached: parsedJson.cached ?? false,
         confidence: parsedJson.confidence ?? 0.95
       };
 
@@ -480,7 +475,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
     return {
       success: true,
       model: 'claude',
-      cached: false,
       confidence: 0.95,
       analysis: {
         detectedOperation: '데이터 처리',

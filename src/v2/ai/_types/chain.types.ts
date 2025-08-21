@@ -65,7 +65,6 @@ export interface ChainState {
   
   // 메타데이터
   metadata: {
-    cached: boolean;
     processingSteps: string[];
   };
 }
