@@ -54,36 +54,76 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
         dataPreview: dataContext.preview
       };
 
+      // 스트리밍 업데이트: 의도 분석 시작
+      this.streamCallback?.({
+        type: 'step_start',
+        step: 'intent_analysis',
+        timestamp: Date.now()
+      });
+
       const intentChain = this.promptTemplate
         .pipe(this.llm)
         .pipe(this.outputParser);
 
-      // 4. 의도 분석 실행
       // Debug: 프롬프트 확인
       const debugPrompt = await this.promptTemplate.format(promptVariables);
       this.logger.debug(`Final prompt preview: ${debugPrompt.substring(0, 500)}...`);
       
-      const result = await intentChain.invoke(promptVariables);
+      // 스트리밍 모드로 의도 분석 실행
+      let accumulatedText = '';
+      let finalReasoningText = '';
+      
+      const stream = await this.llm.stream(await this.promptTemplate.format(promptVariables));
+      
+      for await (const chunk of stream) {
+        const content = chunk.content;
+        if (typeof content === 'string') {
+          accumulatedText += content;
+        }
+      }
+      
+      // 최종 JSON 파싱
+      const result = await this.outputParser.parse(accumulatedText);
+      
+      // 완성된 reasoning 텍스트 추출
+      if (result && result.reasoning) {
+        finalReasoningText = result.reasoning;
+        
+        // 완성된 reasoning 텍스트를 한번에 SSE로 전송
+        this.streamCallback?.({
+          type: 'reasoning_preview',
+          step: 'intent_analysis',
+          timestamp: Date.now(),
+          reasoning: finalReasoningText
+        });
+        
+        this.logger.debug(`Complete reasoning text extracted: ${finalReasoningText}`);
+      }
       
       // Debug: LLM 결과 확인
       this.logger.debug(`LLM raw result: ${JSON.stringify(result)}`);
-
 
       const analyzedIntent = this.validateAndParseResult(result);
 
       const processingTime = Date.now() - startTime;
       
+      // 스트리밍 업데이트: 의도 분석 완료
+      this.streamCallback?.({
+        type: 'step_complete',
+        step: 'intent_analysis',
+        timestamp: Date.now(),
+        data: { analyzedIntent }
+      });
 
-      // 6. ChainState 생성
+      // ChainState 생성
       const chainState = {
         originalInput: input,
         analyzedIntent,
         metadata: {
-          tokensUsed: 0, // LLM에서 계산된 토큰 수는 나중에 추가
+          tokensUsed: 0,
           processingSteps: ['intent_analysis']
         }
       };
-
 
       return chainState;
 
@@ -210,4 +250,5 @@ lc_namespace: string[] = ['extion', 'intent', 'analyzer'];
       };
     }
   }
+
 }

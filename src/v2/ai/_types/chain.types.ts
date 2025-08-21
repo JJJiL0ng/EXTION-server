@@ -85,6 +85,7 @@ export type StreamUpdateType =
   | 'step_complete'     // 단계 완료
   | 'token_stream'      // 실시간 토큰 스트리밍
   | 'partial_response'  // 부분 응답
+  | 'reasoning_preview' // reasoning 텍스트 미리보기
   | 'error'             // 에러 발생
   | 'final_result';     // 최종 결과
 
@@ -101,6 +102,8 @@ export interface StreamUpdate {
   partialResponse?: string;    // 누적된 부분 응답
   tokenCount?: number;         // 현재까지 받은 토큰 수
   isFinal?: boolean;          // 최종 토큰 여부
+  // reasoning 미리보기 관련 필드
+  reasoning?: string;          // 추출된 reasoning 텍스트
   error?: string;
 }
 
