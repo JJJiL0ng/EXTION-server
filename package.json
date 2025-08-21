@@ -8,12 +8,11 @@
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build -p tsconfig.build.json",
-    "postbuild": "npx prisma migrate deploy && npx prisma generate",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node --enable-source-maps dist/main.js",
+    "start:prod": "npx prisma migrate deploy && node --enable-source-maps dist/main.js",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
