@@ -34,9 +34,9 @@ export class MainAiService {
     // LLM 초기화 - Gemini 2.0 Flash 스트리밍 설정
     this.llm = new ChatGoogleGenerativeAI({
       apiKey: this.configService.get<string>('GEMINI_API_KEY'),
-      model: 'gemini-2.0-flash-lite',
-      temperature: 0.7,
-      maxOutputTokens: 4000,
+      model: 'gemini-2.5-flash-lite',
+      temperature: 0.3,
+      maxOutputTokens: 8000,
       streaming: true,  // 스트리밍 활성화
     });
 
