@@ -353,14 +353,10 @@ export interface AnalysisOptions {
 
 export interface AIAnalysisResult {
   analysis: string;
-  tokensUsed: number;
   responseTime: number;
   model: string;
-  cached: boolean;
-  confidence?: number;
   chainMetadata?: {
     intent?: string;
-    confidence?: number;
     processingSteps?: string[];
     promptId?: string;
   };

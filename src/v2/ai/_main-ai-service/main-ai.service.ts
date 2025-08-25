@@ -34,9 +34,9 @@ export class MainAiService {
     // LLM 초기화 - Gemini 2.0 Flash 스트리밍 설정
     this.llm = new ChatGoogleGenerativeAI({
       apiKey: this.configService.get<string>('GEMINI_API_KEY'),
-      model: 'gemini-2.0-flash-lite',
-      temperature: 0.7,
-      maxOutputTokens: 4000,
+      model: 'gemini-2.5-flash-lite',
+      temperature: 0.3,
+      maxOutputTokens: 8000,
       streaming: true,  // 스트리밍 활성화
     });
 
@@ -246,9 +246,7 @@ export class MainAiService {
         const result = await simpleChain.invoke(chainInput);
 
         if(result.success && result.data.finalResponse) {
-      this.logger.debug(
-        `Simple query completed in ${result.data.metadata.responseTime}ms`
-      );
+   
       return typeof result.data.finalResponse === 'string' 
         ? result.data.finalResponse 
         : JSON.stringify(result.data.finalResponse);
@@ -317,9 +315,6 @@ export class MainAiService {
       },
       (finalChainState) => {
         if (finalChainState.finalResponse) {
-          this.logger.debug(
-            `Simple streaming query completed in ${finalChainState.metadata.responseTime}ms`
-          );
           const response = typeof finalChainState.finalResponse === 'string' 
             ? finalChainState.finalResponse 
             : JSON.stringify(finalChainState.finalResponse);
@@ -495,8 +490,6 @@ async getWholeDataResponse(
   if (chainState.parsedResponse) {
     return {
       ...chainState.parsedResponse,
-      tokensUsed: chainState.metadata.tokensUsed || chainState.parsedResponse.tokensUsed,
-      responseTime: totalTime,
       model: options.model || chainState.parsedResponse.model || 'gemini-2.5-flash-lite',
       cached,
       success: !!chainState.finalResponse
@@ -506,10 +499,7 @@ async getWholeDataResponse(
   // 파싱된 응답이 없다면 기본 응답 반환
   return {
     success: !!chainState.finalResponse,
-    tokensUsed: chainState.metadata.tokensUsed || 0,
-    responseTime: totalTime,
     model: options.model || 'gemini-2.5-flash-lite',
-    cached,
   };
 }
 
@@ -524,9 +514,6 @@ async getWholeDataResponse(
       ...update.data,
       metadata: {
         ...update.data.metadata,
-        cached,
-        tokensUsed: update.data.metadata?.tokensUsed || 0,
-        responseTime: update.data.metadata?.responseTime || 0,
         processingSteps: update.data.metadata?.processingSteps || []
       }
     } : undefined

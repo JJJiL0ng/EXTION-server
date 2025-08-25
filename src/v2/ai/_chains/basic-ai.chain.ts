@@ -57,7 +57,6 @@ export class BasicAiChain {
 
       // 실행 시간 업데이트
       const totalTime = Date.now() - startTime;
-      result.metadata.responseTime = totalTime;
 
       this.logger.log(
         `Basic analysis chain completed successfully in ${totalTime}ms. ` +
@@ -96,15 +95,10 @@ export class BasicAiChain {
       originalInput: input,
       analyzedIntent: {
         intent: 'general_help',
-        confidence: 0,
-        keywords: [],
         reasoning: 'Chain execution failed'
       },
       finalResponse: `죄송합니다. 요청을 처리하는 중 오류가 발생했습니다: ${error.message}`,
       metadata: {
-        tokensUsed: 0,
-        responseTime,
-        cached: false,
         processingSteps: ['chain_failed']
       }
     };
@@ -141,9 +135,6 @@ export class BasicAiChain {
       let currentState: ChainState = {
         originalInput: input,
         metadata: {
-          tokensUsed: 0,
-          responseTime: 0,
-          cached: false,
           processingSteps: []
         }
       };
@@ -158,7 +149,6 @@ export class BasicAiChain {
 
       // 실행 시간 업데이트
       const totalTime = Date.now() - startTime;
-      currentState.metadata.responseTime = totalTime;
 
       // 최종 결과 업데이트
       onUpdate({
@@ -233,9 +223,6 @@ export class BasicAiChain {
       if (!state.metadata) {
         this.logger.warn('Missing metadata in chain state, creating default');
         state.metadata = {
-          tokensUsed: 0,
-          responseTime: 0,
-          cached: false,
           processingSteps: []
         };
       }
@@ -262,9 +249,6 @@ export class BasicAiChain {
       return {
         originalInput: state.originalInput || {} as ChainInput,
         metadata: {
-          tokensUsed: 0,
-          responseTime: 0,
-          cached: false,
           processingSteps: ['state_recovery']
         }
       };
@@ -279,9 +263,6 @@ export class BasicAiChain {
       'excel_formula',
       'data_analysis',
       'general_help',
-      // 'chart_creation',
-      // 'calculation',
-      // 'data_formatting'
     ];
     return validIntents.includes(intent);
   }

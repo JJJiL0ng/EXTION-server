@@ -34,12 +34,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
       if (!input.analyzedIntent) {
         throw new Error('No analyzed intent found in chain state');
       }
-
-      this.logger.debug(
-        `Selecting prompt for intent: ${input.analyzedIntent.intent} ` +
-        `(confidence: ${input.analyzedIntent.confidence})`
-      );
-
       const template = PromptSelector.selectByIntent(input.analyzedIntent.intent);
 
       const variables = this.preparePromptVariables(input, template);
@@ -62,7 +56,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
         selectedPrompt,
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + processingTime,
           processingSteps: [...input.metadata.processingSteps, 'prompt_selection']
         }
       };
@@ -94,7 +87,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
         },
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + (Date.now() - startTime),
           processingSteps: [...input.metadata.processingSteps, 'prompt_selection_failed']
         }
       };
@@ -162,12 +154,6 @@ lc_namespace: string[] = ['extion', 'prompt_selector'];
 
       case 'intent':
         return chainState.analyzedIntent?.intent || 'unknown';
-
-      case 'confidence':
-        return chainState.analyzedIntent?.confidence || 0;
-
-      case 'keywords':
-        return chainState.analyzedIntent?.keywords?.join(', ') || '';
 
       case 'userId':
         return chainState.originalInput.userId;

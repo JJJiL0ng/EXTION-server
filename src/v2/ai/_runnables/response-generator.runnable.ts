@@ -132,8 +132,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         parsedResponse,
         metadata: {
           ...input.metadata,
-          tokensUsed: tokenCount,
-          responseTime: input.metadata.responseTime + processingTime,
           processingSteps: [...input.metadata.processingSteps, 'response_generation']
         }
       };
@@ -168,7 +166,6 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
         finalResponse: fallbackResponse,
         metadata: {
           ...input.metadata,
-          responseTime: input.metadata.responseTime + (Date.now() - startTime),
           processingSteps: [...input.metadata.processingSteps, 'response_generation_failed']
         }
       };
@@ -271,11 +268,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructExcelFormulaResponse(response: string): ExcelFormulaResult {
     return {
       success: true,
-      tokensUsed: 245,
-      responseTime: 1350,
-      model: 'claude',
-      cached: false,
-      confidence: 0.95,
+      model: 'extion-3',
       analysis: {
         detectedOperation: this.extractValue(response, /작업 유형[:\s]*([^\n]+)/) || '데이터 처리',
         dataRange: this.extractValue(response, /범위[:\s]*([A-Z]+\d+:[A-Z]+\d+)/) || 'A1:D6',
@@ -330,11 +323,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructPythonCodeResponse(response: string): PythonCodeGeneratorResult {
     return {
       success: true,
-      tokensUsed: 245,
-      responseTime: 1350,
-      model: 'claude',
-      cached: false,
-      confidence: 0.95,
+      model: 'extion-3',
       codeGenerator: {
         pythonCode: this.extractCodeBlock(response) || 'print("데이터 처리 완료")',
         explanation: '사용자 요청에 따른 Python 코드가 생성되었습니다.'
@@ -348,11 +337,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructWholeDataResponse(response: string): WholeDataResult {
     return {
       success: true,
-      tokensUsed: 245,
-      responseTime: 1350,
-      model: 'claude',
-      cached: false,
-      confidence: 0.95,
+      model: 'extion-3',
       answerAfterReadWholeData: {
         response: '{}' // 실제 변환된 데이터
       }
@@ -365,11 +350,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private constructGeneralHelpResponse(response: string): GeneralHelpResult {
     return {
       success: true,
-      tokensUsed: 245,
-      responseTime: 1350,
-      model: 'claude',
-      cached: false,
-      confidence: 0.95,
+      model: 'extion-3',
       generalHelp: {
         directAnswer: response.split('\n')[0] || '답변을 생성했습니다.',
         additionalResources: []
@@ -389,11 +370,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
 
       const baseResult: BaseAiRequestResult = {
         success: parsedJson.success ?? true,
-        tokensUsed: parsedJson.tokensUsed ?? 245,
-        responseTime: parsedJson.responseTime ?? 1350,
-        model: parsedJson.model ?? 'claude',
-        cached: parsedJson.cached ?? false,
-        confidence: parsedJson.confidence ?? 0.95
+        model: parsedJson.model ?? 'extion-3',
       };
 
       // 의도별 타입 변환 (완화된 검증)
@@ -492,11 +469,7 @@ lc_namespace: string[] = ['extion', 'runnables', 'response_generator'];
   private createFallbackExcelResponse(intent: string = 'excel_formula'): ExcelFormulaResult {
     return {
       success: true,
-      tokensUsed: 245,
-      responseTime: 1350,
-      model: 'claude',
-      cached: false,
-      confidence: 0.95,
+      model: 'extion-3',
       analysis: {
         detectedOperation: '데이터 처리',
         dataRange: 'A1:A1',

@@ -336,6 +336,14 @@ export class MainChatService {
                 isFinal: update.isFinal,
                 timestamp: new Date().toISOString()
               });
+            } else if (update.type === 'reasoning_preview') {
+              // reasoning 텍스트 미리보기 전송
+              this.sendSSEEvent(observer, 'reasoning_preview', {
+                chatId, userMessageId,
+                reasoning: update.reasoning,
+                step: update.step,
+                timestamp: new Date().toISOString()
+              });
             } else if (update.type === 'step_start') {
               this.sendSSEEvent(observer, 'ai_step_start', {
                 chatId, userMessageId, step: update.step,
@@ -416,11 +424,7 @@ export class MainChatService {
           type: MessageType.ANALYSIS,
           chatId,
           metadata: {
-            tokensUsed: aiResult.tokensUsed,
-            responseTime: aiResult.responseTime,
             model: aiResult.model,
-            cached: aiResult.cached,
-            confidence: aiResult.confidence,
             success: aiResult.success
           },
           sheetContext
