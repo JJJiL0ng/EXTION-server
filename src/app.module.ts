@@ -5,11 +5,11 @@ import { AppService } from './app.service';
 import { PrismaModule } from './v2/prisma/prisma.module';
 import { AuthModule } from './v2/auth/_auth/auth.module';
 
-import { TableDataJsonParsingModule } from './v2/sheet/_table-data-json-parsing/table-data-json-parsing.module';
 import { TableDataJsonSaveModule } from './v2/sheet/_table-data-json-save/table-data-json-save.module';
 import { UserModule } from './v2/user/user.module';
 import { MainAiModule } from './v2/ai/_main-ai-service/main-ai.module';
 import { MainChatModule } from './v2/chatting/_main-chat/main-chat.module';
+import { TableDataJsonParserModule } from './v2/sheet/_table-data-json-parser/_table-data-json-parser.module';
 
 @Module({
   imports: [
@@ -19,12 +19,12 @@ import { MainChatModule } from './v2/chatting/_main-chat/main-chat.module';
     }),
     PrismaModule,
     AuthModule,
-    TableDataJsonParsingModule,
     TableDataJsonSaveModule,
     UserModule,
     // TableDataCacheModule,
     MainAiModule,
     MainChatModule,
+    TableDataJsonParserModule,
   ],
   controllers: [AppController],
   providers: [AppService],
