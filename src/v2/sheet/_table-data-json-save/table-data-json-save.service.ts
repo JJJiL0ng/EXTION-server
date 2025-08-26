@@ -62,7 +62,8 @@ export class TableDataJsonSaveService {
       // 1. 사용자 검증
       await this.userService.validateUser(userId);
 
-      // 2. 캐시된 활성 스프레드시트 확인 (우선순위 1)
+      // 2. 캐시된 활성 스프레드시트 확인 (우선순위 1) - 현재 사용하지 않음
+      /* 
       if (this.activeSpreadSheet && 
           this.activeSpreadSheet.id === spreadSheetId && 
           this.activeSpreadSheet.userId === userId) {
@@ -86,11 +87,14 @@ export class TableDataJsonSaveService {
           lastModified: sheetMetadata?.updatedAt || this.activeSpreadSheet.metadata.lastActivity
         };
       }
+      */
 
-      // 3. 기존 활성 데이터가 있다면 저장 (다른 시트로 전환하는 경우)
+      // 3. 기존 활성 데이터가 있다면 저장 (다른 시트로 전환하는 경우) - 현재 사용하지 않음
+      /*
       if (this.activeSpreadSheet?.metadata.isDirty) {
         await this.forceSave();
       }
+      */
 
       // 4. 데이터베이스에서 로드
       const spreadSheet = await this.prisma.spreadSheet.findFirst({
@@ -118,7 +122,8 @@ export class TableDataJsonSaveService {
         decompressedData = this.getDefaultSpreadSheetStructure();
       }
 
-      // 5. 메모리에 로드
+      // 5. 메모리에 로드 - 현재 사용하지 않음
+      /*
       this.activeSpreadSheet = {
         id: spreadSheet.id,
         userId,
@@ -132,6 +137,7 @@ export class TableDataJsonSaveService {
           isDirty: false
         }
       };
+      */
 
       // 6. lastOpened 업데이트
       await this.prisma.spreadSheet.update({
@@ -169,10 +175,12 @@ export class TableDataJsonSaveService {
       await this.userService.ensureChat(dto.chatId, dto.userId, `Chat for ${dto.fileName}`);
       this.logger.log(`Chat ensured: ${dto.chatId} for user: ${dto.userId}`);
 
-      // 2. 기존 활성 데이터 저장
+      // 2. 기존 활성 데이터 저장 - 현재 사용하지 않음
+      /*
       if (this.activeSpreadSheet?.metadata.isDirty) {
         await this.forceSave();
       }
+      */
 
       // 3. 스프레드시트 ID 중복 검사 (userId + spreadsheetId unique constraint)
       // Prisma에서 @@unique([userId, id])로 처리하므로 별도 검사 불필요
@@ -239,7 +247,8 @@ export class TableDataJsonSaveService {
         return spreadSheet;
       });
 
-      // 6. 메모리에 로드
+      // 6. 메모리에 로드 - 현재 사용하지 않음
+      /*
       this.activeSpreadSheet = {
         id: result.id,
         userId: dto.userId,
@@ -253,6 +262,7 @@ export class TableDataJsonSaveService {
           isDirty: false
         }
       };
+      */
 
       this.logger.log(`Created new spreadsheet: ${result.id}`);
 
@@ -272,10 +282,14 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 델타 적용 (실시간)
+   * 델타 적용 (실시간) - 현재 사용하지 않음
    */
   async applyDelta(userId: string, delta: CellDelta): Promise<ApplyDeltaResponse> {
     try {
+      // 캐싱을 사용하지 않으므로 델타 적용 로직도 비활성화
+      throw new Error('Delta application is disabled as caching is not used');
+      
+      /*
       // 1. 활성 스프레드시트 확인
       if (!this.activeSpreadSheet || this.activeSpreadSheet.userId !== userId) {
         throw new MemoryStateError('No active spreadsheet for user', userId);
@@ -315,6 +329,7 @@ export class TableDataJsonSaveService {
         success: true,
         version: this.activeSpreadSheet.metadata.version
       };
+      */
 
     } catch (error) {
       const safeError = createSafeError(error);
@@ -324,10 +339,14 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 현재 상태 조회 (GPT용)
+   * 현재 상태 조회 (GPT용) - 현재 사용하지 않음
    */
   async getCurrentState(userId: string): Promise<SpreadSheetStructure> {
     try {
+      // 캐싱을 사용하지 않으므로 현재 상태 조회도 비활성화
+      throw new Error('Current state retrieval is disabled as caching is not used');
+      
+      /*
       if (!this.activeSpreadSheet || this.activeSpreadSheet.userId !== userId) {
         throw new MemoryStateError('No active spreadsheet for user', userId);
       }
@@ -347,6 +366,7 @@ export class TableDataJsonSaveService {
       this.activeSpreadSheet.metadata.lastActivity = new Date();
 
       return currentState;
+      */
 
     } catch (error) {
       const safeError = createSafeError(error);
@@ -356,10 +376,14 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * GPT용 데이터 준비
+   * GPT용 데이터 준비 - 현재 사용하지 않음
    */
   async getGPTReadyData(userId: string): Promise<GPTReadyData> {
     try {
+      // 캐싱을 사용하지 않으므로 GPT용 데이터 준비도 비활성화
+      throw new Error('GPT ready data preparation is disabled as caching is not used');
+      
+      /*
       if (!this.activeSpreadSheet || this.activeSpreadSheet.userId !== userId) {
         throw new MemoryStateError('No active spreadsheet for user', userId);
       }
@@ -379,6 +403,7 @@ export class TableDataJsonSaveService {
       this.activeSpreadSheet.parsedCache = gptData;
 
       return gptData;
+      */
 
     } catch (error) {
       const safeError = createSafeError(error);
@@ -388,10 +413,14 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 강제 저장
+   * 강제 저장 - 현재 사용하지 않음
    */
   async forceSave(): Promise<ForceSaveResponse> {
     try {
+      // 캐싱을 사용하지 않으므로 강제 저장도 비활성화
+      return { success: true, savedDeltas: 0 };
+      
+      /*
       if (!this.activeSpreadSheet?.metadata.isDirty) {
         return { success: true, savedDeltas: 0 };
       }
@@ -401,6 +430,7 @@ export class TableDataJsonSaveService {
       this.logger.log(`Force saved spreadsheet: ${this.activeSpreadSheet.id}, deltas: ${savedDeltas}`);
 
       return { success: true, savedDeltas };
+      */
 
     } catch (error) {
       const safeError = createSafeError(error);
@@ -449,7 +479,7 @@ export class TableDataJsonSaveService {
         compressedSize: sheet.data?.compressedSize || 0,
         chatCount: sheet._count.chats,
         editCount: sheet._count.editHistory,
-        isActive: this.activeSpreadSheet?.id === sheet.id
+        isActive: false // 현재 캐싱을 사용하지 않으므로 항상 false
       }));
 
     } catch (error) {
@@ -473,7 +503,8 @@ export class TableDataJsonSaveService {
         throw new NotFoundException('SpreadSheet not found');
       }
 
-      // 2. 활성 데이터가 삭제 대상이면 정리
+      // 2. 활성 데이터가 삭제 대상이면 정리 - 현재 사용하지 않음
+      /*
       if (this.activeSpreadSheet?.id === spreadSheetId) {
         if (this.activeSpreadSheet.metadata.isDirty) {
           await this.forceSave();
@@ -481,6 +512,7 @@ export class TableDataJsonSaveService {
         this.activeSpreadSheet = null;
         this.clearSaveTimer();
       }
+      */
 
       // 3. 소프트 삭제
       await this.prisma.spreadSheet.update({
@@ -503,17 +535,20 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 메모리 정리
+   * 메모리 정리 - 현재 사용하지 않음
    */
   async cleanup(): Promise<void> {
     try {
+      // 캐싱을 사용하지 않으므로 메모리 정리 로직도 비활성화
+      /*
       if (this.activeSpreadSheet?.metadata.isDirty) {
         await this.forceSave();
       }
       this.activeSpreadSheet = null;
       this.clearSaveTimer();
+      */
       
-      this.logger.log('Memory cleanup completed');
+      this.logger.log('Memory cleanup completed (no-op as caching disabled)');
     } catch (error) {
       const safeError = createSafeError(error);
       this.logger.error(`Cleanup failed: ${safeError.message}`, safeError.details);
@@ -725,9 +760,11 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 디바운스된 저장 스케줄링
+   * 디바운스된 저장 스케줄링 - 현재 사용하지 않음
    */
   private scheduleSave(): void {
+    // 캐싱을 사용하지 않으므로 스케줄된 저장도 비활성화
+    /*
     this.clearSaveTimer();
     
     this.activeSpreadSheet!.metadata.saveScheduled = true;
@@ -742,22 +779,30 @@ export class TableDataJsonSaveService {
         setTimeout(() => this.scheduleSave(), 5000);
       }
     }, this.SAVE_DEBOUNCE_TIME);
+    */
   }
 
   /**
-   * 저장 타이머 정리
+   * 저장 타이머 정리 - 현재 사용하지 않음
    */
   private clearSaveTimer(): void {
+    // 캐싱을 사용하지 않으므로 타이머 정리도 비활성화
+    /*
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
       this.saveTimer = null;
     }
+    */
   }
 
   /**
-   * 실제 저장 수행
+   * 실제 저장 수행 - 현재 사용하지 않음
    */
   private async performSave(): Promise<number> {
+    // 캐싱을 사용하지 않으므로 저장 로직도 비활성화
+    return 0;
+    
+    /*
     if (!this.activeSpreadSheet?.metadata.isDirty) {
       return 0;
     }
@@ -853,6 +898,7 @@ export class TableDataJsonSaveService {
 
       return deltaCount;
     });
+    */
   }
 
   /**
