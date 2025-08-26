@@ -126,6 +126,7 @@ export interface SpreadJSCellStyle {
 
 export interface CellDelta {
   action: DeltaAction;
+  spreadSheetId: string; // 스프레드시트 ID 추가
   parsedSheetName: string;
   cellAddress?: string;
   range?: string;

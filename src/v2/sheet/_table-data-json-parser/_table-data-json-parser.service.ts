@@ -11,6 +11,12 @@ export class TableDataJsonParserService {
 	async parseAndPersist(dto: TableDataJsonParserDto) {
 		const { spreadSheetId, sourceDataId, rawData } = dto;
 
+		console.log(`[DEBUG] ParseAndPersist called with:`, {
+			spreadSheetId,
+			sourceDataId,
+			rawDataKeys: rawData ? Object.keys(rawData) : 'null'
+		});
+
 		if (!rawData || typeof rawData !== 'object') {
 			throw new Error('rawData must be a JSON object');
 		}
@@ -43,8 +49,10 @@ export class TableDataJsonParserService {
 
 			// 시트별 저장 (세부 내용 비파싱 그대로 저장)
 			const sheetEntries = Object.entries(sheets as Record<string, unknown>);
-					if (sheetEntries.length > 0) {
-						await p.parsedSheet.createMany({
+			console.log(`[DEBUG] Processing ${sheetEntries.length} sheets with sourceDataId: ${sourceDataId ?? null}`);
+			
+			if (sheetEntries.length > 0) {
+				await p.parsedSheet.createMany({
 					data: sheetEntries.map(([sheetName, content]) => ({
 						spreadSheetId,
 						sourceDataId: sourceDataId ?? null,
@@ -55,6 +63,7 @@ export class TableDataJsonParserService {
 					})),
 					skipDuplicates: true, // (spreadSheetId, sheetName, dataHash) unique
 				});
+				console.log(`[DEBUG] Successfully created ${sheetEntries.length} ParsedSheet records`);
 			}
 
 			return {

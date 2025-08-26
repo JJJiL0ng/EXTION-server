@@ -7,7 +7,7 @@ import * as zlib from 'zlib';
 import { promisify } from 'util';
 import { UserService } from '../../user/user.service';
 import { createHash } from 'crypto';
-import { SpreadSheetStatus, EditStatus, DeltaAction, Prisma } from '@prisma/client';
+import { SpreadSheetStatus, EditStatus, DeltaAction } from '@prisma/client';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
 import { TableDataJsonParserService } from '../_table-data-json-parser/_table-data-json-parser.service';
 import {
@@ -42,12 +42,13 @@ const gunzip = promisify(zlib.gunzip);
 @Injectable()
 export class TableDataJsonSaveService {
   private readonly logger = new Logger(TableDataJsonSaveService.name);
-  private readonly SAVE_DEBOUNCE_TIME = 2000; // 2초
-  private readonly MAX_PENDING_DELTAS = 100;
+  // 캐싱 비활성화로 인해 현재 사용하지 않음
+  // private readonly SAVE_DEBOUNCE_TIME = 2000; // 2초
+  // private readonly MAX_PENDING_DELTAS = 100;
 
-  // 메모리 내 활성 스프레드시트 (사용자당 하나) //추후 다중 탭 사용자 확장 예정 todo
-  private activeSpreadSheet: MemorySpreadSheetData | null = null;
-  private saveTimer: NodeJS.Timeout | null = null;
+  // 메모리 내 활성 스프레드시트 (사용자당 하나) - 현재 사용하지 않음
+  // private activeSpreadSheet: MemorySpreadSheetData | null = null;
+  // private saveTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -300,12 +301,150 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 델타 적용 (실시간) - 현재 사용하지 않음
+   * 델타 적용 (실시간) - ParsedSheet에 저장
    */
   async applyDelta(userId: string, delta: CellDelta): Promise<ApplyDeltaResponse> {
-  // 캐싱/실시간 적용 비활성 상태이므로 no-op 처리
-  this.logger.warn('Delta application is disabled; returning no-op success');
-  return { success: true, version: 0 };
+    this.logger.log(`[DEBUG] applyDelta called for user: ${userId}`);
+    this.logger.log(`[DEBUG] Delta received:`, JSON.stringify(delta, null, 2));
+
+    try {
+      // 1. 사용자 검증
+      await this.userService.validateUser(userId);
+      this.logger.log(`[DEBUG] User validated: ${userId}`);
+
+      // 2. 델타 검증
+      this.validateDelta(delta);
+      this.logger.log(`[DEBUG] Delta validated successfully`);
+
+      // 3. 현재 스프레드시트 ID 확인 (델타에서 추출 또는 활성 스프레드시트에서)
+      let spreadSheetId = delta.spreadSheetId;
+      if (!spreadSheetId) {
+        this.logger.warn(`[DEBUG] No spreadSheetId found in delta, attempting to find user's most recent spreadsheet`);
+        
+        // 사용자의 가장 최근 스프레드시트 찾기
+        const recentSpreadSheet = await this.prisma.spreadSheet.findFirst({
+          where: {
+            userId,
+            status: SpreadSheetStatus.ACTIVE
+          },
+          orderBy: {
+            lastOpened: 'desc'
+          }
+        });
+
+        if (recentSpreadSheet) {
+          spreadSheetId = recentSpreadSheet.id;
+          this.logger.log(`[DEBUG] Using most recent spreadsheet: ${spreadSheetId}`);
+        } else {
+          this.logger.error(`[DEBUG] No active spreadsheet found for user: ${userId}`);
+          throw new Error('No spreadSheetId provided and no active spreadsheet found for user');
+        }
+      }
+
+      // 4. 현재 시트 데이터를 ParsedSheet에서 조회
+      const currentParsedSheet = await this.prisma.parsedSheet.findFirst({
+        where: {
+          spreadSheetId,
+          sheetName: delta.parsedSheetName
+        },
+        orderBy: {
+          savedAt: 'desc'
+        }
+      });
+
+      this.logger.log(`[DEBUG] Current parsed sheet found:`, !!currentParsedSheet);
+
+      // 5. 현재 시트 데이터에 델타 적용
+      let currentSheetData: any;
+      if (currentParsedSheet) {
+        currentSheetData = currentParsedSheet.content;
+        this.logger.log(`[DEBUG] Using existing sheet data for sheet: ${delta.parsedSheetName}`);
+      } else {
+        // 시트가 없으면 기본 구조 생성
+        currentSheetData = {
+          name: delta.parsedSheetName,
+          data: { dataTable: {} }
+        };
+        this.logger.log(`[DEBUG] Creating new sheet data for sheet: ${delta.parsedSheetName}`);
+      }
+
+      // 6. 델타를 시트 데이터에 적용
+      this.applyDeltaToSheetData(currentSheetData, delta);
+      this.logger.log(`[DEBUG] Delta applied to sheet data`);
+
+      // 7. 업데이트된 데이터를 ParsedSheet에 저장 (기존 레코드를 삭제 후 새로 생성)
+      const now = new Date();
+      const hash = createHash('sha256').update(JSON.stringify(currentSheetData)).digest('hex');
+
+      // 기존 ParsedSheet의 sourceDataId를 유지 또는 스프레드시트의 최신 sourceDataId 찾기
+      let sourceDataIdToUse = currentParsedSheet ? currentParsedSheet.sourceDataId : null;
+      
+      // 기존 ParsedSheet가 없거나 sourceDataId가 null인 경우, 스프레드시트의 SpreadSheetData에서 찾기
+      if (!sourceDataIdToUse) {
+        const spreadSheetData = await this.prisma.spreadSheetData.findFirst({
+          where: { spreadSheetId },
+          orderBy: { savedAt: 'desc' }
+        });
+        
+        if (spreadSheetData) {
+          sourceDataIdToUse = spreadSheetData.id;
+          this.logger.log(`[DEBUG] Found sourceDataId from SpreadSheetData: ${sourceDataIdToUse}`);
+        }
+      }
+      
+      this.logger.log(`[DEBUG] Using sourceDataId: ${sourceDataIdToUse} (from existing: ${!!currentParsedSheet})`);
+
+      // 트랜잭션으로 기존 레코드 삭제 후 새로 생성
+      const savedSheet = await this.prisma.$transaction(async (tx) => {
+        // 1. 기존 레코드가 있다면 삭제
+        if (currentParsedSheet) {
+          await tx.parsedSheet.delete({
+            where: {
+              id: currentParsedSheet.id
+            }
+          });
+          this.logger.log(`[DEBUG] Deleted existing ParsedSheet with ID: ${currentParsedSheet.id}`);
+        }
+
+        // 2. 새 레코드 생성 (기존 sourceDataId 유지)
+        const newSheet = await tx.parsedSheet.create({
+          data: {
+            spreadSheetId,
+            sourceDataId: sourceDataIdToUse, // 기존 sourceDataId 유지
+            sheetName: delta.parsedSheetName,
+            content: currentSheetData,
+            dataHash: hash,
+            savedAt: now
+          }
+        });
+
+        return newSheet;
+      });
+
+      if (currentParsedSheet) {
+        this.logger.log(`[DEBUG] Delta replaced existing ParsedSheet with new ID: ${savedSheet.id}`);
+      } else {
+        this.logger.log(`[DEBUG] Delta created new ParsedSheet with ID: ${savedSheet.id}`);
+      }
+
+      // 8. SpreadSheet 메타데이터 업데이트
+      await this.prisma.spreadSheet.update({
+        where: { id: spreadSheetId },
+        data: {
+          updatedAt: new Date()
+        }
+      });
+
+      this.logger.log(`[DEBUG] SpreadSheet metadata updated`);
+
+      return { success: true, version: 1 };
+
+    } catch (error) {
+      this.logger.error(`[DEBUG] Error in applyDelta:`, error);
+      const safeError = createSafeError(error);
+      this.logger.error(`Failed to apply delta: ${safeError.message}`, safeError.details);
+      throw error;
+    }
   }
 
   /**
@@ -593,7 +732,73 @@ export class TableDataJsonSaveService {
   }
 
   /**
-   * 개별 델타 적용
+   * 시트 데이터에 델타 적용 (ParsedSheet용)
+   */
+  private applyDeltaToSheetData(sheetData: any, delta: CellDelta): void {
+    this.logger.log(`[DEBUG] Applying delta to sheet data: ${delta.action}`);
+
+    if (!sheetData.data) sheetData.data = { dataTable: {} };
+    if (!sheetData.data.dataTable) sheetData.data.dataTable = {};
+
+    const dataTable = sheetData.data.dataTable;
+
+    switch (delta.action) {
+      case DeltaAction.SET_CELL_VALUE:
+        if (delta.cellAddress && delta.value !== undefined) {
+          if (!dataTable[delta.cellAddress]) {
+            dataTable[delta.cellAddress] = {};
+          }
+          dataTable[delta.cellAddress].value = delta.value;
+          this.logger.log(`[DEBUG] Set cell ${delta.cellAddress} value: ${delta.value}`);
+        }
+        break;
+
+      case DeltaAction.SET_CELL_FORMULA:
+        if (delta.cellAddress && delta.formula !== undefined) {
+          if (!dataTable[delta.cellAddress]) {
+            dataTable[delta.cellAddress] = {};
+          }
+          dataTable[delta.cellAddress].formula = delta.formula;
+          this.logger.log(`[DEBUG] Set cell ${delta.cellAddress} formula: ${delta.formula}`);
+        }
+        break;
+
+      case DeltaAction.SET_CELL_STYLE:
+        if (delta.cellAddress && delta.style !== undefined) {
+          if (!dataTable[delta.cellAddress]) {
+            dataTable[delta.cellAddress] = {};
+          }
+          dataTable[delta.cellAddress].style = {
+            ...dataTable[delta.cellAddress].style,
+            ...delta.style
+          };
+          this.logger.log(`[DEBUG] Set cell ${delta.cellAddress} style`);
+        }
+        break;
+
+      case DeltaAction.DELETE_CELLS:
+        if (delta.cellAddress && dataTable[delta.cellAddress]) {
+          delete dataTable[delta.cellAddress];
+          this.logger.log(`[DEBUG] Deleted cell ${delta.cellAddress}`);
+        }
+        break;
+
+      // 행/열 삽입/삭제는 더 복잡한 로직 필요
+      case DeltaAction.INSERT_ROWS:
+      case DeltaAction.DELETE_ROWS:
+      case DeltaAction.INSERT_COLUMNS:
+      case DeltaAction.DELETE_COLUMNS:
+        this.logger.warn(`[DEBUG] Delta action ${delta.action} not yet implemented for sheet data`);
+        break;
+
+      default:
+        this.logger.warn(`[DEBUG] Unknown delta action: ${delta.action}`);
+        break;
+    }
+  }
+
+  /**
+   * 개별 델타 적용 (기존 메서드 - SpreadSheetStructure용)
    */
   private applyDeltaToData(data: SpreadSheetStructure, delta: CellDelta): void {
     if (!data.sheets) data.sheets = {};
@@ -772,103 +977,100 @@ export class TableDataJsonSaveService {
     // 캐싱을 사용하지 않으므로 저장 로직도 비활성화
     return 0;
 
-    /*
-    if (!this.activeSpreadSheet?.metadata.isDirty) {
-      return 0;
-    }
+    // 전체 로직이 주석 처리됨 - 추후 재활성화시 사용 예정
+    // if (!this.activeSpreadSheet?.metadata.isDirty) {
+    //   return 0;
+    // }
 
-    const deltaCount = this.activeSpreadSheet.pendingDeltas.length;
-    if (deltaCount === 0) {
-      this.activeSpreadSheet.metadata.isDirty = false;
-      return 0;
-    }
+    // const deltaCount = this.activeSpreadSheet.pendingDeltas.length;
+    // if (deltaCount === 0) {
+    //   this.activeSpreadSheet.metadata.isDirty = false;
+    //   return 0;
+    // }
 
-    return await this.prisma.$transaction(async (tx) => {
-      // 1. 현재 상태 생성
-      const currentState = this.applyDeltasToData(
-        this.activeSpreadSheet!.baselineData,
-        this.activeSpreadSheet!.pendingDeltas
-      );
+    // return await this.prisma.$transaction(async (tx) => {
+    //   // 1. 현재 상태 생성
+    //   const currentState = this.applyDeltasToData(
+    //     this.activeSpreadSheet!.baselineData,
+    //     this.activeSpreadSheet!.pendingDeltas
+    //   );
 
-      // 2. 압축 및 저장
-      const compressedData = await this.compressData(currentState);
-      const dataHash = this.generateDataHash(compressedData);
+    //   // 2. 압축 및 저장
+    //   const compressedData = await this.compressData(currentState);
+    //   const dataHash = this.generateDataHash(compressedData);
 
-      // 3. SpreadSheetData 업데이트
-      await tx.spreadSheetData.upsert({
-        where: { spreadSheetId: this.activeSpreadSheet!.id },
-        update: {
-          compressedData,
-          dataHash,
-          originalSize: JSON.stringify(currentState).length,
-          compressedSize: compressedData.length,
-          sheetCount: this.extractSheetCount(currentState),
-          version: this.extractVersion(currentState),
-          savedAt: new Date()
-        },
-        create: {
-          spreadSheetId: this.activeSpreadSheet!.id,
-          compressedData,
-          dataHash,
-          originalSize: JSON.stringify(currentState).length,
-          compressedSize: compressedData.length,
-          sheetCount: this.extractSheetCount(currentState),
-          version: this.extractVersion(currentState)
-        }
-      });
+    //   // 3. ParsedSheet에 델타 저장 (새로운 로직)
+    //   if (currentState.sheets) {
+    //     const now = new Date();
+    //     const hash = (val: unknown) => 
+    //       createHash('sha256').update(JSON.stringify(val)).digest('hex');
 
-      // 4. SpreadSheet 메타데이터 업데이트
-      await tx.spreadSheet.update({
-        where: { id: this.activeSpreadSheet!.id },
-        data: {
-          version: this.activeSpreadSheet!.metadata.version + 1,
-          fileSize: JSON.stringify(currentState).length,
-          updatedAt: new Date()
-        }
-      });
+    //     // 각 시트별로 ParsedSheet에 저장
+    //     for (const [sheetName, sheetContent] of Object.entries(currentState.sheets)) {
+    //       await tx.parsedSheet.create({
+    //         data: {
+    //           spreadSheetId: this.activeSpreadSheet!.id,
+    //           sourceDataId: null, // 델타 적용 결과이므로 소스 데이터 ID는 null
+    //           sheetName,
+    //           content: sheetContent as any,
+    //           dataHash: hash(sheetContent),
+    //           savedAt: now
+    //         }
+    //       });
+    //     }
+    //   }
 
-      // 5. EditHistory 기록
-      if (deltaCount > 0) {
-        const editHistory = await tx.editHistory.create({
-          data: {
-            spreadSheetId: this.activeSpreadSheet!.id,
-            sessionEnd: new Date(),
-            deltaCount,
-            status: EditStatus.COMPLETED,
-            metadata: {
-              autoSave: true,
-              deltaTypes: this.activeSpreadSheet!.pendingDeltas.map(d => d.action)
-            }
-          }
-        });
+    //   // 4. SpreadSheet 메타데이터 업데이트
+    //   await tx.spreadSheet.update({
+    //     where: { id: this.activeSpreadSheet!.id },
+    //     data: {
+    //       version: this.activeSpreadSheet!.metadata.version + 1,
+    //       fileSize: JSON.stringify(currentState).length,
+    //       updatedAt: new Date()
+    //     }
+    //   });
 
-        // 6. DeltaRecord 저장 (히스토리용)
-        const deltaRecords = this.activeSpreadSheet!.pendingDeltas.map((delta, index) => ({
-          editHistoryId: editHistory.id,
-          deltaData: JSON.parse(JSON.stringify(delta)) as Prisma.InputJsonValue,
-          sequenceNo: index + 1,
-          action: delta.action,
-          sheetName: delta.sheetName,
-          cellRange: delta.cellAddress || delta.range,
-          createdAt: new Date(delta.timestamp)
-        }));
+    //   // 5. EditHistory 기록
+    //   if (deltaCount > 0) {
+    //     const editHistory = await tx.editHistory.create({
+    //       data: {
+    //         spreadSheetId: this.activeSpreadSheet!.id,
+    //         sessionEnd: new Date(),
+    //         deltaCount,
+    //         status: EditStatus.COMPLETED,
+    //         metadata: {
+    //           autoSave: true,
+    //           deltaTypes: this.activeSpreadSheet!.pendingDeltas.map(d => d.action)
+    //         }
+    //       }
+    //     });
 
-        await tx.deltaRecord.createMany({
-          data: deltaRecords
-        });
-      }
+    //     // 6. DeltaRecord 저장 (히스토리용)
+    //     const deltaRecords = this.activeSpreadSheet!.pendingDeltas.map((delta, index) => ({
+    //       editHistoryId: editHistory.id,
+    //       deltaData: JSON.parse(JSON.stringify(delta)) as Prisma.InputJsonValue,
+    //       sequenceNo: index + 1,
+    //       action: delta.action,
+    //       sheetName: delta.parsedSheetName,
+    //       cellRange: delta.cellAddress || delta.range,
+    //       createdAt: new Date(delta.timestamp)
+    //     }));
 
-      // 7. 메모리 상태 업데이트
-      this.activeSpreadSheet!.baselineData = currentState;
-      this.activeSpreadSheet!.pendingDeltas = [];
-      this.activeSpreadSheet!.metadata.version++;
-      this.activeSpreadSheet!.metadata.isDirty = false;
-      this.activeSpreadSheet!.metadata.saveScheduled = false;
-      this.activeSpreadSheet!.parsedCache = null;
+    //     await tx.deltaRecord.createMany({
+    //       data: deltaRecords
+    //     });
+    //   }
 
-      return deltaCount;
-    });
-    */
+    //   // 7. 메모리 상태 업데이트
+    //   this.activeSpreadSheet!.baselineData = currentState;
+    //   this.activeSpreadSheet!.pendingDeltas = [];
+    //   this.activeSpreadSheet!.metadata.version++;
+    //   this.activeSpreadSheet!.metadata.isDirty = false;
+    //   this.activeSpreadSheet!.metadata.saveScheduled = false;
+    //   this.activeSpreadSheet!.parsedCache = null;
+
+    //   return deltaCount;
+    // });
   }
 
   /**
