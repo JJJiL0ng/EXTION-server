@@ -156,7 +156,11 @@ export class ApplyDeltaDto {
   @IsString()
   @IsNotEmpty()
   @Length(1, 100)
-  sheetName: string;
+  parsedSheetName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  spreadSheetId: string;
 
   @IsOptional()
   @IsString()

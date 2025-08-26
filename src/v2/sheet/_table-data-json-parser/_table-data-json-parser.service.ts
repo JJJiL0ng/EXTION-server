@@ -29,16 +29,17 @@ export class TableDataJsonParserService {
 		// 트랜잭션으로 일괄 저장
 			return await this.prisma.$transaction(async (tx) => {
 				const p: any = tx as any;
-			// 잔여 저장
-			const remainderRow = await p.parsedRemainder.create({
-				data: {
-					spreadSheetId,
-					sourceDataId: sourceDataId ?? null,
-					content: remainder as any,
-					dataHash: hash(remainder),
-					savedAt: now,
-				},
-			});
+			// 잔여 저장 비활성화 (요청에 따라 주석 처리)
+			// const remainderRow = await p.parsedRemainder.create({
+			// 	data: {
+			// 		spreadSheetId,
+			// 		sourceDataId: sourceDataId ?? null,
+			// 		content: remainder as any,
+			// 		dataHash: hash(remainder),
+			// 		savedAt: now,
+			// 	},
+			// });
+			const remainderRowId: string | null = null;
 
 			// 시트별 저장 (세부 내용 비파싱 그대로 저장)
 			const sheetEntries = Object.entries(sheets as Record<string, unknown>);
@@ -60,7 +61,7 @@ export class TableDataJsonParserService {
 				spreadSheetId,
 				savedAt: now,
 				sheetsSaved: sheetEntries.length,
-				remainderId: remainderRow.id,
+				remainderId: remainderRowId,
 			};
 		});
 	}

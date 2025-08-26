@@ -9,6 +9,7 @@ import { UserService } from '../../user/user.service';
 import { createHash } from 'crypto';
 import { SpreadSheetStatus, EditStatus, DeltaAction, Prisma } from '@prisma/client';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
+import { TableDataJsonParserService } from '../_table-data-json-parser/_table-data-json-parser.service';
 import {
   CellDelta,
   MemorySpreadSheetData,
@@ -43,7 +44,7 @@ export class TableDataJsonSaveService {
   private readonly logger = new Logger(TableDataJsonSaveService.name);
   private readonly SAVE_DEBOUNCE_TIME = 2000; // 2초
   private readonly MAX_PENDING_DELTAS = 100;
-  
+
   // 메모리 내 활성 스프레드시트 (사용자당 하나) //추후 다중 탭 사용자 확장 예정 todo
   private activeSpreadSheet: MemorySpreadSheetData | null = null;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -51,7 +52,8 @@ export class TableDataJsonSaveService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
-  ) {}
+    private readonly parserService: TableDataJsonParserService,
+  ) { }
 
 
   /**
@@ -98,10 +100,10 @@ export class TableDataJsonSaveService {
 
       // 4. 데이터베이스에서 로드
       const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: { 
+        where: {
           id: spreadSheetId,
           userId,
-          status: SpreadSheetStatus.ACTIVE 
+          status: SpreadSheetStatus.ACTIVE
         },
         include: { data: true }
       });
@@ -170,7 +172,7 @@ export class TableDataJsonSaveService {
       // 1. 사용자 검증
       await this.userService.validateUser(dto.userId);
       this.logger.log(`User validated: ${dto.userId}`);
-      
+
       // chatId가 있으면 채팅 생성 또는 확인
       await this.userService.ensureChat(dto.chatId, dto.userId, `Chat for ${dto.fileName}`);
       this.logger.log(`Chat ensured: ${dto.chatId} for user: ${dto.userId}`);
@@ -220,7 +222,7 @@ export class TableDataJsonSaveService {
         });
 
         // SpreadSheetData 생성
-        await tx.spreadSheetData.create({
+        const sheetData = await tx.spreadSheetData.create({
           data: {
             spreadSheetId: spreadSheet.id,
             compressedData,
@@ -244,7 +246,7 @@ export class TableDataJsonSaveService {
           }
         });
 
-        return spreadSheet;
+        return { spreadSheet, sheetDataId: sheetData.id };
       });
 
       // 6. 메모리에 로드 - 현재 사용하지 않음
@@ -264,14 +266,30 @@ export class TableDataJsonSaveService {
       };
       */
 
-      this.logger.log(`Created new spreadsheet: ${result.id}`);
+      // 6. 추가: 시트 파싱 후 개별/잔여 저장 (기존 로직 유지 + 추가)
+      try {
+        // 원본 SpreadJS 입력이 있었다면 그대로 사용하여 remainder에 상위 메타를 보존
+        const rawForParser: any = (dto.initialData && this.isSpreadJSFormat(dto.initialData))
+          ? dto.initialData
+          : (initialData as any);
+
+        await this.parserService.parseAndPersist({
+          spreadSheetId: result.spreadSheet.id,
+          sourceDataId: result.sheetDataId,
+          rawData: rawForParser,
+        });
+      } catch (e) {
+        this.logger.error(`Sheet parsing/persist failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+      this.logger.log(`Created new spreadsheet: ${result.spreadSheet.id}`);
 
       return {
-        id: result.id,
-        fileName: result.fileName,
+        id: result.spreadSheet.id,
+        fileName: result.spreadSheet.fileName,
         data: initialData,
         version: 1,
-        lastModified: result.updatedAt
+        lastModified: result.spreadSheet.updatedAt
       };
 
     } catch (error) {
@@ -285,57 +303,9 @@ export class TableDataJsonSaveService {
    * 델타 적용 (실시간) - 현재 사용하지 않음
    */
   async applyDelta(userId: string, delta: CellDelta): Promise<ApplyDeltaResponse> {
-    try {
-      // 캐싱을 사용하지 않으므로 델타 적용 로직도 비활성화
-      throw new Error('Delta application is disabled as caching is not used');
-      
-      /*
-      // 1. 활성 스프레드시트 확인
-      if (!this.activeSpreadSheet || this.activeSpreadSheet.userId !== userId) {
-        throw new MemoryStateError('No active spreadsheet for user', userId);
-      }
-
-      // 2. 델타 검증
-      if (!hasRequiredDeltaFields(delta)) {
-        throw new DeltaValidationError('Delta missing required fields', delta);
-      }
-      this.validateDelta(delta);
-
-      // 3. 델타 추가 (타임스탬프, 시퀀스 설정)
-      const timestampedDelta: CellDelta = {
-        ...delta,
-        timestamp: Date.now()
-      };
-
-      this.activeSpreadSheet.pendingDeltas.push(timestampedDelta);
-
-      // 4. 메타데이터 업데이트
-      this.activeSpreadSheet.metadata.lastActivity = new Date();
-      this.activeSpreadSheet.metadata.isDirty = true;
-      this.activeSpreadSheet.parsedCache = null; // 캐시 무효화
-
-      // 5. 델타 수 제한 확인
-      if (this.activeSpreadSheet.pendingDeltas.length > this.MAX_PENDING_DELTAS) {
-        // 즉시 저장
-        await this.forceSave();
-      } else {
-        // 디바운스된 저장 스케줄링
-        this.scheduleSave();
-      }
-
-      this.logger.log(`Applied delta to spreadsheet: ${this.activeSpreadSheet.id}`);
-
-      return {
-        success: true,
-        version: this.activeSpreadSheet.metadata.version
-      };
-      */
-
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to apply delta: ${safeError.message}`, safeError.details);
-      throw error;
-    }
+  // 캐싱/실시간 적용 비활성 상태이므로 no-op 처리
+  this.logger.warn('Delta application is disabled; returning no-op success');
+  return { success: true, version: 0 };
   }
 
   /**
@@ -345,7 +315,7 @@ export class TableDataJsonSaveService {
     try {
       // 캐싱을 사용하지 않으므로 현재 상태 조회도 비활성화
       throw new Error('Current state retrieval is disabled as caching is not used');
-      
+
       /*
       if (!this.activeSpreadSheet || this.activeSpreadSheet.userId !== userId) {
         throw new MemoryStateError('No active spreadsheet for user', userId);
@@ -382,7 +352,7 @@ export class TableDataJsonSaveService {
     try {
       // 캐싱을 사용하지 않으므로 GPT용 데이터 준비도 비활성화
       throw new Error('GPT ready data preparation is disabled as caching is not used');
-      
+
       /*
       if (!this.activeSpreadSheet || this.activeSpreadSheet.userId !== userId) {
         throw new MemoryStateError('No active spreadsheet for user', userId);
@@ -419,7 +389,7 @@ export class TableDataJsonSaveService {
     try {
       // 캐싱을 사용하지 않으므로 강제 저장도 비활성화
       return { success: true, savedDeltas: 0 };
-      
+
       /*
       if (!this.activeSpreadSheet?.metadata.isDirty) {
         return { success: true, savedDeltas: 0 };
@@ -445,9 +415,9 @@ export class TableDataJsonSaveService {
   async getUserSpreadSheets(userId: string): Promise<SpreadSheetListItem[]> {
     try {
       const spreadSheets = await this.prisma.spreadSheet.findMany({
-        where: { 
-          userId, 
-          status: SpreadSheetStatus.ACTIVE 
+        where: {
+          userId,
+          status: SpreadSheetStatus.ACTIVE
         },
         include: {
           data: {
@@ -517,7 +487,7 @@ export class TableDataJsonSaveService {
       // 3. 소프트 삭제
       await this.prisma.spreadSheet.update({
         where: { id: spreadSheetId },
-        data: { 
+        data: {
           status: SpreadSheetStatus.DELETED,
           updatedAt: new Date()
         }
@@ -547,7 +517,7 @@ export class TableDataJsonSaveService {
       this.activeSpreadSheet = null;
       this.clearSaveTimer();
       */
-      
+
       this.logger.log('Memory cleanup completed (no-op as caching disabled)');
     } catch (error) {
       const safeError = createSafeError(error);
@@ -595,11 +565,11 @@ export class TableDataJsonSaveService {
           throw new DeltaValidationError(`Delta action ${delta.action} requires valid cellAddress`, delta);
         }
         break;
-      
+
       case DeltaAction.INSERT_ROWS:
       case DeltaAction.DELETE_ROWS:
-        if (delta.rowIndex === undefined || delta.count === undefined || 
-            delta.rowIndex < 0 || delta.count <= 0) {
+        if (delta.rowIndex === undefined || delta.count === undefined ||
+          delta.rowIndex < 0 || delta.count <= 0) {
           throw new DeltaValidationError(`Delta action ${delta.action} requires valid rowIndex and count`, delta);
         }
         break;
@@ -627,11 +597,11 @@ export class TableDataJsonSaveService {
    */
   private applyDeltaToData(data: SpreadSheetStructure, delta: CellDelta): void {
     if (!data.sheets) data.sheets = {};
-    
-    let sheet = data.sheets[delta.sheetName];
+
+    let sheet = data.sheets[delta.parsedSheetName];
     if (!sheet) {
-      sheet = data.sheets[delta.sheetName] = {
-        name: delta.sheetName,
+      sheet = data.sheets[delta.parsedSheetName] = {
+        name: delta.parsedSheetName,
         data: { dataTable: {} }
       };
     }
@@ -665,9 +635,9 @@ export class TableDataJsonSaveService {
           if (!dataTable[delta.cellAddress]) {
             dataTable[delta.cellAddress] = {};
           }
-          dataTable[delta.cellAddress].style = { 
-            ...dataTable[delta.cellAddress].style, 
-            ...delta.style 
+          dataTable[delta.cellAddress].style = {
+            ...dataTable[delta.cellAddress].style,
+            ...delta.style
           };
         }
         break;
@@ -742,7 +712,7 @@ export class TableDataJsonSaveService {
     // CSV 행 구성
     const maxRow = Math.max(...cells.map(c => c.row));
     const maxCol = Math.max(...cells.map(c => c.col));
-    
+
     const rows: string[][] = [];
     for (let r = 0; r <= maxRow; r++) {
       rows[r] = new Array(maxCol + 1).fill('');
@@ -801,7 +771,7 @@ export class TableDataJsonSaveService {
   private async performSave(): Promise<number> {
     // 캐싱을 사용하지 않으므로 저장 로직도 비활성화
     return 0;
-    
+
     /*
     if (!this.activeSpreadSheet?.metadata.isDirty) {
       return 0;
@@ -928,11 +898,11 @@ export class TableDataJsonSaveService {
   private async decompressData(compressedData: Buffer): Promise<SpreadSheetStructure> {
     const decompressed = await gunzip(compressedData);
     const rawData = JSON.parse(Buffer.from(decompressed).toString());
-    
+
     if (!isSpreadSheetStructure(rawData)) {
       throw new ValidationError('Decompressed data is not a valid spreadsheet structure');
     }
-    
+
     return rawData;
   }
 
@@ -1140,7 +1110,7 @@ export class TableDataJsonSaveService {
   private parseColFromAddress(address: string): number {
     const match = address.match(/^([A-Z]+)\d+$/);
     if (!match) return 0;
-    
+
     let result = 0;
     const col = match[1];
     for (let i = 0; i < col.length; i++) {

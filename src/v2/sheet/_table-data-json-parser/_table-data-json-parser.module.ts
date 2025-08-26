@@ -7,5 +7,6 @@ import { PrismaModule } from '../../prisma/prisma.module';
   imports: [PrismaModule],
   controllers: [TableDataJsonParserController],
   providers: [TableDataJsonParserService],
+  exports: [TableDataJsonParserService],
 })
 export class TableDataJsonParserModule {}

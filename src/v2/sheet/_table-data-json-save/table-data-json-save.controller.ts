@@ -75,7 +75,7 @@ export class TableDataJsonSaveController {
   private convertDtoToDelta(dto: ApplyDeltaDto): Omit<CellDelta, 'timestamp'> {
     return {
       action: dto.action,
-      sheetName: dto.sheetName,
+      parsedSheetName: dto.parsedSheetName,
       cellAddress: dto.cellAddress,
       range: dto.range,
       value: dto.value,
@@ -96,16 +96,17 @@ export class TableDataJsonSaveController {
     @Body() dto: CreateSpreadSheetDto,
   ): Promise<{
     success: boolean;
-    data: LoadSpreadSheetResponse;
+    // data: LoadSpreadSheetResponse;
     message: string;
   }> {
     this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
     
-    const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
+    // const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
+    await this.tableDataJsonSaveService.createSpreadSheet(dto);
 
     return {
       success: true,
-      data: result,
+      // data: result,
       message: 'SpreadSheet created successfully'
     };
   }
