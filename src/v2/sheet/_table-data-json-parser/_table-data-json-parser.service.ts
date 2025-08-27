@@ -7,6 +7,52 @@ import { createHash } from 'crypto';
 export class TableDataJsonParserService {
 	constructor(private readonly prisma: PrismaService) {}
 
+	// 시트 ID와 parsedSheetName으로 ParsedSheet 데이터를 가져오는 함수
+	async loadParsedSpreadSheetData(spreadSheetId: string, parsedSheetName: string) {
+		console.log(`[DEBUG] loadParsedSpreadSheetData called with:`, {
+			spreadSheetId,
+			parsedSheetName
+		});
+
+		try {
+			const parsedSheet = await this.prisma.parsedSheet.findFirst({
+				where: {
+					spreadSheetId: spreadSheetId,
+					sheetName: parsedSheetName,
+				},
+				orderBy: {
+					savedAt: 'desc' // 가장 최근 저장된 데이터를 가져옴
+				}
+			});
+
+			if (!parsedSheet) {
+				console.log(`[DEBUG] No ParsedSheet found for spreadSheetId: ${spreadSheetId}, sheetName: ${parsedSheetName}`);
+				return null;
+			}
+
+			console.log(`[DEBUG] Found ParsedSheet:`, {
+				id: parsedSheet.id,
+				sheetName: parsedSheet.sheetName,
+				dataHash: parsedSheet.dataHash,
+				savedAt: parsedSheet.savedAt
+			});
+
+			return {
+				id: parsedSheet.id,
+				spreadSheetId: parsedSheet.spreadSheetId,
+				sourceDataId: parsedSheet.sourceDataId,
+				sheetName: parsedSheet.sheetName,
+				content: parsedSheet.content,
+				dataHash: parsedSheet.dataHash,
+				savedAt: parsedSheet.savedAt
+			};
+
+		} catch (error) {
+			console.error(`[ERROR] Failed to load ParsedSheet:`, error);
+			throw new Error(`Failed to load parsed spreadsheet data: ${error.message}`);
+		}
+	}
+
 	// 입력으로 전체 원본 JSON과 참조 ID들을 받아 시트별 저장 + 잔여 저장 수행
 	async parseAndPersist(dto: TableDataJsonParserDto) {
 		const { spreadSheetId, sourceDataId, rawData } = dto;

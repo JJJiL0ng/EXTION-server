@@ -23,6 +23,10 @@ export class MainChatRequestDto {
   @ApiProperty({ description: '요청 시각' })
   @IsDateString()
   timestamp: string;
+
+  @ApiProperty({ description: '파싱된 시트 이름들' })
+  @IsString({ each: true })
+  parsedSheetNames: string[];
 }
 export class GetChatHistoryDto {
   @ApiProperty({ description: '채팅방 ID' })

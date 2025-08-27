@@ -4,9 +4,10 @@ import { MainChatController } from './main-chat.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { MainAiModule } from '../../ai/_main-ai-service/main-ai.module';
 import { TableDataJsonSaveModule } from '../../sheet/_table-data-json-save/table-data-json-save.module';
+import { TableDataJsonParserModule } from '../../sheet/_table-data-json-parser/_table-data-json-parser.module';
 
 @Module({
-  imports: [PrismaModule, MainAiModule, TableDataJsonSaveModule],
+  imports: [PrismaModule, MainAiModule, TableDataJsonSaveModule, TableDataJsonParserModule],
   controllers: [MainChatController],
   providers: [MainChatService],
 })
