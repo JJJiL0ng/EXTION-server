@@ -17,9 +17,11 @@ export class BasicAiChain {
   private readonly logger = new Logger(BasicAiChain.name);
   private readonly chain: RunnableSequence<ChainInput, ChainState>;
   private readonly llm: ChatGoogleGenerativeAI;
+  private readonly sllm: ChatGoogleGenerativeAI;
 
-  constructor(llm: ChatGoogleGenerativeAI) {
+  constructor(llm: ChatGoogleGenerativeAI, sllm: ChatGoogleGenerativeAI) {
     this.llm = llm;
+    this.sllm = sllm;
     this.chain = this.buildChain(llm);
   }
 
@@ -122,7 +124,7 @@ export class BasicAiChain {
       );
 
       // 각 Runnable에 스트리밍 콜백 설정
-      const intentAnalyzer = new IntentAnalyzerRunnable(this.llm);
+      const intentAnalyzer = new IntentAnalyzerRunnable(this.sllm);
       const promptSelector = new PromptSelectorRunnable();
       const responseGenerator = new ResponseGeneratorRunnable(this.llm);
 
