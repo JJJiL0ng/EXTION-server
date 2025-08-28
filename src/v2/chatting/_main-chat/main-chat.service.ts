@@ -4,6 +4,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { MainAiService } from '../../ai/_main-ai-service/main-ai.service';
 import { TableDataJsonSaveService } from '../../sheet/_table-data-json-save/table-data-json-save.service';
+import { TableDataJsonParserService } from '../../sheet/_table-data-json-parser/_table-data-json-parser.service';
 import { 
   MainChatRequestDto 
 } from './dto/main-chat-req.dto';
@@ -35,6 +36,7 @@ export class MainChatService {
     private readonly prisma: PrismaService,
     private readonly mainAiService: MainAiService,
     private readonly tableDataService: TableDataJsonSaveService,
+    private readonly tableDataJsonParserService: TableDataJsonParserService,
   ) {}
 
   /**
@@ -65,7 +67,7 @@ export class MainChatService {
             timestamp: new Date().toISOString()
           });
 
-          const spreadsheetData = await this.loadSpreadsheetData(request.spreadsheetId, request.userId);
+          const spreadsheetData = await this.loadParsedSpreadsheetData(request.spreadsheetId, request.parsedSheetNames, request.userId);
 
           // 이 함수가 완전히 끝날 때까지 기다립니다.
           await this.processAIStreaming(
@@ -268,7 +270,68 @@ export class MainChatService {
   }
 
   /**
-   * 스프레드시트 데이터 로드
+   * 파싱된 스프레드시트 데이터 로드 (parsedSheet 기반)
+   */
+  private async loadParsedSpreadsheetData(
+    spreadsheetId?: string,
+    parsedSheetNames?: string[],
+    userId?: string
+  ): Promise<SpreadSheetStructure | null> {
+    if (!spreadsheetId || !parsedSheetNames || parsedSheetNames.length === 0 || !userId) {
+      this.logger.log(`Missing parameters for parsed spreadsheet loading - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${parsedSheetNames?.length || 0}, userId: ${userId}`);
+      return null;
+    }
+
+    try {
+      this.logger.log(`Loading parsed spreadsheet data for id: ${spreadsheetId}, sheets: ${parsedSheetNames.join(', ')}, user: ${userId}`);
+      
+      const sheets: Record<string, any> = {};
+      
+      // 각 parsedSheetName에 대해 데이터 로드
+      for (const sheetName of parsedSheetNames) {
+        try {
+          const parsedSheetData = await this.tableDataJsonParserService.loadParsedSpreadSheetData(
+            spreadsheetId,
+            sheetName
+          );
+          
+          if (parsedSheetData) {
+            sheets[sheetName] = parsedSheetData.content;
+            this.logger.log(`Successfully loaded sheet: ${sheetName} with hash: ${parsedSheetData.dataHash}`);
+          } else {
+            this.logger.warn(`No data found for sheet: ${sheetName} in spreadsheet: ${spreadsheetId}`);
+          }
+        } catch (sheetError) {
+          this.logger.error(`Failed to load sheet ${sheetName}: ${sheetError.message}`);
+          // 개별 시트 로딩 실패는 전체 로딩을 중단하지 않음
+        }
+      }
+      
+      if (Object.keys(sheets).length === 0) {
+        this.logger.warn(`No sheets were loaded for spreadsheet: ${spreadsheetId}`);
+        return null;
+      }
+
+      const spreadSheetStructure: SpreadSheetStructure = {
+        version: '1.0', // 기본값
+        sheets: sheets,
+        id: spreadsheetId,
+        fileName: `parsed-spreadsheet-${spreadsheetId}` // 임시 파일명
+      };
+      
+      this.logger.log(`Successfully loaded parsed spreadsheet with ${Object.keys(sheets).length} sheets: ${Object.keys(sheets).join(', ')}`);
+      
+      return spreadSheetStructure;
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`Failed to load parsed spreadsheet data: ${safeError.message}`, safeError.details);
+      return null;
+    }
+  }
+
+  /**
+   * 스프레드시트 데이터 로드 (기존 방식 - 사용되지 않음)
    */
   private async loadSpreadsheetData(
     spreadsheetId?: string,
@@ -294,6 +357,7 @@ export class MainChatService {
       return null;
     }
   }
+
 
   /**
    * AI 스트리밍 처리 (비동기)

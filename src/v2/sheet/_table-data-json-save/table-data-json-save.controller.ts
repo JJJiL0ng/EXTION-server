@@ -75,7 +75,8 @@ export class TableDataJsonSaveController {
   private convertDtoToDelta(dto: ApplyDeltaDto): Omit<CellDelta, 'timestamp'> {
     return {
       action: dto.action,
-      sheetName: dto.sheetName,
+      spreadSheetId: dto.spreadSheetId, // 추가된 필드
+      parsedSheetName: dto.parsedSheetName,
       cellAddress: dto.cellAddress,
       range: dto.range,
       value: dto.value,
@@ -96,16 +97,17 @@ export class TableDataJsonSaveController {
     @Body() dto: CreateSpreadSheetDto,
   ): Promise<{
     success: boolean;
-    data: LoadSpreadSheetResponse;
+    // data: LoadSpreadSheetResponse;
     message: string;
   }> {
     this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
     
-    const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
+    // const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
+    await this.tableDataJsonSaveService.createSpreadSheet(dto);
 
     return {
       success: true,
-      data: result,
+      // data: result,
       message: 'SpreadSheet created successfully'
     };
   }
@@ -145,11 +147,18 @@ export class TableDataJsonSaveController {
   async applyDelta(
     @Body() dto: ApplyDeltaDto,
   ) {
+    this.logger.log(`[DEBUG] Controller received delta request for user: ${dto.userId}, spreadSheetId: ${dto.spreadSheetId}`);
+    this.logger.log(`[DEBUG] Delta action: ${dto.action}, parsedSheetName: ${dto.parsedSheetName}`);
+    
     const deltaData = this.convertDtoToDelta(dto);
+    this.logger.log(`[DEBUG] Converted delta data:`, JSON.stringify(deltaData, null, 2));
+    
     const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(dto.userId, {
       ...deltaData,
       timestamp: Date.now()
     });
+
+    this.logger.log(`[DEBUG] Delta application result:`, JSON.stringify(result, null, 2));
 
     return {
       success: result.success,
@@ -169,17 +178,25 @@ export class TableDataJsonSaveController {
   async applyBatchDeltas(
     @Body() dto: { deltas: ApplyDeltaDto[]; userId: string },
   ) {
-    this.logger.log(`Applying ${dto.deltas.length} deltas for user: ${dto.userId}`);
+    this.logger.log(`[DEBUG] Applying ${dto.deltas.length} deltas for user: ${dto.userId}`);
     
     const results: ApplyDeltaResponse[] = [];
-    for (const deltaDto of dto.deltas) {
+    for (let i = 0; i < dto.deltas.length; i++) {
+      const deltaDto = dto.deltas[i];
+      this.logger.log(`[DEBUG] Processing delta ${i + 1}/${dto.deltas.length}`);
+      this.logger.log(`[DEBUG] Delta DTO:`, JSON.stringify(deltaDto, null, 2));
+      
       const deltaData = this.convertDtoToDelta(deltaDto);
+      this.logger.log(`[DEBUG] Converted delta data:`, JSON.stringify(deltaData, null, 2));
+      
       const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(dto.userId, {
         ...deltaData,
         timestamp: Date.now()
       });
       results.push(result);
     }
+
+    this.logger.log(`[DEBUG] All ${results.length} deltas processed successfully`);
 
     return {
       success: true,

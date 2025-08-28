@@ -126,7 +126,8 @@ export interface SpreadJSCellStyle {
 
 export interface CellDelta {
   action: DeltaAction;
-  sheetName: string;
+  spreadSheetId: string; // 스프레드시트 ID 추가
+  parsedSheetName: string;
   cellAddress?: string;
   range?: string;
   value?: string | number | boolean | null;
@@ -464,7 +465,7 @@ export function isCellData(data: unknown): data is CellData {
 export function hasRequiredDeltaFields(delta: Partial<CellDelta>): delta is CellDelta {
   return !!(
     delta.action && 
-    delta.sheetName && 
+    delta.parsedSheetName && 
     typeof delta.timestamp === 'number'
   );
 }
