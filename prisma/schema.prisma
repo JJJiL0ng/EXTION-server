@@ -25,93 +25,71 @@ model User {
   @@index([createdAt])
 }
 
-// 메인 스프레드시트 모델 (단순화)
+// 메인 스프레드시트 모델 (메타데이터 관리)
 model SpreadSheet {
   id         String            @id @default(cuid())
   fileName   String
-  fileSize   Int? // 바이트 단위
+  fileSize   Int?              // 바이트 단위 (메타데이터로 유지, 실제 JSON 크기와 다를 수 있음)
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
   lastOpened DateTime          @default(now()) // 최근 열어본 시간
-  version    Int               @default(1) // 파일 버전
+  version    Int               @default(1) // 파일 버전 (낙관적 잠금을 위한 핵심 필드)
   status     SpreadSheetStatus @default(ACTIVE)
 
   // 외래키
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chatId String
+  chatId String // 스프레드시트에 연결된 기본 채팅 ID (옵션)
 
-  // 관계
-  data         SpreadSheetData?
-  editHistory  EditHistory[]
-  chats        Chat[]
-  // 신규 관계: 시트별 원본 JSON과 잔여 JSON 저장
-  parsedSheets ParsedSheet[]
-  remainders   ParsedRemainder[]
+  // 관계: 스프레드시트 데이터와 1:1 관계 유지
+  data        SpreadSheetData?
+  editHistory EditHistory[] // 편집 이력 모델은 유지하지만, 델타 레코드와의 직접적인 관계는 사라짐
+  chats       Chat[]
 
   @@unique([userId, id]) // 사용자별 스프레드시트 ID 고유
   @@index([userId, updatedAt])
   @@index([userId, lastOpened])
 }
 
-// 스프레드시트 데이터 저장 (압축)
+// 스프레드시트 데이터 저장 (압축되지 않은 JSONB)
+// 이제 전체 스프레드시트의 JSON 데이터를 압축 없이 그대로 저장합니다.
 model SpreadSheetData {
-  id             String   @id @default(cuid())
-  spreadSheetId  String   @unique
-  compressedData Bytes // GZIP 압축된 JSON 데이터
-  dataHash       String // SHA-256 해시 (무결성 검증)
-  originalSize   Int // 압축 전 크기
-  compressedSize Int // 압축 후 크기
-  sheetCount     Int      @default(1)
-  version        String   @default("18.1.4") // SpreadJS 버전
-  savedAt        DateTime @default(now())
+  id            String   @id @default(cuid())
+  spreadSheetId String   @unique
+  data          Json     @db.JsonB // 압축되지 않은 전체 스프레드시트 JSON 데이터
+  dataHash      String   // SHA-256 등 해시 (무결성 검증 및 변경 감지 용도)
+  originalSize  Int      // JSON 데이터의 문자열 크기 (바이트)
+  sheetCount    Int      @default(1) // 포함된 시트 수
+  version       String   @default("18.1.4") // SpreadJS 버전 등 콘텐츠 버전
+  savedAt       DateTime @default(now())
 
   // 관계
-  spreadSheet     SpreadSheet       @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-  ParsedSheet     ParsedSheet[]
-  ParsedRemainder ParsedRemainder[]
+  spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
   @@index([dataHash])
   @@index([savedAt])
 }
 
 // 편집 히스토리 (단순화된 세션 관리)
+// 개별 델타 기록이 사라지므로, 세션 단위의 변경 메타데이터만 남습니다.
 model EditHistory {
   id            String     @id @default(cuid())
   spreadSheetId String
   sessionStart  DateTime   @default(now())
-  sessionEnd    DateTime? // null이면 진행중
-  deltaCount    Int        @default(0)
+  sessionEnd    DateTime?  // null이면 진행중
+  deltaCount    Int        @default(0) // 이 세션에서 발생한 델타의 총 개수 (델타 데이터는 직접 저장하지 않음)
   status        EditStatus @default(ACTIVE)
 
   // 메타데이터
-  metadata Json? // 편집 통계, 브라우저 정보 등
+  metadata Json? // 편집 통계, 브라우저 정보, 요약된 변경 내역 등
 
   // 관계
-  spreadSheet SpreadSheet   @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-  deltas      DeltaRecord[]
+  spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
   @@index([spreadSheetId, sessionStart])
   @@index([status])
 }
 
-// 개별 델타 변경사항 기록
-model DeltaRecord {
-  id            String      @id @default(cuid())
-  editHistoryId String
-  deltaData     Json // 구체적인 변경사항 (셀 값, 수식, 스타일 등)
-  sequenceNo    Int // 순서 보장
-  action        DeltaAction // 액션 타입
-  sheetName     String? // 대상 시트명
-  cellRange     String? // 대상 셀 범위 (A1:B5 형식)
-  createdAt     DateTime    @default(now())
-
-  // 관계
-  editHistory EditHistory @relation(fields: [editHistoryId], references: [id], onDelete: Cascade)
-
-  @@unique([editHistoryId, sequenceNo])
-  @@index([editHistoryId, createdAt])
-}
 
 // 채팅 (AI 대화)
 model Chat {
@@ -158,21 +136,6 @@ model Message {
   @@index([chatId, createdAt])
 }
 
-// 캐시 테이블 (AI 응답 캐싱용)
-model GPTCache {
-  id           String   @id @default(cuid())
-  cacheKey     String   @unique // 데이터 해시 + 질문 해시
-  dataHash     String // 스프레드시트 데이터 해시
-  questionHash String // 질문 해시
-  response     String   @db.Text
-  tokenCount   Int? // 사용된 토큰 수
-  createdAt    DateTime @default(now())
-  expiresAt    DateTime // TTL
-  hitCount     Int      @default(1) // 캐시 히트 횟수
-
-  @@index([dataHash])
-  @@index([expiresAt])
-}
 
 // Enum 정의
 enum SpreadSheetStatus {
@@ -187,19 +150,6 @@ enum EditStatus {
   ERROR // 오류 발생
 }
 
-enum DeltaAction {
-  SET_CELL_VALUE // 셀 값 설정
-  SET_CELL_FORMULA // 셀 수식 설정
-  SET_CELL_STYLE // 셀 스타일 설정
-  DELETE_CELLS // 셀 삭제
-  INSERT_ROWS // 행 삽입
-  DELETE_ROWS // 행 삭제
-  INSERT_COLUMNS // 열 삽입
-  DELETE_COLUMNS // 열 삭제
-  ADD_SHEET // 시트 추가
-  DELETE_SHEET // 시트 삭제
-  RENAME_SHEET // 시트 이름 변경
-}
 
 enum ChatStatus {
   ACTIVE
@@ -220,44 +170,3 @@ enum MessageType {
   ERROR // 오류 메시지
 }
 
-// ----------------------- 신규 모델 (시트 파싱 저장용) -----------------------
-// 요구사항
-// 1) Inventory, Products 등 각 시트를 개별 행으로 저장 (세부 내용은 파싱하지 않고 JSON 그대로 저장)
-// 2) 기존 저장 로직(SpreadSheetData)은 유지하며, 이 테이블은 추가 저장소로 동작
-// 3) 'sheets' 제거 후 남은 잔여 데이터 보관 테이블도 별도로 생성
-
-// 시트별 원본 JSON 저장
-model ParsedSheet {
-  id            String   @id @default(cuid())
-  spreadSheetId String
-  sourceDataId  String? // 어떤 원본 저장(SpreadSheetData)에서 파생되었는지 연결 (옵션)
-  sheetName     String // 예: "Inventory", "Products" 등
-  content       Json // 세부 내용 전체를 JSON 그대로 저장 (비파싱)
-  dataHash      String // content에 대한 SHA-256 등 해시 (중복 방지/무결성 검증 용도)
-  savedAt       DateTime @default(now())
-
-  // 관계
-  spreadSheet SpreadSheet      @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-  sourceData  SpreadSheetData? @relation(fields: [sourceDataId], references: [id], onDelete: SetNull)
-
-  @@unique([spreadSheetId, sheetName, dataHash])
-  @@index([spreadSheetId, savedAt])
-  @@index([sourceDataId])
-}
-
-// 'sheets' 키 제거 후 남은 잔여 JSON 저장
-model ParsedRemainder {
-  id            String   @id @default(cuid())
-  spreadSheetId String
-  sourceDataId  String? // 어떤 원본 저장(SpreadSheetData)에서 파생되었는지 연결 (옵션)
-  content       Json // 원본 JSON에서 'sheets' (또는 동등 구조) 제거 후 남은 전체 JSON
-  dataHash      String // content에 대한 해시
-  savedAt       DateTime @default(now())
-
-  // 관계
-  spreadSheet SpreadSheet      @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-  sourceData  SpreadSheetData? @relation(fields: [sourceDataId], references: [id], onDelete: SetNull)
-
-  @@index([spreadSheetId, savedAt])
-  @@index([sourceDataId])
-}

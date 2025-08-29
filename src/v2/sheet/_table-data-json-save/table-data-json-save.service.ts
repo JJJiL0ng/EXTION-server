@@ -3,13 +3,12 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 // Queue imports removed as not currently used
-import * as zlib from 'zlib';
-import { promisify } from 'util';
 import { UserService } from '../../user/user.service';
 import { createHash } from 'crypto';
-import { SpreadSheetStatus, EditStatus, DeltaAction } from '@prisma/client';
+import { SpreadSheetStatus, EditStatus } from '@prisma/client';
+import { DeltaAction } from 'src/v2/sheet/types/spreadsheet.types';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
-import { TableDataJsonParserService } from '../_table-data-json-parser/_table-data-json-parser.service';
+// import { TableDataJsonParserService } from '../_table-data-json-parser/_table-data-json-parser.service';
 import {
   CellDelta,
   MemorySpreadSheetData,
@@ -34,8 +33,6 @@ import {
   isValidDeltaAction
 } from '../types/spreadsheet.types';
 
-const gzip = promisify(zlib.gzip);
-const gunzip = promisify(zlib.gunzip);
 
 // Types are now imported from ./types/spreadsheet.types.ts
 
@@ -53,7 +50,7 @@ export class TableDataJsonSaveService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
-    private readonly parserService: TableDataJsonParserService,
+    // private readonly parserService: TableDataJsonParserService,
   ) { }
 
 
@@ -113,17 +110,20 @@ export class TableDataJsonSaveService {
         throw new NotFoundException('SpreadSheet not found');
       }
 
-      // 4. 데이터 압축 해제
-      let decompressedData: SpreadSheetStructure;
-      if (spreadSheet.data?.compressedData) {
-        const rawData = await this.decompressData(Buffer.from(spreadSheet.data.compressedData));
-        if (!isSpreadSheetStructure(rawData)) {
-          throw new ValidationError('Invalid spreadsheet data structure in database');
-        }
-        decompressedData = rawData;
-      } else {
-        decompressedData = this.getDefaultSpreadSheetStructure();
-      }
+      // 4. 데이터 로드 (JSONB에서 직접)
+      // let loadedData: SpreadSheetStructure;
+      // if (spreadSheet.data && (spreadSheet.data as any).data) {
+      //   const jsonbData = (spreadSheet.data as any).data;
+      //   if (!isSpreadSheetStructure(jsonbData)) {
+      //     throw new ValidationError('Invalid spreadsheet data structure in database');
+      //   }
+      //   loadedData = jsonbData as SpreadSheetStructure;
+      // } else {
+      //   loadedData = this.getDefaultSpreadSheetStructure();
+      // }
+      const jsonbData = (spreadSheet.data as any).data;
+      const loadedData = jsonbData as SpreadSheetStructure;
+
 
       // 5. 메모리에 로드 - 현재 사용하지 않음
       /*
@@ -153,7 +153,7 @@ export class TableDataJsonSaveService {
       return {
         id: spreadSheet.id,
         fileName: spreadSheet.fileName,
-        data: decompressedData,
+        // data: loadedData,
         version: spreadSheet.version,
         lastModified: spreadSheet.updatedAt
       };
@@ -178,34 +178,11 @@ export class TableDataJsonSaveService {
       await this.userService.ensureChat(dto.chatId, dto.userId, `Chat for ${dto.fileName}`);
       this.logger.log(`Chat ensured: ${dto.chatId} for user: ${dto.userId}`);
 
-      // 2. 기존 활성 데이터 저장 - 현재 사용하지 않음
-      /*
-      if (this.activeSpreadSheet?.metadata.isDirty) {
-        await this.forceSave();
-      }
-      */
+      // 초기 데이터 준비 - 프론트엔드에서 보낸 JSON을 그대로 사용
+      let initialData: any;
 
-      // 3. 스프레드시트 ID 중복 검사 (userId + spreadsheetId unique constraint)
-      // Prisma에서 @@unique([userId, id])로 처리하므로 별도 검사 불필요
-
-      // 4. 초기 데이터 준비
-      let initialData: SpreadSheetStructure;
-      if (dto.initialData) {
-        // SpreadJS 형식인지 확인하고 변환
-        if (this.isSpreadJSFormat(dto.initialData)) {
-          initialData = this.convertSpreadJSToInternalFormat(dto.initialData);
-        } else if (isSpreadSheetStructure(dto.initialData)) {
-          initialData = dto.initialData;
-        } else {
-          throw new ValidationError('Invalid initial data structure provided');
-        }
-      } else {
-        initialData = this.getDefaultSpreadSheetStructure();
-      }
-      //압축 gzip
-      const compressedData = await this.compressData(initialData);
-      //해시 - sha256
-      const dataHash = this.generateDataHash(compressedData);
+      // 프론트엔드에서 보낸 JSON을 그대로 저장 (변환하지 않음)
+      initialData = dto.initialData;
 
       // 5. 트랜잭션으로 생성
       const result = await this.prisma.$transaction(async (tx) => {
@@ -226,13 +203,9 @@ export class TableDataJsonSaveService {
         const sheetData = await tx.spreadSheetData.create({
           data: {
             spreadSheetId: spreadSheet.id,
-            compressedData,
-            dataHash,
-            originalSize: JSON.stringify(initialData).length,
-            compressedSize: compressedData.length,
+            data:  JSON.stringify(initialData), // JSON 직렬화로 타입 호환성 확보
             sheetCount: this.extractSheetCount(initialData),
-            version: this.extractVersion(initialData)
-          }
+          } as any
         });
 
         // EditHistory 시작
@@ -250,45 +223,11 @@ export class TableDataJsonSaveService {
         return { spreadSheet, sheetDataId: sheetData.id };
       });
 
-      // 6. 메모리에 로드 - 현재 사용하지 않음
-      /*
-      this.activeSpreadSheet = {
-        id: result.id,
-        userId: dto.userId,
-        baselineData: initialData,
-        pendingDeltas: [],
-        parsedCache: null,
-        metadata: {
-          version: 1,
-          lastActivity: new Date(),
-          saveScheduled: false,
-          isDirty: false
-        }
-      };
-      */
-
-      // 6. 추가: 시트 파싱 후 개별/잔여 저장 (기존 로직 유지 + 추가)
-      try {
-        // 원본 SpreadJS 입력이 있었다면 그대로 사용하여 remainder에 상위 메타를 보존
-        const rawForParser: any = (dto.initialData && this.isSpreadJSFormat(dto.initialData))
-          ? dto.initialData
-          : (initialData as any);
-
-        await this.parserService.parseAndPersist({
-          spreadSheetId: result.spreadSheet.id,
-          sourceDataId: result.sheetDataId,
-          rawData: rawForParser,
-        });
-      } catch (e) {
-        this.logger.error(`Sheet parsing/persist failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
-
       this.logger.log(`Created new spreadsheet: ${result.spreadSheet.id}`);
 
       return {
         id: result.spreadSheet.id,
         fileName: result.spreadSheet.fileName,
-        data: initialData,
         version: 1,
         lastModified: result.spreadSheet.updatedAt
       };
@@ -320,7 +259,7 @@ export class TableDataJsonSaveService {
       let spreadSheetId = delta.spreadSheetId;
       if (!spreadSheetId) {
         this.logger.warn(`[DEBUG] No spreadSheetId found in delta, attempting to find user's most recent spreadsheet`);
-        
+
         // 사용자의 가장 최근 스프레드시트 찾기
         const recentSpreadSheet = await this.prisma.spreadSheet.findFirst({
           where: {
@@ -341,91 +280,62 @@ export class TableDataJsonSaveService {
         }
       }
 
-      // 4. 현재 시트 데이터를 ParsedSheet에서 조회
-      const currentParsedSheet = await this.prisma.parsedSheet.findFirst({
+      // 4. 현재 시트 데이터를 SpreadSheetData에서 직접 조회
+      const currentSpreadSheetData = await this.prisma.spreadSheetData.findFirst({
         where: {
-          spreadSheetId,
-          sheetName: delta.parsedSheetName
+          spreadSheetId
         },
         orderBy: {
           savedAt: 'desc'
         }
       });
 
-      this.logger.log(`[DEBUG] Current parsed sheet found:`, !!currentParsedSheet);
+      this.logger.log(`[DEBUG] Current spreadsheet data found:`, !!currentSpreadSheetData);
 
-      // 5. 현재 시트 데이터에 델타 적용
-      let currentSheetData: any;
-      if (currentParsedSheet) {
-        currentSheetData = currentParsedSheet.content;
-        this.logger.log(`[DEBUG] Using existing sheet data for sheet: ${delta.parsedSheetName}`);
+      // 5. 현재 전체 스프레드시트 데이터에서 해당 시트 추출
+      let currentData: SpreadSheetStructure;
+      if (currentSpreadSheetData && (currentSpreadSheetData as any).data) {
+        currentData = (currentSpreadSheetData as any).data as SpreadSheetStructure;
+        this.logger.log(`[DEBUG] Using existing spreadsheet data`);
       } else {
-        // 시트가 없으면 기본 구조 생성
-        currentSheetData = {
+        // 데이터가 없으면 기본 구조 생성
+        currentData = this.getDefaultSpreadSheetStructure();
+        this.logger.log(`[DEBUG] Creating new default spreadsheet data`);
+      }
+
+      // 해당 시트가 없으면 생성
+      if (!currentData.sheets || !currentData.sheets[delta.parsedSheetName]) {
+        if (!currentData.sheets) currentData.sheets = {};
+        currentData.sheets[delta.parsedSheetName] = {
           name: delta.parsedSheetName,
           data: { dataTable: {} }
         };
-        this.logger.log(`[DEBUG] Creating new sheet data for sheet: ${delta.parsedSheetName}`);
+        this.logger.log(`[DEBUG] Created new sheet: ${delta.parsedSheetName}`);
       }
 
-      // 6. 델타를 시트 데이터에 적용
-      this.applyDeltaToSheetData(currentSheetData, delta);
-      this.logger.log(`[DEBUG] Delta applied to sheet data`);
+      // 6. 델타를 스프레드시트 데이터에 직접 적용
+      this.applyDeltaToData(currentData, delta);
+      this.logger.log(`[DEBUG] Delta applied to spreadsheet data`);
 
-      // 7. 업데이트된 데이터를 ParsedSheet에 저장 (기존 레코드를 삭제 후 새로 생성)
+      // 7. 업데이트된 데이터를 SpreadSheetData에 직접 저장
       const now = new Date();
-      const hash = createHash('sha256').update(JSON.stringify(currentSheetData)).digest('hex');
+      const jsonString = JSON.stringify(currentData);
+      const hash = createHash('sha256').update(jsonString).digest('hex');
 
-      // 기존 ParsedSheet의 sourceDataId를 유지 또는 스프레드시트의 최신 sourceDataId 찾기
-      let sourceDataIdToUse = currentParsedSheet ? currentParsedSheet.sourceDataId : null;
-      
-      // 기존 ParsedSheet가 없거나 sourceDataId가 null인 경우, 스프레드시트의 SpreadSheetData에서 찾기
-      if (!sourceDataIdToUse) {
-        const spreadSheetData = await this.prisma.spreadSheetData.findFirst({
-          where: { spreadSheetId },
-          orderBy: { savedAt: 'desc' }
-        });
-        
-        if (spreadSheetData) {
-          sourceDataIdToUse = spreadSheetData.id;
-          this.logger.log(`[DEBUG] Found sourceDataId from SpreadSheetData: ${sourceDataIdToUse}`);
-        }
-      }
-      
-      this.logger.log(`[DEBUG] Using sourceDataId: ${sourceDataIdToUse} (from existing: ${!!currentParsedSheet})`);
-
-      // 트랜잭션으로 기존 레코드 삭제 후 새로 생성
-      const savedSheet = await this.prisma.$transaction(async (tx) => {
-        // 1. 기존 레코드가 있다면 삭제
-        if (currentParsedSheet) {
-          await tx.parsedSheet.delete({
-            where: {
-              id: currentParsedSheet.id
-            }
-          });
-          this.logger.log(`[DEBUG] Deleted existing ParsedSheet with ID: ${currentParsedSheet.id}`);
-        }
-
-        // 2. 새 레코드 생성 (기존 sourceDataId 유지)
-        const newSheet = await tx.parsedSheet.create({
-          data: {
-            spreadSheetId,
-            sourceDataId: sourceDataIdToUse, // 기존 sourceDataId 유지
-            sheetName: delta.parsedSheetName,
-            content: currentSheetData,
-            dataHash: hash,
-            savedAt: now
-          }
-        });
-
-        return newSheet;
+      // SpreadSheetData 업데이트
+      const updatedData = await this.prisma.spreadSheetData.update({
+        where: {
+          spreadSheetId
+        },
+        data: {
+          data: JSON.parse(JSON.stringify(currentData)), // JSON 직렬화로 타입 호환성 확보
+          dataHash: hash,
+          originalSize: jsonString.length,
+          savedAt: now
+        } as any
       });
 
-      if (currentParsedSheet) {
-        this.logger.log(`[DEBUG] Delta replaced existing ParsedSheet with new ID: ${savedSheet.id}`);
-      } else {
-        this.logger.log(`[DEBUG] Delta created new ParsedSheet with ID: ${savedSheet.id}`);
-      }
+      this.logger.log(`[DEBUG] Updated SpreadSheetData with ID: ${updatedData.id}`);
 
       // 8. SpreadSheet 메타데이터 업데이트
       await this.prisma.spreadSheet.update({
@@ -561,7 +471,7 @@ export class TableDataJsonSaveService {
         include: {
           data: {
             select: {
-              compressedSize: true,
+              originalSize: true,
               sheetCount: true,
               savedAt: true
             }
@@ -585,7 +495,7 @@ export class TableDataJsonSaveService {
         updatedAt: sheet.updatedAt,
         lastOpened: sheet.lastOpened,
         sheetCount: sheet.data?.sheetCount || 1,
-        compressedSize: sheet.data?.compressedSize || 0,
+        compressedSize: sheet.data?.originalSize || 0, // originalSize를 compressedSize 대신 사용
         chatCount: sheet._count.chats,
         editCount: sheet._count.editHistory,
         isActive: false // 현재 캐싱을 사용하지 않으므로 항상 false
@@ -731,71 +641,6 @@ export class TableDataJsonSaveService {
     return currentData;
   }
 
-  /**
-   * 시트 데이터에 델타 적용 (ParsedSheet용)
-   */
-  private applyDeltaToSheetData(sheetData: any, delta: CellDelta): void {
-    this.logger.log(`[DEBUG] Applying delta to sheet data: ${delta.action}`);
-
-    if (!sheetData.data) sheetData.data = { dataTable: {} };
-    if (!sheetData.data.dataTable) sheetData.data.dataTable = {};
-
-    const dataTable = sheetData.data.dataTable;
-
-    switch (delta.action) {
-      case DeltaAction.SET_CELL_VALUE:
-        if (delta.cellAddress && delta.value !== undefined) {
-          if (!dataTable[delta.cellAddress]) {
-            dataTable[delta.cellAddress] = {};
-          }
-          dataTable[delta.cellAddress].value = delta.value;
-          this.logger.log(`[DEBUG] Set cell ${delta.cellAddress} value: ${delta.value}`);
-        }
-        break;
-
-      case DeltaAction.SET_CELL_FORMULA:
-        if (delta.cellAddress && delta.formula !== undefined) {
-          if (!dataTable[delta.cellAddress]) {
-            dataTable[delta.cellAddress] = {};
-          }
-          dataTable[delta.cellAddress].formula = delta.formula;
-          this.logger.log(`[DEBUG] Set cell ${delta.cellAddress} formula: ${delta.formula}`);
-        }
-        break;
-
-      case DeltaAction.SET_CELL_STYLE:
-        if (delta.cellAddress && delta.style !== undefined) {
-          if (!dataTable[delta.cellAddress]) {
-            dataTable[delta.cellAddress] = {};
-          }
-          dataTable[delta.cellAddress].style = {
-            ...dataTable[delta.cellAddress].style,
-            ...delta.style
-          };
-          this.logger.log(`[DEBUG] Set cell ${delta.cellAddress} style`);
-        }
-        break;
-
-      case DeltaAction.DELETE_CELLS:
-        if (delta.cellAddress && dataTable[delta.cellAddress]) {
-          delete dataTable[delta.cellAddress];
-          this.logger.log(`[DEBUG] Deleted cell ${delta.cellAddress}`);
-        }
-        break;
-
-      // 행/열 삽입/삭제는 더 복잡한 로직 필요
-      case DeltaAction.INSERT_ROWS:
-      case DeltaAction.DELETE_ROWS:
-      case DeltaAction.INSERT_COLUMNS:
-      case DeltaAction.DELETE_COLUMNS:
-        this.logger.warn(`[DEBUG] Delta action ${delta.action} not yet implemented for sheet data`);
-        break;
-
-      default:
-        this.logger.warn(`[DEBUG] Unknown delta action: ${delta.action}`);
-        break;
-    }
-  }
 
   /**
    * 개별 델타 적용 (기존 메서드 - SpreadSheetStructure용)
@@ -1088,25 +933,6 @@ export class TableDataJsonSaveService {
     };
   }
 
-  /**
-   * 데이터 압축/해제
-   */
-  private async compressData(data: SpreadSheetStructure): Promise<Buffer> {
-    const jsonString = JSON.stringify(data);
-    const compressed = await gzip(jsonString);
-    return Buffer.from(compressed);
-  }
-
-  private async decompressData(compressedData: Buffer): Promise<SpreadSheetStructure> {
-    const decompressed = await gunzip(compressedData);
-    const rawData = JSON.parse(Buffer.from(decompressed).toString());
-
-    if (!isSpreadSheetStructure(rawData)) {
-      throw new ValidationError('Decompressed data is not a valid spreadsheet structure');
-    }
-
-    return rawData;
-  }
 
   /**
    * 데이터 해시 생성
@@ -1127,178 +953,6 @@ export class TableDataJsonSaveService {
       return Object.keys(json.sheets).length;
     }
     return 1;
-  }
-
-  /**
-   * SpreadJS 형식 감지
-   */
-  private isSpreadJSFormat(data: any): boolean {
-    return (
-      data &&
-      typeof data === 'object' &&
-      data.version &&
-      data.sheets &&
-      typeof data.sheets === 'object' &&
-      // SpreadJS 특유의 속성들 확인
-      (data.sheetCount !== undefined || data.docProps !== undefined || data.frc !== undefined)
-    );
-  }
-
-  /**
-   * SpreadJS 형식을 내부 형식으로 변환
-   */
-  private convertSpreadJSToInternalFormat(spreadJSData: any): SpreadSheetStructure {
-    const internalData: SpreadSheetStructure = {
-      version: spreadJSData.version || '18.1.4',
-      sheets: {}
-    };
-
-    if (spreadJSData.sheets) {
-      for (const [sheetName, sheetData] of Object.entries(spreadJSData.sheets) as [string, any][]) {
-        internalData.sheets[sheetName] = {
-          name: sheetData.name || sheetName,
-          data: {
-            dataTable: this.convertSpreadJSDataTable(sheetData.data?.dataTable || {})
-          }
-        };
-      }
-    }
-
-    // 시트가 없다면 기본 시트 추가
-    if (Object.keys(internalData.sheets).length === 0) {
-      internalData.sheets['Sheet1'] = {
-        name: 'Sheet1',
-        data: { dataTable: {} }
-      };
-    }
-
-    return internalData;
-  }
-
-  /**
-   * SpreadJS DataTable을 내부 형식으로 변환
-   */
-  private convertSpreadJSDataTable(spreadJSDataTable: any): DataTable {
-    const internalDataTable: DataTable = {};
-
-    if (!spreadJSDataTable || typeof spreadJSDataTable !== 'object') {
-      return internalDataTable;
-    }
-
-    // SpreadJS는 숫자 인덱스를 사용할 수 있음 (row -> column)
-    for (const [rowKey, rowData] of Object.entries(spreadJSDataTable)) {
-      if (typeof rowData === 'object' && rowData !== null) {
-        for (const [colKey, cellData] of Object.entries(rowData as Record<string, any>)) {
-          // 숫자 인덱스를 A1 형식으로 변환
-          let cellAddress: string;
-          if (/^\d+$/.test(rowKey) && /^\d+$/.test(colKey)) {
-            cellAddress = this.convertNumericToA1(parseInt(rowKey), parseInt(colKey));
-          } else {
-            cellAddress = `${colKey}${rowKey}`;
-          }
-
-          if (cellData && typeof cellData === 'object') {
-            const convertedCell: any = {};
-
-            // 값 변환
-            if (cellData.value !== undefined) {
-              convertedCell.value = cellData.value;
-            }
-
-            // 수식 변환
-            if (cellData.formula !== undefined) {
-              convertedCell.formula = cellData.formula;
-            }
-
-            // 스타일 변환 (기본적인 스타일만 변환)
-            if (cellData.style && typeof cellData.style === 'object') {
-              convertedCell.style = this.convertSpreadJSStyle(cellData.style);
-            }
-
-            // 다른 속성들도 보존
-            for (const [key, value] of Object.entries(cellData)) {
-              if (!['value', 'formula', 'style'].includes(key)) {
-                convertedCell[key] = value;
-              }
-            }
-
-            internalDataTable[cellAddress] = convertedCell;
-          }
-        }
-      }
-    }
-
-    return internalDataTable;
-  }
-
-  /**
-   * 숫자 인덱스를 A1 형식으로 변환
-   */
-  private convertNumericToA1(row: number, col: number): string {
-    let colStr = '';
-    let colNum = col;
-    while (colNum >= 0) {
-      colStr = String.fromCharCode(65 + (colNum % 26)) + colStr;
-      colNum = Math.floor(colNum / 26) - 1;
-    }
-    return `${colStr}${row + 1}`;
-  }
-
-  /**
-   * SpreadJS 스타일을 내부 형식으로 변환
-   */
-  private convertSpreadJSStyle(spreadJSStyle: any): any {
-    const internalStyle: any = {};
-
-    // 기본적인 스타일 속성 매핑
-    const styleMapping: Record<string, string> = {
-      backColor: 'backgroundColor',
-      foreColor: 'color',
-      fontFamily: 'fontFamily',
-      fontSize: 'fontSize',
-      fontWeight: 'fontWeight',
-      hAlign: 'textAlign',
-      vAlign: 'verticalAlign'
-    };
-
-    for (const [spreadJSKey, internalKey] of Object.entries(styleMapping)) {
-      if (spreadJSStyle[spreadJSKey] !== undefined) {
-        internalStyle[internalKey] = spreadJSStyle[spreadJSKey];
-      }
-    }
-
-    // 폰트 크기 단위 처리 (px 제거)
-    if (internalStyle.fontSize && typeof internalStyle.fontSize === 'string') {
-      const fontSize = parseFloat(internalStyle.fontSize.replace('px', ''));
-      if (!isNaN(fontSize)) {
-        internalStyle.fontSize = fontSize;
-      }
-    }
-
-    // hAlign 값 변환
-    if (internalStyle.textAlign === 1) {
-      internalStyle.textAlign = 'center';
-    } else if (internalStyle.textAlign === 2) {
-      internalStyle.textAlign = 'right';
-    } else if (internalStyle.textAlign === 0) {
-      internalStyle.textAlign = 'left';
-    }
-
-    // vAlign 값 변환
-    if (internalStyle.verticalAlign === 1) {
-      internalStyle.verticalAlign = 'middle';
-    } else if (internalStyle.verticalAlign === 2) {
-      internalStyle.verticalAlign = 'bottom';
-    } else if (internalStyle.verticalAlign === 0) {
-      internalStyle.verticalAlign = 'top';
-    }
-
-    // 테두리 처리 (복잡하므로 기본적인 변환만)
-    if (spreadJSStyle.border) {
-      internalStyle.border = spreadJSStyle.border;
-    }
-
-    return internalStyle;
   }
 
   /**

@@ -97,7 +97,6 @@ export class TableDataJsonSaveController {
     @Body() dto: CreateSpreadSheetDto,
   ): Promise<{
     success: boolean;
-    // data: LoadSpreadSheetResponse;
     message: string;
   }> {
     this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
@@ -107,7 +106,6 @@ export class TableDataJsonSaveController {
 
     return {
       success: true,
-      // data: result,
       message: 'SpreadSheet created successfully'
     };
   }

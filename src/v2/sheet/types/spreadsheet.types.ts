@@ -2,7 +2,20 @@
 // Spreadsheet Type Definitions
 // ===============================
 
-import { DeltaAction } from '@prisma/client';
+// DeltaAction enum 정의 (Prisma 스키마에서 삭제되었으므로 직접 정의)
+export enum DeltaAction {
+  SET_CELL_VALUE = 'SET_CELL_VALUE',
+  SET_CELL_FORMULA = 'SET_CELL_FORMULA', 
+  SET_CELL_STYLE = 'SET_CELL_STYLE',
+  DELETE_CELLS = 'DELETE_CELLS',
+  INSERT_ROWS = 'INSERT_ROWS',
+  DELETE_ROWS = 'DELETE_ROWS',
+  INSERT_COLUMNS = 'INSERT_COLUMNS',
+  DELETE_COLUMNS = 'DELETE_COLUMNS',
+  ADD_SHEET = 'ADD_SHEET',
+  DELETE_SHEET = 'DELETE_SHEET',
+  RENAME_SHEET = 'RENAME_SHEET'
+}
 
 // ===============================
 // Core Spreadsheet Types
@@ -166,7 +179,7 @@ export interface MemorySpreadSheetData {
 export interface LoadSpreadSheetResponse {
   id: string;
   fileName: string;
-  data: SpreadSheetStructure;
+  // data: SpreadSheetStructure;
   version: number;
   lastModified: Date;
 }

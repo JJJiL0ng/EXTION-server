@@ -15,6 +15,9 @@ export class TableDataJsonParserService {
 		});
 
 		try {
+			// parsedSheet 모델이 삭제되었으므로 임시 비활성화
+			throw new Error('ParsedSheet functionality disabled - model removed from schema');
+			/*
 			const parsedSheet = await this.prisma.parsedSheet.findFirst({
 				where: {
 					spreadSheetId: spreadSheetId,
@@ -46,6 +49,7 @@ export class TableDataJsonParserService {
 				dataHash: parsedSheet.dataHash,
 				savedAt: parsedSheet.savedAt
 			};
+			*/
 
 		} catch (error) {
 			console.error(`[ERROR] Failed to load ParsedSheet:`, error);

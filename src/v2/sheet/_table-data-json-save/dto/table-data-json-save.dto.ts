@@ -15,39 +15,40 @@ import {
   Matches
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { DeltaAction } from '@prisma/client';
+import { DeltaAction } from 'src/v2/sheet/types/spreadsheet.types';
 
 // ===============================
 // SpreadJS Format Interface
 // ===============================
-export interface SpreadJSFormat {
-  version?: string;
-  name?: string;
-  docProps?: any;
-  sheetCount?: number;
-  frc?: number;
-  tabStripRatio?: number;
-  sheets?: {
-    [sheetName: string]: {
-      name: string;
-      isSelected?: boolean;
-      rowCount?: number;
-      columnCount?: number;
-      visible?: number;
-      frozenRowCount?: number;
-      frozenColCount?: number;
-      theme?: any;
-      data?: {
-        dataTable?: {
-          [cellAddress: string]: any;
-        };
-        [key: string]: any;
-      };
-      [key: string]: any;
-    };
-  };
-  [key: string]: any;
-}
+// export interface SpreadJSFormat {
+//   version?: string;
+//   name?: string;
+//   docProps?: any;
+//   sheetCount?: number;
+//   frc?: number;
+//   tabStripRatio?: number;
+//   sheets?: {
+//     [sheetName: string]: {
+//       name: string;
+//       isSelected?: boolean;
+//       rowCount?: number;
+//       columnCount?: number;
+//       visible?: number;
+//       frozenRowCount?: number;
+//       frozenColCount?: number;
+//       theme?: any;
+//       data?: {
+//         dataTable?: {
+//           [cellAddress: string]: any;
+//         };
+//         [key: string]: any;
+//       };
+//       [key: string]: any;
+//     };
+//   };
+//   [key: string]: any;
+// }
+
 
 // ===============================
 // 스프레드시트 생성 DTO
@@ -75,9 +76,9 @@ export class CreateSpreadSheetDto {
   @IsNotEmpty()
   userId: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsObject()
-  initialData?: Record<string, any> | SpreadJSFormat;
+  initialData: Record<string, any>;
 }
 
 // ===============================
