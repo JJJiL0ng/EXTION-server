@@ -226,7 +226,6 @@ export interface SpreadSheetListItem {
   updatedAt: Date;
   lastOpened: Date;
   sheetCount: number;
-  compressedSize: number;
   chatCount: number;
   editCount: number;
   isActive: boolean;
