@@ -57,16 +57,12 @@ model SpreadSheetData {
   id            String   @id @default(cuid())
   spreadSheetId String   @unique
   data          Json     @db.JsonB // 압축되지 않은 전체 스프레드시트 JSON 데이터
-  dataHash      String   // SHA-256 등 해시 (무결성 검증 및 변경 감지 용도)
-  originalSize  Int      // JSON 데이터의 문자열 크기 (바이트)
   sheetCount    Int      @default(1) // 포함된 시트 수
-  version       String   @default("18.1.4") // SpreadJS 버전 등 콘텐츠 버전
   savedAt       DateTime @default(now())
 
   // 관계
   spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
-  @@index([dataHash])
   @@index([savedAt])
 }
 
