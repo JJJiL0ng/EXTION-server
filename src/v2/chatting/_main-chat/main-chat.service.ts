@@ -268,7 +268,7 @@ export class MainChatService {
   }
 
   /**
-   * 파싱된 스프레드시트 데이터 로드 (JSONB 기반)
+   * 파싱된 스프레드시트 데이터 로드 채팅에 사용(JSONB 기반)
    */
   private async loadParsedSpreadsheetData(
     spreadsheetId?: string,
