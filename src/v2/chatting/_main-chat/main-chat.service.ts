@@ -4,7 +4,6 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { PrismaService } from '../../prisma/prisma.service';
 import { MainAiService } from '../../ai/_main-ai-service/main-ai.service';
 import { TableDataJsonSaveService } from '../../sheet/_table-data-json-save/table-data-json-save.service';
-import { TableDataJsonParserService } from '../../sheet/_table-data-json-parser/_table-data-json-parser.service';
 import { 
   MainChatRequestDto 
 } from './dto/main-chat-req.dto';
@@ -36,7 +35,6 @@ export class MainChatService {
     private readonly prisma: PrismaService,
     private readonly mainAiService: MainAiService,
     private readonly tableDataService: TableDataJsonSaveService,
-    private readonly tableDataJsonParserService: TableDataJsonParserService,
   ) {}
 
   /**
@@ -270,7 +268,7 @@ export class MainChatService {
   }
 
   /**
-   * 파싱된 스프레드시트 데이터 로드 (parsedSheet 기반)
+   * 파싱된 스프레드시트 데이터 로드 채팅에 사용(JSONB 기반)
    */
   private async loadParsedSpreadsheetData(
     spreadsheetId?: string,
@@ -278,82 +276,65 @@ export class MainChatService {
     userId?: string
   ): Promise<SpreadSheetStructure | null> {
     if (!spreadsheetId || !parsedSheetNames || parsedSheetNames.length === 0 || !userId) {
-      this.logger.log(`Missing parameters for parsed spreadsheet loading - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${parsedSheetNames?.length || 0}, userId: ${userId}`);
+      this.logger.log(`Missing parameters for spreadsheet loading - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${parsedSheetNames?.length || 0}, userId: ${userId}`);
       return null;
     }
 
     try {
-      this.logger.log(`Loading parsed spreadsheet data for id: ${spreadsheetId}, sheets: ${parsedSheetNames.join(', ')}, user: ${userId}`);
+      this.logger.log(`Loading spreadsheet data from JSONB for id: ${spreadsheetId}, sheets: ${parsedSheetNames.join(', ')}, user: ${userId}`);
       
-      const sheets: Record<string, any> = {};
-      
-      // 각 parsedSheetName에 대해 데이터 로드
-      for (const sheetName of parsedSheetNames) {
-        try {
-          const parsedSheetData = await this.tableDataJsonParserService.loadParsedSpreadSheetData(
-            spreadsheetId,
-            sheetName
-          );
-          
-          if (parsedSheetData) {
-            sheets[sheetName] = parsedSheetData.content;
-            this.logger.log(`Successfully loaded sheet: ${sheetName} with hash: ${parsedSheetData.dataHash}`);
-          } else {
-            this.logger.warn(`No data found for sheet: ${sheetName} in spreadsheet: ${spreadsheetId}`);
+      // SpreadSheetData에서 JSONB 데이터 조회
+      const spreadSheetData = await this.prisma.spreadSheetData.findFirst({
+        where: {
+          spreadSheet: {
+            id: spreadsheetId,
+            userId: userId,
+            status: 'ACTIVE'
           }
-        } catch (sheetError) {
-          this.logger.error(`Failed to load sheet ${sheetName}: ${sheetError.message}`);
-          // 개별 시트 로딩 실패는 전체 로딩을 중단하지 않음
+        },
+        orderBy: {
+          savedAt: 'desc'
         }
-      }
-      
-      if (Object.keys(sheets).length === 0) {
-        this.logger.warn(`No sheets were loaded for spreadsheet: ${spreadsheetId}`);
+      });
+
+      if (!spreadSheetData || !(spreadSheetData as any).data) {
+        this.logger.warn(`No JSONB data found for spreadsheet: ${spreadsheetId}`);
         return null;
       }
 
-      const spreadSheetStructure: SpreadSheetStructure = {
-        version: '1.0', // 기본값
-        sheets: sheets,
-        id: spreadsheetId,
-        fileName: `parsed-spreadsheet-${spreadsheetId}` // 임시 파일명
-      };
+      const fullData = (spreadSheetData as any).data as SpreadSheetStructure;
       
-      this.logger.log(`Successfully loaded parsed spreadsheet with ${Object.keys(sheets).length} sheets: ${Object.keys(sheets).join(', ')}`);
+      if (!fullData.sheets) {
+        this.logger.warn(`No sheets found in JSONB data for spreadsheet: ${spreadsheetId}`);
+        return null;
+      }
+
+      // 요청된 시트들이 존재하는지 확인 (로깅 목적)
+      let foundSheetCount = 0;
+      const availableSheets = Object.keys(fullData.sheets);
       
-      return spreadSheetStructure;
+      for (const sheetName of parsedSheetNames) {
+        if (fullData.sheets[sheetName]) {
+          foundSheetCount++;
+          this.logger.log(`Found requested sheet: ${sheetName} in JSONB data`);
+        } else {
+          this.logger.warn(`Requested sheet '${sheetName}' not found in JSONB data. Available sheets: ${availableSheets.join(', ')}`);
+        }
+      }
+      
+      if (foundSheetCount === 0) {
+        this.logger.warn(`None of the requested sheets were found for spreadsheet: ${spreadsheetId}`);
+        return null;
+      }
+
+      // 전체 스프레드시트 데이터를 그대로 반환 (렌더링을 위해)
+      this.logger.log(`Successfully loaded full spreadsheet data with ${availableSheets.length} total sheets (${foundSheetCount}/${parsedSheetNames.length} requested sheets found): ${availableSheets.join(', ')}`);
+      
+      return fullData;
 
     } catch (error) {
       const safeError = createSafeError(error);
       this.logger.error(`Failed to load parsed spreadsheet data: ${safeError.message}`, safeError.details);
-      return null;
-    }
-  }
-
-  /**
-   * 스프레드시트 데이터 로드 (기존 방식 - 사용되지 않음)
-   */
-  private async loadSpreadsheetData(
-    spreadsheetId?: string,
-    userId?: string
-  ): Promise<SpreadSheetStructure | null> {
-    if (!spreadsheetId || !userId) {
-      return null;
-    }
-
-    try {
-      this.logger.log(`Loading spreadsheet data for id: ${spreadsheetId}, user: ${userId}`);
-      
-      // 정식 TableDataJsonSaveService를 사용하여 스프레드시트 데이터 로드
-      const loadResult = await this.tableDataService.loadSpreadSheet(spreadsheetId, userId);
-      
-      this.logger.log(`Successfully loaded spreadsheet: ${loadResult.fileName} with ${Object.keys(loadResult.data.sheets).length} sheets`);
-      
-      return loadResult.data;
-
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to load spreadsheet data: ${safeError.message}`, safeError.details);
       return null;
     }
   }

@@ -97,7 +97,6 @@ export class TableDataJsonSaveController {
     @Body() dto: CreateSpreadSheetDto,
   ): Promise<{
     success: boolean;
-    // data: LoadSpreadSheetResponse;
     message: string;
   }> {
     this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
@@ -107,7 +106,6 @@ export class TableDataJsonSaveController {
 
     return {
       success: true,
-      // data: result,
       message: 'SpreadSheet created successfully'
     };
   }
@@ -223,50 +221,6 @@ export class TableDataJsonSaveController {
   }
 
   /**
-   * GPT용 파싱된 데이터 조회
-   */
-  @Get('gpt-data')
-  async getGPTReadyData(@Query('userId') userId: string) {
-    const gptData: GPTReadyData = await this.tableDataJsonSaveService.getGPTReadyData(userId);
-
-    return {
-      success: true,
-      data: {
-        totalCells: gptData.totalCells,
-        sheetCount: gptData.sheets.size,
-        dataHash: gptData.dataHash,
-        parsedAt: gptData.parsedAt,
-        sheets: Array.from(gptData.sheets.entries()).map(([name, data]) => ({
-          name,
-          cellCount: data.cellCount,
-          csvData: data.csvData,
-          metadata: data.metadata
-        }))
-      },
-      message: 'GPT data retrieved successfully'
-    };
-  }
-
-  /**
-   * 강제 저장
-   */
-  @Post('save')
-  @HttpCode(HttpStatus.OK)
-  async forceSave(@Body() body: { userId: string }) {
-    this.logger.log(`Force saving for user: ${body.userId}`);
-    
-    const result: ForceSaveResponse = await this.tableDataJsonSaveService.forceSave();
-
-    return {
-      success: result.success,
-      data: {
-        savedDeltas: result.savedDeltas
-      },
-      message: `Saved ${result.savedDeltas} pending changes`
-    };
-  }
-
-  /**
    * 사용자 스프레드시트 목록 조회
    */
   @Get('list')
@@ -333,40 +287,5 @@ export class TableDataJsonSaveController {
       success: true,
       message: 'Memory cleanup completed'
     };
-  }
-
-  /**
-   * 스프레드시트 상태 조회
-   */
-  @Get('status')
-  async getStatus(@Query('userId') userId: string) {
-    // 현재 활성 스프레드시트 정보 조회
-    try {
-      const gptData: GPTReadyData = await this.tableDataJsonSaveService.getGPTReadyData(userId);
-
-      return {
-        success: true,
-        data: {
-          hasActiveSpreadSheet: true,
-          totalCells: gptData.totalCells,
-          sheetCount: gptData.sheets.size,
-          dataHash: gptData.dataHash,
-          lastActivity: gptData.parsedAt
-        },
-        message: 'Status retrieved successfully'
-      };
-    } catch (error) {
-      return {
-        success: true,
-        data: {
-          hasActiveSpreadSheet: false,
-          totalCells: 0,
-          sheetCount: 0,
-          dataHash: null,
-          lastActivity: null
-        },
-        message: 'No active spreadsheet'
-      };
-    }
   }
 }

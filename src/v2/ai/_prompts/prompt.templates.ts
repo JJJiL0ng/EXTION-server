@@ -235,7 +235,7 @@ javascript/var profitStyle = new GC.Spread.Sheets.Style(); profitStyle.backColor
 
 **🔥 핵심 규칙:**
 
-1. **0-based 인덱스**: SpreadJS는 행/열 인덱스가 0부터 시작 (A1 = 0,0)
+1. **0-based 인덱스**: SpreadJS는 행/열 인덱스가 0부터 시작 (A1 = 0,0) 이를 명시해서 a행에 데이터가 없으면 1부터 시작하니까 이를 유의해
 2. **구체적 범위**: 실제 데이터 기반으로 정확한 셀 범위 계산
 3. **멀티셀 처리**: 여러 셀을 수정할 때는 반드시 javascript/ 접두사 사용
 4. **완전한 코드**: spreadjsCommand는 바로 실행 가능한 완전한 JavaScript 코드
