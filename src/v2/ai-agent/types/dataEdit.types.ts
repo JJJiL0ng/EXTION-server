@@ -7,8 +7,9 @@ export interface dataEditCommand {
     sheetIndex: number; // 적용시킬 시트가 몇번인지
     commandType: dataEditCommandType; // 예시: 'use_formula'
     range: string; //범위. 예시 (1,3) or (1,24,22,42)
-    detailedCommand: string; // 세부 명령어. 예시: '=SUM(B1:B10)'
+    detailedCommand: string | StyleCommand;
 }
+
 
 export enum dataEditCommandType {
     VALUE_CHANGE = 'value_change',
@@ -18,4 +19,58 @@ export enum dataEditCommandType {
     APPLY_STYLE = 'apply_style',
     FILTER_DATA = 'filter_data',
     SUMMARY_EDIT_HISTORY = 'summary_edit_history',
+}
+
+interface StyleCommand {
+    method: "style_object" | "direct_method"; // named_style 제거
+    properties: StyleProperties;
+}
+
+interface StyleProperties {
+    // 색상 관련
+    backColor?: string;
+    foreColor?: string;
+    
+    // 글꼴 관련
+    font?: string;
+    fontFamily?: string;
+    fontSize?: string;
+    fontStyle?: string;
+    fontWeight?: string;
+    
+    // 정렬 관련
+    hAlign?: "left" | "center" | "right" | "fill" | "justify";
+    vAlign?: "top" | "center" | "bottom" | "justify";
+    textIndent?: number;
+    textOrientation?: number;
+    isVerticalText?: boolean;
+    
+    // 테두리 관련
+    borderLeft?: BorderInfo;
+    borderTop?: BorderInfo;
+    borderRight?: BorderInfo;
+    borderBottom?: BorderInfo;
+    diagonalDown?: BorderInfo;
+    diagonalUp?: BorderInfo;
+    
+    // 텍스트 표시 관련
+    wordWrap?: boolean;
+    shrinkToFit?: boolean;
+    showEllipsis?: boolean;
+    textDecoration?: "none" | "underline" | "overline" | "lineThrough";
+    
+    // 보호 관련
+    locked?: boolean;
+    hidden?: boolean;
+    
+    // 기타
+    formatter?: string;
+    backgroundImage?: string;
+    cellPadding?: string;
+    watermark?: string;
+}
+
+interface BorderInfo {
+    color: string;
+    style: "empty" | "thin" | "medium" | "thick" | "double" | "dotted" | "dashed";
 }
