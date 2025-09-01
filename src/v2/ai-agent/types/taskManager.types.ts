@@ -1,19 +1,16 @@
-enum Intent {
+import type { dataEditCommandType } from './dataEdit.types';
+
+export enum Intent {
   DATA_EDIT = 'data_edit',
   DATA_ANALYSIS = 'data_analysis',
   GENERAL_HELP = 'general_help',
   COMPLEX_TASK = 'complex_task', //위의 세가지 의도가 복합적으로 섞여있는 경우
 }
 
-enum TaskType {
+
+export enum TaskType {
   //data_edit의 하위 tasks
-  VALUE_CHANGE = 'value_change',
-  USE_FORMULA = 'use_formula',
-  CONTROL_SHEET = 'control_sheet',
-  SORT_DATA = 'sort_data',
-  APPLY_STYLE = 'apply_style',
-  FILTER_DATA = 'filter_data',
-  SUMMARY_EDIT_HISTORY = 'summary_edit_history',
+  // NOTE: data_edit 관련 세부 타입은 dataEditCommandType을 사용하세요.
 
   //data_analysis의 하위 tasks
   ANALYZE_TRENDS = 'analyze_trends',
@@ -27,7 +24,8 @@ export interface Task {
   /** 각 작업의 고유 ID (예: "task_0") */
   taskId: string;
   /** 해당 작업의 종류 (TaskType Enum 값 중 하나) */
-  taskType: TaskType;
+  // data_edit 의 경우 dataEditCommandType을, 그 외에는 TaskType을 사용합니다.
+  taskType: TaskType | dataEditCommandType;
   /** 해당 작업에 대한 자연어 설명 (디버깅 및 후속 모듈 지침용) */
   description: string;
 }

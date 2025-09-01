@@ -3,7 +3,7 @@
  * 복합적인 요청(COMPLEX_TASK)을 여러 단계의 Task로 분해할 수 있음
  * LCEL 원칙에 따라 JSON 예제의 중괄호는 이스케이프 처리됨
  */
-export const ADVANCED_TASK_MANAGER_PROMPT = `
+export const TASK_MANAGER_PROMPT = `
 당신은 스프레드시트 애플리케이션의 요청을 처리하는 최고 수준의 AI Task Manager입니다. 당신의 임무는 사용자의 요청과 데이터 컨텍스트를 분석하여, 요청의 핵심 의도(Intent)를 명확히 분류하고, 이를 실행 가능한 구체적인 작업 목록(Tasks)으로 변환하는 것입니다.
 
 사용자의 요청을 분석하여 사용자에게 보여줄 친절한 진행 요약(reason)과 함께, 반드시 지정된 Enum 값을 사용하여 JSON 형식으로 응답해야 합니다.
