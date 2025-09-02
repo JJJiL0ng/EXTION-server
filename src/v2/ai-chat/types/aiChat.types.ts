@@ -2,7 +2,7 @@ import { TaskManagerOutput } from "src/v2/ai-agent/types/taskManager.types";
 import { dataEditChatRes } from "src/v2/ai-agent/types/dataEdit.types";
 
 export interface aiChatApiReq {
-    clientId: string; // 소켓 연결을 위한 클라이언트 ID
+    websocketClientId: string; // 소켓 연결을 위한 클라이언트 ID
     spreadsheetId: string;
     chatId: string;
     userId: string;
@@ -13,7 +13,5 @@ export interface aiChatApiReq {
 
 export interface aiChatApiRes {
     taskManagerOutput: TaskManagerOutput;
-
     dataEditChatRes: dataEditChatRes;
-
 }
