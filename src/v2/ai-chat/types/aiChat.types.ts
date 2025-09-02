@@ -12,6 +12,7 @@ export interface aiChatApiReq {
 }
 
 export interface aiChatApiRes {
+    jobId: string;
     taskManagerOutput: TaskManagerOutput;
     dataEditChatRes: dataEditChatRes;
 }
