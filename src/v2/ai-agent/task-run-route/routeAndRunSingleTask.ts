@@ -6,7 +6,7 @@ import {
 } from '../runnables/data_edit/data_edit.runnable';
 
 import { Task, TaskType } from '../types/taskManager.types';
-import { dataEditChatRes, dataEditCommandType } from '../types/dataEdit.types';
+import { dataEditChatRes, dataEditCommand, dataEditCommandType } from '../types/dataEdit.types';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { Runnable } from '@langchain/core/runnables';
 
@@ -21,7 +21,7 @@ interface TaskRouterInput {
     dataContext: string | Record<string, unknown>;
 }
 
-type TaskRouterOutput = dataEditChatRes;
+type TaskRouterOutput = dataEditCommand;
 
 /**
  * 단일 Task를 받아 taskType에 따라 해당 러너블을 실행하고 결과(JSON)를 반환합니다.

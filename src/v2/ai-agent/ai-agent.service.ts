@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { routeAndRunSingleTask } from './task-run-route/routeAndRunSingleTask';
 import type { Task, TaskManagerOutput } from './types/taskManager.types';
-import type { dataEditChatRes } from './types/dataEdit.types';
+import type { dataEditChatRes, dataEditCommand } from './types/dataEdit.types';
 
 import { createTaskManagerRunnable } from './runnables/task_manager/task_manager.runnable';
 
@@ -44,44 +44,33 @@ export class AiAgentService {
     });
   }
 
-  async runTaskManager(params: {
-    question: string;
-    dataContext: string | Record<string, unknown>;
-  }): Promise<TaskManagerOutput> {
-    const { question } = params;
-    const dataContext =
-      typeof params.dataContext === 'string'
-        ? params.dataContext
-        : JSON.stringify(params.dataContext ?? {}, null, 2);
+  async runTaskManager(
+    question: string,
+    dataContext: string | Record<string, unknown>,
+  ): Promise<TaskManagerOutput> {
+    const dataContextString =
+      typeof dataContext === 'string'
+        ? dataContext
+        : JSON.stringify(dataContext ?? {}, null, 2);
 
     const taskManager = createTaskManagerRunnable(this.geminiSmall);
-    const result = await taskManager.invoke({ question, dataContext });
+    const result = await taskManager.invoke({ question, dataContext: dataContextString });
     return result as TaskManagerOutput;
   }
 
-  /**
-   * 단일 task를 받아 해당 taskType에 맞는 러너블을 실행하고 결과를 반환합니다.
-   * @param params.task 실행할 Task (data_edit 하위 타입 지원)
-   * @param params.question 프롬프트에 주입할 사용자 질문
-   * @param params.dataContext 프롬프트에 주입할 데이터 컨텍스트(문자열 또는 객체)
-   * @param params.model 선택적 모델 크기: 'small' | 'normal' | 'large' (기본: 'normal')
-   */
-  async runSingleTask(params: {
-    task: Task;
-    question: string;
-    dataContext: string | Record<string, unknown>;
-    model: 'small' | 'normal' | 'large';
-  }): Promise<dataEditChatRes> {
-    const { task, question, dataContext } = params;
-    const which = params.model ?? 'normal';
-
-    const model =
-      which === 'small'
+  async runSingleTask(
+    task: Task,
+    question: string,
+    dataContext: string | Record<string, unknown>,
+    model: 'small' | 'normal' | 'large' = 'normal',
+  ): Promise<dataEditCommand> {
+    const selected =
+      model === 'small'
         ? this.geminiSmall
-        : which === 'large'
+        : model === 'large'
         ? this.geminiLarge
         : this.geminiNormal;
 
-    return routeAndRunSingleTask({ task, model, question, dataContext });
+    return routeAndRunSingleTask({ task, question, dataContext, model: selected });
   }
 }
