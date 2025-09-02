@@ -1,26 +1,48 @@
 import { Injectable } from '@nestjs/common';
-import { CreateAiAgentDto } from './dto/create-ai-agent.dto';
-import { UpdateAiAgentDto } from './dto/update-ai-agent.dto';
+import { ConfigService } from '@nestjs/config';
+
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+
 
 @Injectable()
 export class AiAgentService {
-  create(createAiAgentDto: CreateAiAgentDto) {
-    return 'This action adds a new aiAgent';
+  private readonly geminiSmall: ChatGoogleGenerativeAI; // 2.5 flash lite
+  private readonly geminiNormal: ChatGoogleGenerativeAI; // 2.5 flash
+  private readonly geminiLarge: ChatGoogleGenerativeAI; // 2.5 pro
+
+  constructor(
+    private readonly configService: ConfigService,
+    // private readonly cacheService: TableDataCacheService,
+  ) {
+    // LLM 초기화 - Gemini 2.5 Flash-lite 스트리밍 설정
+    this.geminiSmall = new ChatGoogleGenerativeAI({
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      model: 'gemini-2.5-flash-lite',
+      temperature: 0.3,
+      maxOutputTokens: 8000,
+      streaming: true,  // 스트리밍 활성화
+    });
+
+    this.geminiNormal = new ChatGoogleGenerativeAI({
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      model: 'gemini-2.5-flash',
+      temperature: 0.3,
+      maxOutputTokens: 6000,
+      streaming: false,  // 스트리밍 바활성화
+    });
+
+    this.geminiLarge = new ChatGoogleGenerativeAI({
+      apiKey: this.configService.get<string>('GEMINI_API_KEY'),
+      model: 'gemini-2.5-pro',
+      temperature: 0.3,
+      maxOutputTokens: 8000,
+      streaming: false,  // 스트리밍 비활성화
+    });
+
+    
+
+
+
   }
 
-  findAll() {
-    return `This action returns all aiAgent`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} aiAgent`;
-  }
-
-  update(id: number, updateAiAgentDto: UpdateAiAgentDto) {
-    return `This action updates a #${id} aiAgent`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} aiAgent`;
-  }
 }

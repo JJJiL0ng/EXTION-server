@@ -7,7 +7,7 @@ export interface dataEditCommand {
     sheetIndex: number; // 적용시킬 시트가 몇번인지
     commandType: dataEditCommandType; // 예시: 'use_formula'
     range: string; //범위. 예시 (1,3) or (1,24,22,42)
-    detailedCommand: string | StyleCommand;
+    detailedCommand: string | StyleCommand; //스타일관련 명령어의 경우 styleCommand를 사용함
 }
 
 
