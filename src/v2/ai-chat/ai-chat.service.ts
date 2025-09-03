@@ -47,8 +47,8 @@ export class AiChatService {
   }
 
   async loadParsedSpreadsheetData(
-      spreadsheetId?: string,
-      parsedSheetNames?: string[],
+      spreadsheetId: string,
+      parsedSheetNames: string[],
       userId?: string
     ): Promise<SpreadSheetStructure> {
       if (!spreadsheetId || !parsedSheetNames || parsedSheetNames.length === 0 || !userId) {

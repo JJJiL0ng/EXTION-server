@@ -92,16 +92,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('start_ai_job')
   async handleStartAiJob(
     client: Socket,
-    payload: {
-      question?: string;
-      userQuestionMessage?: string;
-      spreadsheetId: string;
-      chatId: string;
-      userId: string;
-      chatMode?: 'agent' | 'edit';
-      // dataContext 등 확장 필드는 서비스 내부에서 필요시 사용하도록 남겨둠
-      [key: string]: any;
-    },
+    payload: aiChatApiReq,
   ): Promise<void> {
     const startTime = Date.now();
     this.logger.log(`AI 작업 시작 요청 - 클라이언트: ${client.id}, 스프레드시트: ${payload.spreadsheetId}`);
@@ -122,7 +113,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         chatId: payload.chatId,
         userId: payload.userId,
         chatMode: payload.chatMode ?? 'agent',
-        userQuestionMessage: payload.userQuestionMessage ?? payload.question ?? '',
+        userQuestionMessage: payload.userQuestionMessage,
         parsedSheetNames: [],
       };
 
