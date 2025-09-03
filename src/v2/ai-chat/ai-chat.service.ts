@@ -1,9 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AiAgentService } from '../ai-agent/ai-agent.service';
-import { AiChatGateway } from './ai-chat.gateway';
 import { aiChatApiReq } from './types/aiChat.types';
 import { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
-import { Logger } from '@nestjs/common';
 import { SpreadSheetStructure, createSafeError } from '../sheet/types/spreadsheet.types';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -12,13 +10,13 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class AiChatService {
+  private readonly logger = new Logger(AiChatService.name);
+
   constructor(
-    private readonly logger = new Logger(AiChatService.name),
     private readonly aiAgentService: AiAgentService,
-    private readonly gateway: AiChatGateway,
     private readonly prisma: PrismaService,
     // private readonly redisService: RedisService,
-  ) { }
+  ) {}
 
   /**
   * 계획을 수립합니다
