@@ -9,6 +9,7 @@ export interface aiChatApiReq {
     chatMode: 'agent' | 'edit';
     userQuestionMessage: string;
     parsedSheetNames: string[];
+    jobId: string;
 }
 
 export interface aiChatApiRes {

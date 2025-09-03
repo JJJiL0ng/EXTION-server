@@ -115,6 +115,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         chatMode: payload.chatMode ?? 'agent',
         userQuestionMessage: payload.userQuestionMessage,
         parsedSheetNames: [],
+        jobId: payload.jobId,
       };
 
       const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId);
