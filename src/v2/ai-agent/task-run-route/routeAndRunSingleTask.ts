@@ -46,30 +46,39 @@ export async function routeAndRunSingleTask(
 
     let runnable: Runnable | null = null;
 
-    switch (task.taskType) {
+    switch (task.taskType as string) {
         // data_edit 하위 타입들 처리
         case dataEditCommandType.VALUE_CHANGE:
+        case 'VALUE_CHANGE': // AI가 대문자로 전달하는 경우 처리
             runnable = createValueChangeRunnable(model);
             break;
         case dataEditCommandType.USE_FORMULA:
+        case 'USE_FORMULA': // AI가 대문자로 전달하는 경우 처리
             runnable = createUseFormulaRunnable(model);
             break;
         case dataEditCommandType.SORT_DATA:
+        case 'SORT_DATA': // AI가 대문자로 전달하는 경우 처리
             runnable = createSortDataRunnable(model);
             break;
         case dataEditCommandType.APPLY_STYLE:
+        case 'APPLY_STYLE': // AI가 대문자로 전달하는 경우 처리
             runnable = createApplyStyleRunnable(model);
             break;
 
         // 아직 미지원/미구현 타입들 명시적 처리
         case dataEditCommandType.CONTROL_SHEET:
+        case 'CONTROL_SHEET':
         case dataEditCommandType.SUMMARY_EDIT_HISTORY:
+        case 'SUMMARY_EDIT_HISTORY':
             throw new Error(`Unsupported data_edit taskType: ${String(task.taskType)}`);
 
         // data_edit 이외의 상위 TaskType에 대한 가드 (추후 확장 포인트)
         case TaskType.ANALYZE_TRENDS:
+        case 'ANALYZE_TRENDS':
         case TaskType.FULL_DATA_INSIGHT_DISCOVERY:
+        case 'FULL_DATA_INSIGHT_DISCOVERY':
         case TaskType.PROVIDE_HELP_ARTICLE:
+        case 'PROVIDE_HELP_ARTICLE':
             throw new Error(`This router currently supports only data_edit task types. Received: ${String(task.taskType)}`);
 
         default:

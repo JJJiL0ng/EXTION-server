@@ -20,5 +20,26 @@ export function createTaskManagerRunnable(model: BaseChatModel): Runnable {
   const parser = new JsonOutputParser();
 
   // 3. Compose the components into a final runnable chain and return it.
-  return prompt.pipe(model).pipe(parser);
+  return prompt.pipe(model).pipe((output) => {
+    console.log('DEBUG: Raw LLM output:', output);
+    
+    // JSON 정리 시도
+    try {
+      let cleanedOutput = output;
+      
+      // 마크다운 코드 블록 제거
+      // if (cleanedOutput.includes('```json')) {
+      //   cleanedOutput = cleanedOutput.replace(/```json\s*/g, '').replace(/```\s*$/g, '');
+      // }
+      
+      // // 앞뒤 공백 제거
+      // cleanedOutput = cleanedOutput.trim();
+      
+      console.log('DEBUG: Cleaned output:', cleanedOutput);
+      return cleanedOutput;
+    } catch (error) {
+      console.warn('DEBUG: Failed to clean output, using original:', error);
+      return output;
+    }
+  }).pipe(parser);
 }

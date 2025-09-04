@@ -24,7 +24,7 @@ export class AiAgentService {
       model: 'gemini-2.5-flash-lite',
       temperature: 0.3,
       maxOutputTokens: 8000,
-      streaming: true,  // 스트리밍 활성화
+      streaming: false,  // 스트리밍 비활성화
     });
 
     this.geminiNormal = new ChatGoogleGenerativeAI({
@@ -54,8 +54,18 @@ export class AiAgentService {
         : JSON.stringify(dataContext ?? {}, null, 2);
 
     const taskManager = createTaskManagerRunnable(this.geminiSmall);
-    const result = await taskManager.invoke({ question, dataContext: dataContextString });
-    return result as TaskManagerOutput;
+    
+    // 디버깅을 위해 중간 결과를 확인
+    try {
+      const result = await taskManager.invoke({ question, dataContext: dataContextString });
+      console.log('DEBUG: TaskManager raw result:', JSON.stringify(result, null, 2));
+      return result as TaskManagerOutput;
+    } catch (error) {
+      console.error('DEBUG: TaskManager error:', error);
+      console.error('DEBUG: Question:', question);
+      console.error('DEBUG: DataContext length:', dataContextString.length);
+      throw error;
+    }
   }
 
   async runSingleTask(

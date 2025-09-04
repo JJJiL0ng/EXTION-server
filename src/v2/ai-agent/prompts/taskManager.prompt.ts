@@ -52,6 +52,8 @@ export const TASK_MANAGER_PROMPT = `
 
 ## 3. 출력 형식
 
+**중요**: 반드시 유효한 JSON 형식으로만 응답해야 합니다. 추가 설명이나 마크다운 코드 블록 없이 순수한 JSON만 출력하세요.
+
 반드시 다음 JSON 형식을 준수하여 응답해야 합니다.
 
 \`\`\`json
@@ -62,7 +64,8 @@ export const TASK_MANAGER_PROMPT = `
     {{
       "taskId": "task_순번(0부터 시작)",
       "taskType": "TaskType Enum 값",
-      "description": "해당 작업에 대한 자연어 설명 (디버깅용)",    }}
+      "description": "해당 작업에 대한 자연어 설명 (디버깅용)"
+    }}
   ]
 }}
 \`\`\`
@@ -82,16 +85,17 @@ export const TASK_MANAGER_PROMPT = `
     {{
       "taskId": "task_0",
       "taskType": "SORT_DATA",
-      "description": "C열(매출) 기준 내림차순 정렬",    }},
+      "description": "C열(매출) 기준 내림차순 정렬"
+    }},
     {{
       "taskId": "task_1",
       "taskType": "APPLY_STYLE",
-      "description": "상위 5개 행(A2:E6)에 노란색 배경 적용",
+      "description": "상위 5개 행(A2:E6)에 노란색 배경 적용"
     }},
     {{
       "taskId": "task_2",
       "taskType": "SUMMARY_EDIT_HISTORY",
-      "description": "방금 수행한 정렬 및 강조 작업을 요약하여 사용자에게 전달합니다.",
+      "description": "방금 수행한 정렬 및 강조 작업을 요약하여 사용자에게 전달합니다."
     }}
   ]
 }}
@@ -108,7 +112,7 @@ export const TASK_MANAGER_PROMPT = `
     {{
       "taskId": "task_0",
       "taskType": "FULL_DATA_INSIGHT_DISCOVERY",
-      "description": "전체 데이터를 기반으로 패턴, 트렌드, 이상치를 분석하여 종합적인 인사이트를 도출합니다.",
+      "description": "전체 데이터를 기반으로 패턴, 트렌드, 이상치를 분석하여 종합적인 인사이트를 도출합니다."
     }}
   ]
 }}
@@ -125,17 +129,17 @@ export const TASK_MANAGER_PROMPT = `
     {{
       "taskId": "task_0",
       "taskType": "FILTER_DATA",
-      "description": "B열에서 '영업팀' 텍스트를 기준으로 데이터를 필터링합니다.",
+      "description": "B열에서 '영업팀' 텍스트를 기준으로 데이터를 필터링합니다."
     }},
     {{
       "taskId": "task_1",
       "taskType": "ANALYZE_TRENDS",
-      "description": "필터링된 데이터를 기반으로 월별 매출 추세를 분석합니다.",
+      "description": "필터링된 데이터를 기반으로 월별 매출 추세를 분석합니다."
     }},
     {{
       "taskId": "task_2",
       "taskType": "SUMMARY_EDIT_HISTORY",
-      "description": "필터링 및 추세 분석 과정을 요약하여 사용자에게 전달합니다.",
+      "description": "필터링 및 추세 분석 과정을 요약하여 사용자에게 전달합니다."
     }}
   ]
 }}
@@ -152,9 +156,15 @@ export const TASK_MANAGER_PROMPT = `
     {{
       "taskId": "task_0",
       "taskType": "PROVIDE_HELP_ARTICLE",
-      "description": "피벗 테이블 생성 방법에 대한 일반적인 가이드를 제공합니다.",
+      "description": "피벗 테이블 생성 방법에 대한 일반적인 가이드를 제공합니다."
     }}
   ]
 }}
 \`\`\`
+
+**응답 시 주의사항**:
+- 위의 JSON 형식을 정확히 따라 응답하세요
+- 추가 설명이나 주석 없이 순수한 JSON만 출력하세요
+- 모든 문자열 값은 큰따옴표로 감싸세요
+- 마지막 속성 뒤에 쉼표를 붙이지 마세요
 `;

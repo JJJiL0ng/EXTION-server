@@ -44,10 +44,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   >();
 
-  private genJobId() {
-    return `job_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  }
-
 
   //====================
   // 프로덕션에서는 지울 예정
@@ -99,7 +95,9 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     
     try {
       // 입력 데이터 검증
-      if (!payload.spreadsheetId || !payload.chatId || !payload.userId) {
+      this.logger.log(`Received payload - parsedSheetNames: ${JSON.stringify(payload.parsedSheetNames)}, type: ${typeof payload.parsedSheetNames}`);
+      
+      if (!payload.spreadsheetId || !payload.chatId || !payload.userId || !payload.jobId) {
         this.logger.error(`필수 파라미터 누락 - 클라이언트: ${client.id}`);
         this.server.to(client.id).emit('ai_job_error', {
           message: 'MISSING_REQUIRED_PARAMETERS',
@@ -114,33 +112,27 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         userId: payload.userId,
         chatMode: payload.chatMode ?? 'agent',
         userQuestionMessage: payload.userQuestionMessage,
-        parsedSheetNames: [],
+        parsedSheetNames: payload.parsedSheetNames ?? [],
         jobId: payload.jobId,
       };
+
+      this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
 
       const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId);
 
       // 1) 계획 수립
-      const { plan } = await this.aiChatService.planTasks(aiReq, dataContext);
+      const { plan } = await this.aiChatService.planTasks(aiReq, dataContext!);
 
-      // 2) job 생성 및 클라이언트에게 계획 전송
-      const jobId = this.genJobId();
-      this.jobs.set(jobId, {
-        aiReq,
-        plan,
-        clientId: client.id,
-        createdAt: Date.now(),
-        dataContext,
-      });
+      // 2) 클라이언트에게 계획 전송
 
       this.server.to(client.id).emit('ai_job_planned', {
-        jobId,
+        jobId: payload.jobId,
         plan,
       });
 
       // 3) agent 모드라면 즉시 실행
       if (aiReq.chatMode === 'agent') {
-        await this.executeJob(jobId);
+        await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
       }
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -202,13 +194,15 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (feedback === 'SUCCESS') {
         this.logger.log(`작업 실행 계속 - ID: ${jobId}`);
-        await this.executeJob(jobId);
+        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.clientId);
       } else {
         // 실행 취소
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
-        this.jobs.delete(jobId);
         this.server.to(job.clientId).emit('ai_job_cancelled', { jobId });
       }
+      
+      // feedback 처리 후 job 삭제
+      this.jobs.delete(jobId);
     } catch (err) {
       this.logger.error(`작업 피드백 처리 실패 - 작업ID: ${jobId}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
       
@@ -225,40 +219,27 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  private async executeJob(jobId: string) {
-    const job = this.jobs.get(jobId);
-    if (!job) {
-      this.logger.warn(`실행하려는 작업이 존재하지 않음 - ID: ${jobId}`);
-      return;
-    }
-
-    const { aiReq, plan, clientId, dataContext } = job;
+  private async executeJobDirectly(
+    aiReq: aiChatApiReq, 
+    plan: TaskManagerOutput, 
+    dataContext: SpreadSheetStructure, 
+    clientId: string
+  ) {
     const executionStartTime = Date.now();
     
-    this.logger.log(`작업 실행 시작 - ID: ${jobId}, 클라이언트: ${clientId}`);
+    this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}`);
     
     try {
-      // 데이터 컨텍스트 검증
-      if (!dataContext) {
-        this.logger.error(`스프레드시트 데이터 누락 - 작업ID: ${jobId}`);
-        this.server.to(clientId).emit('ai_job_error', {
-          jobId,
-          message: 'INVALID_SPREADSHEET_DATA',
-          code: 'DATA_ERROR',
-        });
-        return;
-      }
-
       // 작업 실행
-      this.logger.log(`AI 작업 처리 시작 - ID: ${jobId}, 태스크 수: ${plan.tasks?.length || 0}`);
+      this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
       const { results } = await this.aiChatService.runPlannedTasks(plan, aiReq, dataContext);
 
       const executionTime = Date.now() - executionStartTime;
-      this.logger.log(`작업 실행 완료 - ID: ${jobId}, 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
+      this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
 
       // runPlannedTasks는 dataEditCommand[]를 반환(배열)하므로 프론트가 쓰기 쉽게 래핑
       this.server.to(clientId).emit('ai_tasks_executed', {
-        jobId,
+        jobId: aiReq.jobId,
         dataEditChatRes: {
           dataEditCommands: results,
         },
@@ -267,7 +248,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;
-      this.logger.error(`작업 실행 실패 - ID: ${jobId}, 소요시간: ${executionTime}ms, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
+      this.logger.error(`작업 실행 실패 - 소요시간: ${executionTime}ms, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
       
       // 운영 환경에서는 구체적인 에러 메시지 숨김
       const message = process.env.NODE_ENV === 'production' 
@@ -275,16 +256,12 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         : (err instanceof Error ? err.message : 'Unknown error');
         
       this.server.to(clientId).emit('ai_job_error', {
-        jobId,
+        jobId: aiReq.jobId,
         message,
         code: 'EXECUTION_ERROR',
         executionTime,
         timestamp: new Date().toISOString(),
       });
-    } finally {
-      // 완료/실패 시 정리
-      this.jobs.delete(jobId);
-      this.logger.log(`작업 정리 완료 - ID: ${jobId}`);
     }
   }
 
