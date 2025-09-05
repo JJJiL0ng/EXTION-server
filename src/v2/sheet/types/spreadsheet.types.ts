@@ -662,7 +662,7 @@ export interface CreateSpreadSheetDto {
   userId: string;
   fileName: string;
   chatId?: string;
-  initialData?: SpreadSheetStructure;
+  jsonData?: SpreadSheetStructure;
 }
 
 export interface ApplyDeltaDto {
