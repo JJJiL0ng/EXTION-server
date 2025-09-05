@@ -14,6 +14,7 @@ import { SpreadSheetStructure } from '../sheet/types/spreadsheet.types';
 import type { aiChatApiReq } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
+import { filteredSheetReturns } from './ai-chat.service';
 
 @WebSocketGateway({
   cors: {
@@ -222,7 +223,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private async executeJobDirectly(
     aiReq: aiChatApiReq, 
     plan: TaskManagerOutput, 
-    dataContext: SpreadSheetStructure, 
+    dataContext: filteredSheetReturns, 
     clientId: string
   ) {
     const executionStartTime = Date.now();
