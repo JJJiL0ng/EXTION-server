@@ -17,6 +17,7 @@ export const VALUE_CHANGE_PROMPT = `
 1.  **목표 셀 식별**: 사용자가 명시한 셀 주소("B5셀에"), 값에 대한 조건("A열이 '김민준'인 행의"), 또는 위치("마지막 행") 등을 분석하여 값을 변경할 정확한 셀 범위를 찾아냅니다.
 2.  **새로운 값 확정**: 해당 셀에 입력할 새로운 값을 사용자의 요청에서 추출합니다. 값은 텍스트, 숫자, 날짜 등이 될 수 있습니다.
 3.  **명령 생성**: 식별된 각 목표 셀과 새로운 값에 대해, 아래 JSON 출력 형식에 맞는 명령 객체를 생성합니다.
+4.  **범위 생성** 무조건 숫자로 범위를 표현해야합니다. a가 0이고 b가 1입니다. A1은 0,0 B1은 0,1 A2는 1,0 B2는 1,1
 
 **## 출력 형식**
 반드시 다음 JSON 구조를 따라야 하며, \`commandType\`은 항상 \`'value_change'\`로 고정해야 합니다.
@@ -27,7 +28,7 @@ export const VALUE_CHANGE_PROMPT = `
     {{
       "sheetIndex": 0,
       "commandType": "value_change",
-      "range": "값을 변경할 셀 또는 범위 (예: 'A1', 'B2:B10')",
+      "range": "값을 변경할 셀 또는 범위 (예: 'A1' -> '0,0', 'B2:B10' -> '1,1:9,1')",
       "detailedCommand": "셀에 입력할 새로운 값 (문자열 또는 숫자)"
     }}
   ]
@@ -48,7 +49,7 @@ export const VALUE_CHANGE_PROMPT = `
     {{
       "sheetIndex": 0,
       "commandType": "value_change",
-      "range": "B5",
+      "range": "1,4",
       "detailedCommand": "검토 완료"
     }}
   ]
@@ -65,13 +66,13 @@ export const VALUE_CHANGE_PROMPT = `
     {{
       "sheetIndex": 0,
       "commandType": "value_change",
-      "range": "C3",
+      "range": "2,2",
       "detailedCommand": "휴가중"
     }},
     {{
       "sheetIndex": 0,
       "commandType": "value_change",
-      "range": "C15",
+      "range": "2,14",
       "detailedCommand": "휴가중"
     }}
   ]
@@ -88,7 +89,7 @@ export const VALUE_CHANGE_PROMPT = `
     {{
       "sheetIndex": 0,
       "commandType": "value_change",
-      "range": "D10",
+      "range": "3,9",
       "detailedCommand": "50000"
     }}
   ]
