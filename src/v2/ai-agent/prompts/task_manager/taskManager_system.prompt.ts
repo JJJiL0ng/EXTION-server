@@ -50,7 +50,7 @@ TaskType Enum;
     {{
       "taskId": "task_순번(0부터 시작)",
       "taskType": "TaskType Enum 값",
-      "description": "해당 작업에 대한 자연어 설명 (디버깅용)"
+      "description": "해당 작업에 대한 자연어 설명 (해당 작업 전문 ai llm 에이전트에게 전달 되어 휴먼 프롬프트의 question으로 전달 될 명령어라서 명료하고 정확하고 상세하게 작성해야함, 유저의 요청 그 이상의 작업을 요청하면 안됨)"
     }}
   ]
 }}
@@ -108,8 +108,5 @@ TaskType Enum;
 `;
 
 
-export const TASK_MANAGER_HUMAN_PROMPT = `
-사용자 요청: {question}
-데이터 컨텍스트: {dataContext}
-`
+
 

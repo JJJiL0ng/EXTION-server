@@ -2,8 +2,8 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate } from '@langchain/core/prompts';
 import { JsonOutputParser, StringOutputParser } from '@langchain/core/output_parsers';
 import { Runnable } from '@langchain/core/runnables';
-import { TASK_MANAGER_SYSTEM_PROMPT, TASK_MANAGER_HUMAN_PROMPT } from '../../prompts/taskManager.prompt'; // Adjust the import path as needed
-
+import { TASK_MANAGER_SYSTEM_PROMPT } from '../../prompts/task_manager/taskManager_system.prompt'; // Adjust the import path as needed
+import { TASK_MANAGER_HUMAN_PROMPT } from '../../prompts/task_manager/taskManager_human.prompt'; // Adjust the import path as needed
 // lcel의 프롬프트 탬플릿에서 js변수를 파싱하여 필요한 변수를 매개변수로 받도록 설정함
 // 여기선 question, dataContext를 넣어줘야함
 // 사용법

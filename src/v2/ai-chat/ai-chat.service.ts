@@ -8,9 +8,9 @@ import { PrismaService } from '../prisma/prisma.service';
 
 // import { RedisService } from '...'; // Redis와 같은 상태 저장소 서비스
 
- export interface filteredSheetReturns {
-    [sheetName: string]: any;
-  }
+export interface filteredSheetReturns {
+  [sheetName: string]: any;
+}
 
 @Injectable()
 export class AiChatService {
@@ -20,7 +20,7 @@ export class AiChatService {
     private readonly aiAgentService: AiAgentService,
     private readonly prisma: PrismaService,
     // private readonly redisService: RedisService,
-  ) {}
+  ) { }
 
   /**
   * 계획을 수립합니다
@@ -41,7 +41,8 @@ export class AiChatService {
     // 1. 계획된 모든 Task를 순차적으로 실행합니다.
     const results = await Promise.all(
       TaskManagerOutput.tasks.map((task) => {
-        return this.aiAgentService.runSingleTask(task, aiChatApiReq.userQuestionMessage, dataContext, 'small');
+        // return this.aiAgentService.runSingleTask(task, aiChatApiReq.userQuestionMessage, dataContext, 'small');
+        return this.aiAgentService.runSingleTask(task, task.description, dataContext, 'small');
       })
     );
 
@@ -50,7 +51,7 @@ export class AiChatService {
     };
   }
 
- 
+
 
   async loadParsedSpreadsheetData(
     spreadsheetId: string,
@@ -59,13 +60,13 @@ export class AiChatService {
   ): Promise<filteredSheetReturns | null> {
     console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}`);
     this.logger.log(`loadParsedSpreadsheetData called with - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}`);
-    
+
     if (!spreadsheetId || !userId) {
       console.log(`[DEBUG] Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
       this.logger.warn(`Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
       return null;
     }
-    
+
     // parsedSheetNames가 비어있는 경우 경고만 하고 계속 진행
     if (!parsedSheetNames || parsedSheetNames.length === 0) {
       console.log(`[DEBUG] parsedSheetNames is empty, continuing anyway`);
@@ -74,10 +75,10 @@ export class AiChatService {
 
     try {
       this.logger.log(`Loading spreadsheet data from JSONB for id: ${spreadsheetId}, sheets: ${parsedSheetNames?.join(', ') || 'ALL'}, user: ${userId}`);
-      
+
       // SpreadSheetData에서 JSONB 데이터 조회
       this.logger.log(`Querying SpreadSheetData for spreadsheet: ${spreadsheetId}, user: ${userId}`);
-      
+
       const spreadSheetData = await this.prisma.spreadSheetData.findFirst({
         where: {
           spreadSheet: {
@@ -103,13 +104,13 @@ export class AiChatService {
       }
 
       let rawData = (spreadSheetData as any).data;
-      
+
       // 실제 데이터 구조에 따라 sheets 접근 경로 수정
       let fullData: SpreadSheetStructure;
       let sheets: any;
-      
+
       console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));
-      
+
       if (rawData.spreadsheetData?.sheets) {
         // 데이터가 spreadsheetData.sheets 구조인 경우
         sheets = rawData.spreadsheetData.sheets;
@@ -124,18 +125,18 @@ export class AiChatService {
         this.logger.warn(`No sheets found in JSONB data for spreadsheet: ${spreadsheetId}. Available keys:`, Object.keys(rawData));
         return null;
       }
-      
+
       this.logger.log(`Found sheets:`, Object.keys(sheets));
 
       // 요청된 시트들만 필터링하여 반환
       let foundSheetCount = 0;
       const availableSheets = Object.keys(sheets);
       let filteredSheets: { [sheetName: string]: any } = {};
-      
+
       if (parsedSheetNames && parsedSheetNames.length > 0) {
         // 특정 시트들만 요청된 경우 - 해당 시트들만 필터링
         console.log(`[DEBUG] Filtering sheets - requested: ${JSON.stringify(parsedSheetNames)}, available: ${JSON.stringify(availableSheets)}`);
-        
+
         for (const sheetName of parsedSheetNames) {
           if (sheets[sheetName]) {
             filteredSheets[sheetName] = sheets[sheetName];
@@ -145,12 +146,12 @@ export class AiChatService {
             this.logger.warn(`Requested sheet '${sheetName}' not found in JSONB data. Available sheets: ${availableSheets.join(', ')}`);
           }
         }
-        
+
         if (foundSheetCount === 0) {
           this.logger.warn(`None of the requested sheets were found for spreadsheet: ${spreadsheetId}`);
           return null;
         }
-        
+
         this.logger.log(`Successfully filtered ${foundSheetCount}/${parsedSheetNames.length} requested sheets: ${Object.keys(filteredSheets).join(', ')}`);
       } else {
         // parsedSheetNames가 없으면 모든 시트를 사용
@@ -161,10 +162,10 @@ export class AiChatService {
 
       // fullData에 필터링된 sheets 속성 설정
       fullData.sheets = filteredSheets;
-      
+
       const requestedSheetCount = parsedSheetNames?.length || availableSheets.length;
       this.logger.log(`Successfully loaded spreadsheet data with ${Object.keys(filteredSheets).length} sheets (${foundSheetCount}/${requestedSheetCount} requested): ${Object.keys(filteredSheets).join(', ')}`);
-      
+
       // return fullData;
       return fullData.sheets;
     } catch (error) {
