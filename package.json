@@ -7,7 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "nest build -p tsconfig.build.json",
+    "build": "prisma generate && nest build -p tsconfig.build.json",
+    "build:railway": "prisma generate && prisma migrate deploy && nest build -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -32,7 +33,12 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "railway:build": "npm ci --only=production && prisma generate && prisma migrate deploy && nest build -p tsconfig.build.json",
+    "railway:start": "node --enable-source-maps dist/main.js",
+    "db:migrate:production": "prisma migrate deploy --skip-generate",
+    "db:health": "prisma db execute --stdin <<< 'SELECT 1;'",
+    "prestart:prod": "npm run db:health || (echo 'DB connection failed' && exit 1)"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
