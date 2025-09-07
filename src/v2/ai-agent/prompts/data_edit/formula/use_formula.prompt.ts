@@ -98,8 +98,3 @@ export const USE_FORMULA_SYSTEM_PROMPT = `
 }}
 \`\`\`
 `;
-
-export const USE_FORMULA_HUMAN_PROMPT = `
-사용자 요청: {question}
-데이터 컨텍스트: {dataContext}
-`;

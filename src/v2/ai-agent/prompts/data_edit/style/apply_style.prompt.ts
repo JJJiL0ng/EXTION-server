@@ -220,9 +220,3 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 }}
 \`\`\`
 `;
-
-
-export const APPLY_STYLE_HUMAN_PROMPT = `
-사용자 요청: {question}
-데이터 컨텍스트: {dataContext}
-`;
