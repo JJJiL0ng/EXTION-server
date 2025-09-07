@@ -5,7 +5,8 @@ import { Runnable } from '@langchain/core/runnables';
 import { APPLY_STYLE_PROMPT } from '../../prompts/data_edit/apply_style.prompt';
 import { SORT_DATA_PROMPT } from '../../prompts/data_edit/sort_data.prompt';
 import { USE_FORMULA_PROMPT } from '../../prompts/data_edit/use_formula.prompt';
-import { VALUE_CHANGE_PROMPT } from '../../prompts/data_edit/value_change.prompt';
+import { VALUE_CHANGE_SYSTEM_PROMPT, VALUE_CHANGE_HUMAN_PROMPT } from '../../prompts/data_edit/value_change.prompt';
+import { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate } from '@langchain/core/prompts';
 
 export function createApplyStyleRunnable(model: BaseChatModel): Runnable {
   const prompt = PromptTemplate.fromTemplate(APPLY_STYLE_PROMPT);
@@ -34,7 +35,13 @@ export function createUseFormulaRunnable(model: BaseChatModel): Runnable {
 
 
 export function createValueChangeRunnable(model: BaseChatModel): Runnable {
-  const prompt = PromptTemplate.fromTemplate(VALUE_CHANGE_PROMPT);
+  const systemValueChangeMessage = SystemMessagePromptTemplate.fromTemplate(VALUE_CHANGE_SYSTEM_PROMPT);
+  const humanValueChangeMessage = HumanMessagePromptTemplate.fromTemplate(VALUE_CHANGE_HUMAN_PROMPT);
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    systemValueChangeMessage,
+    humanValueChangeMessage
+  ]);
 
   const parser = new JsonOutputParser();
 

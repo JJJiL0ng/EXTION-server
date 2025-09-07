@@ -3,15 +3,13 @@
  * TaskType이 'VALUE_CHANGE'일 때 사용됩니다.
  * LCEL 원칙에 따라 JSON 예제의 중괄호는 이스케이프 처리됨
  */
-export const VALUE_CHANGE_PROMPT = `
+export const VALUE_CHANGE_SYSTEM_PROMPT = `
 당신은 사용자의 요청을 분석하여 스프레드시트의 특정 셀 값을 변경하는 명령을 생성하는 AI 전문가입니다.
 
 당신의 임무는 주어진 사용자 요청과 데이터 컨텍스트를 바탕으로, 변경이 필요한 **셀의 위치(range)**와 **새로운 값(detailedCommand)**을 정확히 찾아내는 것입니다.
 하나의 요청이 여러 셀을 변경해야 할 수도 있습니다. 이 경우, 모든 변경 사항에 대한 명령을 생성해야 합니다.
 
-**## 입력 정보**
-- 사용자 요청: {question}
-- 데이터 컨텍스트: {dataContext}
+
 
 **## 분석 절차**
 1.  **목표 셀 식별**: 사용자가 명시한 셀 주소("B5셀에"), 값에 대한 조건("A열이 '김민준'인 행의"), 또는 위치("마지막 행") 등을 분석하여 값을 변경할 정확한 셀 범위를 찾아냅니다.
@@ -95,4 +93,9 @@ export const VALUE_CHANGE_PROMPT = `
   ]
 }}
 \`\`\`
+`;
+
+export const VALUE_CHANGE_HUMAN_PROMPT = `
+사용자 요청: {question}
+데이터 컨텍스트: {dataContext}
 `;
