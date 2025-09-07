@@ -4,7 +4,8 @@ export interface dataEditChatRes {
 
 export interface dataEditCommand {
     //command maker에서 command + detailedCommand + range로 spreadjs 명령어 생성 할 예정 spreadjs 명령어 예시: sheet.setFormula(1, 1, '=SUM(A1,C3)');
-    sheetIndex: number; // 적용시킬 시트가 몇번인지
+    // sheetIndex: number; // 적용시킬 시트가 몇번인지
+    sheetName: string;
     commandType: dataEditCommandType; // 예시: 'use_formula'
     range: string; //범위. 예시 (1,3) or (1,24,22,42)
     detailedCommand: string | StyleCommand; //스타일관련 명령어의 경우 styleCommand를 사용함

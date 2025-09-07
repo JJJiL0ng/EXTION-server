@@ -21,7 +21,7 @@ export const USE_FORMULA_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "적용 시킬 타겟 시트 이름, dataContext에서 주어진 시트 이름을 정확히 사용해야함",
       "commandType": "use_formula",
       "range": "수식을 적용할 위치 (아래 'range 작성 규칙' 참고, 숫자 배열로 전달해야함)",
       "detailedCommand": "셀에 입력할 완전한 수식 문자열 (예: '=SUM(A1:A10)')"
@@ -49,7 +49,7 @@ export const USE_FORMULA_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "mySheet",
       "commandType": "use_formula",
       "range": [50,2],
       "detailedCommand": "=SUM(C2:C50)"
@@ -66,7 +66,7 @@ export const USE_FORMULA_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "sales",
       "commandType": "use_formula",
       "range": [0,6],
       "detailedCommand": "=AVERAGEIF(B:B, \\"영업팀\\", C:C)"
@@ -83,7 +83,7 @@ export const USE_FORMULA_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "marketingTeam",
       "commandType": "use_formula",
       "range": [1,6,8,5],
       "detailedCommand": "=FILTER(A1:E50, B1:B50=\\"마케팅팀\\")"

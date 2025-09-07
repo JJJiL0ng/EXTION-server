@@ -22,7 +22,7 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 {{
  "dataEditCommands": [
    {{
-     "sheetIndex": 0,
+     "sheetName": "적용 시킬 타겟 시트 이름, dataContext에서 주어진 시트 이름을 정확히 사용해야함",
      "commandType": "apply_style",
      "range": "스타일을 적용할 위치 (아래 'range 작성 규칙' 참고)",
      "detailedCommand": {{
@@ -97,7 +97,7 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 {{
  "dataEditCommands": [
    {{
-     "sheetIndex": 0,
+     "sheetName": "sheet1",
      "commandType": "apply_style",
      "range": [0, 0, 1, 5],
      "detailedCommand": {{
@@ -127,7 +127,7 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 {{
  "dataEditCommands": [
    {{
-     "sheetIndex": 0,
+     "sheetName": "내시트",
      "commandType": "apply_style",
      "range": [4, 2],
      "detailedCommand": {{
@@ -149,7 +149,7 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 {{
  "dataEditCommands": [
    {{
-     "sheetIndex": 0,
+     "sheetName": "whitesheet",
      "commandType": "apply_style",
      "range": [1, 0, 9, 5],
      "detailedCommand": {{
@@ -173,7 +173,7 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 {{
  "dataEditCommands": [
    {{
-     "sheetIndex": 0,
+     "sheetName": "mySheet",
      "commandType": "apply_style",
      "range": [6, 3],
      "detailedCommand": {{
@@ -196,7 +196,7 @@ export const APPLY_STYLE_SYSTEM_PROMPT = `
 {{
  "dataEditCommands": [
    {{
-     "sheetIndex": 0,
+     "sheetName": "sheet1",
      "commandType": "apply_style",
      "range": [0, 0, 20, 6],
      "detailedCommand": {{

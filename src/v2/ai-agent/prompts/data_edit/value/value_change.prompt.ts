@@ -19,7 +19,7 @@ export const VALUE_CHANGE_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "적용 시킬 타겟 시트 이름, dataContext에서 주어진 시트 이름을 정확히 사용해야함",
       "commandType": "value_change",
       "range": "값을 변경할 셀 또는 범위를 (숫자배열, 예: 'A1' -> [0,0], [B2:B10] -> [1,1,9,1])",
       "detailedCommand": "셀에 입력할 새로운 값 (문자열 또는 숫자)"
@@ -40,7 +40,7 @@ export const VALUE_CHANGE_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "sheet4"
       "commandType": "value_change",
       "range": [1,4],
       "detailedCommand": "검토 완료"
@@ -57,13 +57,13 @@ export const VALUE_CHANGE_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "vacation",
       "commandType": "value_change",
       "range": [2,2],
       "detailedCommand": "휴가중"
     }},
     {{
-      "sheetIndex": 0,
+      "sheetName": "vatcation",
       "commandType": "value_change",
       "range": [2,14],
       "detailedCommand": "휴가중"
@@ -80,7 +80,7 @@ export const VALUE_CHANGE_SYSTEM_PROMPT = `
 {{
   "dataEditCommands": [
     {{
-      "sheetIndex": 0,
+      "sheetName": "numbersSheet",
       "commandType": "value_change",
       "range": [3,9],
       "detailedCommand": "50000"

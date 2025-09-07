@@ -20,6 +20,7 @@ export const TASK_MANAGER_SYSTEM_PROMPT = `
 
 분류된 의도에 따라, 요청을 완수하기 위해 필요한 작업들을 아래 TaskType Enum에서 선택하여 순서대로 계획합니다.
 DATA_EDIT은 단순히 스프레드시트를 수정하는 것을 넘어서 다음 도구들로 할 수 있는 작업들을 수행합니다.
+적용시켜야하는 타겟 시트가 다르다면 무조건 별개의 task로 분리해서 작성해야함.
 
 TaskType Enum;
 * **DATA_EDIT 하위 Tasks**:
