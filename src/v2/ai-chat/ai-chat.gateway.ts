@@ -25,7 +25,7 @@ import { filteredSheetReturns } from './ai-chat.service';
 })
 export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(AiChatGateway.name);
-  
+
   @WebSocketServer()
   server: Server;
 
@@ -57,11 +57,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // 클라이언트 연결이 끊겼을 때
   handleDisconnect(client: Socket) {
     this.logger.log(`클라이언트 연결 해제: ${client.id}`);
-    
+
     // 연결이 끊어진 클라이언트의 진행 중인 작업 정리
     this.cleanupClientJobs(client.id);
   }
-  
+
   // ===================
 
   /**
@@ -69,7 +69,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   private cleanupClientJobs(clientId: string) {
     let cleanedJobsCount = 0;
-    
+
     for (const [jobId, job] of this.jobs.entries()) {
       if (job.clientId === clientId) {
         this.jobs.delete(jobId);
@@ -77,7 +77,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.logger.warn(`연결 해제로 인한 작업 정리: ${jobId}`);
       }
     }
-    
+
     if (cleanedJobsCount > 0) {
       this.logger.log(`클라이언트 ${clientId}의 ${cleanedJobsCount}개 작업이 정리되었습니다.`);
     }
@@ -93,11 +93,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<void> {
     const startTime = Date.now();
     this.logger.log(`AI 작업 시작 요청 - 클라이언트: ${client.id}, 스프레드시트: ${payload.spreadsheetId}`);
-    
+
     try {
       // 입력 데이터 검증
       this.logger.log(`Received payload - parsedSheetNames: ${JSON.stringify(payload.parsedSheetNames)}, type: ${typeof payload.parsedSheetNames}`);
-      
+
       if (!payload.spreadsheetId || !payload.chatId || !payload.userId || !payload.jobId) {
         this.logger.error(`필수 파라미터 누락 - 클라이언트: ${client.id}`);
         this.server.to(client.id).emit('ai_job_error', {
@@ -131,18 +131,21 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         plan,
       });
 
-      // 3) agent 모드라면 즉시 실행
-      if (aiReq.chatMode === 'agent') {
-        await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
-      }
+      // 3) agent 모드라면 즉시 실행 | 일단은 프론트단에서 챗모드에 맞게 적용 예정
+      // if (aiReq.chatMode === 'agent') {
+      //   await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
+      // }
+      
+      await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
+
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
-      
+
       // 운영 환경에서는 구체적인 에러 메시지 숨김
-      const message = process.env.NODE_ENV === 'production' 
-        ? 'AI_JOB_START_FAILED' 
+      const message = process.env.NODE_ENV === 'production'
+        ? 'AI_JOB_START_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
-        
+
       this.server.to(client.id).emit('ai_job_error', {
         message,
         code: 'JOB_START_ERROR',
@@ -158,7 +161,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleAcknowledgeTask(client: Socket, payload: { jobId: string; feedback: 'SUCCESS' | 'FAILURE' }): Promise<void> {
     const { jobId, feedback } = payload;
     this.logger.log(`작업 피드백 수신 - ID: ${jobId}, 피드백: ${feedback}, 클라이언트: ${client.id}`);
-    
+
     try {
       // 입력 검증
       if (!jobId || !feedback || !['SUCCESS', 'FAILURE'].includes(feedback)) {
@@ -201,16 +204,16 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
         this.server.to(job.clientId).emit('ai_job_cancelled', { jobId });
       }
-      
+
       // feedback 처리 후 job 삭제
       this.jobs.delete(jobId);
     } catch (err) {
       this.logger.error(`작업 피드백 처리 실패 - 작업ID: ${jobId}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
-      
-      const message = process.env.NODE_ENV === 'production' 
-        ? 'FEEDBACK_PROCESSING_FAILED' 
+
+      const message = process.env.NODE_ENV === 'production'
+        ? 'FEEDBACK_PROCESSING_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
-        
+
       this.server.to(client.id).emit('ai_job_error', {
         jobId,
         message,
@@ -221,15 +224,15 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   private async executeJobDirectly(
-    aiReq: aiChatApiReq, 
-    plan: TaskManagerOutput, 
-    dataContext: filteredSheetReturns, 
+    aiReq: aiChatApiReq,
+    plan: TaskManagerOutput,
+    dataContext: filteredSheetReturns,
     clientId: string
   ) {
     const executionStartTime = Date.now();
-    
+
     this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}`);
-    
+
     try {
       // 작업 실행
       this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
@@ -250,12 +253,12 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;
       this.logger.error(`작업 실행 실패 - 소요시간: ${executionTime}ms, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
-      
+
       // 운영 환경에서는 구체적인 에러 메시지 숨김
-      const message = process.env.NODE_ENV === 'production' 
-        ? 'JOB_EXECUTION_FAILED' 
+      const message = process.env.NODE_ENV === 'production'
+        ? 'JOB_EXECUTION_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
-        
+
       this.server.to(clientId).emit('ai_job_error', {
         jobId: aiReq.jobId,
         message,
@@ -281,7 +284,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.jobs.delete(jobId);
         cleanedCount++;
         this.logger.warn(`오래된 작업 정리 - ID: ${jobId}, 생성시간: ${new Date(job.createdAt).toISOString()}`);
-        
+
         // 클라이언트에게 타임아웃 알림
         this.server.to(job.clientId).emit('ai_job_timeout', {
           jobId,
