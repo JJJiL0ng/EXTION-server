@@ -78,7 +78,7 @@ export class CreateSpreadSheetDto {
 
   @IsNotEmpty()
   @IsObject()
-  initialData: Record<string, any>;
+  jsonData: Record<string, any>;
 }
 
 // ===============================

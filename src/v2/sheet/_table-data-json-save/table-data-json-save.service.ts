@@ -92,10 +92,10 @@ export class TableDataJsonSaveService {
       this.logger.log(`Chat ensured: ${dto.chatId} for user: ${dto.userId}`);
 
       // 초기 데이터 준비 - 프론트엔드에서 보낸 JSON을 그대로 사용
-      let initialData: any;
+      let jsonData: any;
 
       // 프론트엔드에서 보낸 JSON을 그대로 저장 (변환하지 않음)
-      initialData = dto.initialData;
+      jsonData = dto.jsonData;
 
       // 5. 트랜잭션으로 생성
       const result = await this.prisma.$transaction(async (tx) => {
@@ -106,7 +106,7 @@ export class TableDataJsonSaveService {
             fileName: dto.fileName,
             userId: dto.userId,
             chatId: dto.chatId, // 프론트엔드에서 제공한 chatId 사용
-            fileSize: JSON.stringify(initialData).length,
+            fileSize: JSON.stringify(jsonData).length,
             version: 1,
             status: SpreadSheetStatus.ACTIVE
           }
@@ -116,8 +116,9 @@ export class TableDataJsonSaveService {
         const sheetData = await tx.spreadSheetData.create({
           data: {
             spreadSheetId: spreadSheet.id,
-            data:  JSON.stringify(initialData), // JSON 직렬화로 타입 호환성 확보
-            sheetCount: this.extractSheetCount(initialData),
+            // JSON 객체 그대로 저장 (DB 필드가 Json 타입이어야 함)
+            data: jsonData as any,
+            sheetCount: this.extractSheetCount(jsonData),
           } as any
         });
 
@@ -208,7 +209,8 @@ export class TableDataJsonSaveService {
       // 5. 현재 전체 스프레드시트 데이터에서 해당 시트 추출
       let currentData: SpreadSheetStructure;
       if (currentSpreadSheetData && (currentSpreadSheetData as any).data) {
-        currentData = (currentSpreadSheetData as any).data as SpreadSheetStructure;
+        const raw = (currentSpreadSheetData as any).data as any;
+        currentData = this.normalizeSpreadSheetData(raw);
         this.logger.log(`[DEBUG] Using existing spreadsheet data`);
       } else {
         // 데이터가 없으면 기본 구조 생성
@@ -569,10 +571,57 @@ export class TableDataJsonSaveService {
     };
   }
 
-  private extractSheetCount(json: SpreadSheetStructure): number {
-    if (json.sheets && typeof json.sheets === 'object') {
-      return Object.keys(json.sheets).length;
+  /**
+   * DB에서 불러온 원시 데이터를 안전하게 SpreadSheetStructure로 변환
+   * - 문자열(JSON)인 경우 파싱
+   * - sheets가 배열이면 name을 키로 하는 맵으로 정규화
+   * - sheets가 없거나 비정상인 경우 기본 시트 생성
+   */
+  private normalizeSpreadSheetData(raw: any): SpreadSheetStructure {
+    try {
+      const obj: any = typeof raw === 'string' ? JSON.parse(raw) : raw ?? {};
+
+      // sheets가 배열 형태로 온 경우 name을 키로 맵핑
+      if (Array.isArray(obj?.sheets)) {
+        const mapped: Record<string, any> = {};
+        for (const s of obj.sheets) {
+          const name: string = s?.name || `Sheet${Object.keys(mapped).length + 1}`;
+          mapped[name] = { ...s, name };
+        }
+        obj.sheets = mapped;
+      }
+
+      // sheets가 객체가 아니면 기본 시트로 초기화
+      if (!obj.sheets || typeof obj.sheets !== 'object' || Array.isArray(obj.sheets)) {
+        obj.sheets = {
+          Sheet1: { name: 'Sheet1', data: { dataTable: {} } }
+        };
+      }
+
+      // 버전 기본값 보정
+      if (!obj.version || typeof obj.version !== 'string') {
+        obj.version = '18.1.4';
+      }
+
+      return obj as SpreadSheetStructure;
+    } catch (e) {
+      this.logger.warn(`Failed to normalize spreadsheet data, using default. Reason: ${(e as Error).message}`);
+      return this.getDefaultSpreadSheetStructure();
     }
-    return 1;
+  }
+
+  private extractSheetCount(json: SpreadSheetStructure): number {
+    try {
+      const obj: any = typeof (json as any) === 'string' ? JSON.parse(json as unknown as string) : json;
+      if (Array.isArray(obj?.sheets)) {
+        return obj.sheets.length || 1;
+      }
+      if (obj?.sheets && typeof obj.sheets === 'object') {
+        return Object.keys(obj.sheets).length || 1;
+      }
+      return 1;
+    } catch {
+      return 1;
+    }
   }
 }

@@ -7,7 +7,8 @@
   "license": "UNLICENSED",
   "scripts": {
     "prebuild": "rimraf dist",
-    "build": "nest build -p tsconfig.build.json",
+    "build": "prisma generate && nest build -p tsconfig.build.json",
+    "build:railway": "prisma generate && nest build -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
@@ -22,7 +23,7 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "deploy": "npm run build && npm run db:migrate && npm run start:prod",
-    "deploy:railway": "npm run build && npx prisma migrate deploy && npm run start:prod",    
+    "deploy:railway": "npm run build && npx prisma migrate deploy && npm run start:prod",
     "deploy:safe": "npm run build && npm run db:migrate:safe && npm run start:prod",
     "db:migrate:safe": "npm run db:migrate:status && (prisma migrate deploy || npm run db:migrate:fix)",
     "db:migrate:fix": "npm run db:fix:enum && prisma migrate resolve --rolled-back 20250624130705_update_message_mode_enum && prisma migrate deploy",
@@ -32,7 +33,12 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "railway:build": "prisma generate && nest build -p tsconfig.build.json",
+    "railway:start": "npx prisma migrate deploy && node --enable-source-maps dist/main.js",
+    "db:migrate:production": "prisma migrate deploy --skip-generate",
+    "db:health": "prisma db execute --stdin <<< 'SELECT 1;'",
+    "prestart:prod": "npm run db:health || (echo 'DB connection failed' && exit 1)"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
@@ -47,8 +53,10 @@
     "@nestjs/core": "^11.0.1",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.6",
     "@nestjs/schedule": "^6.0.0",
     "@nestjs/swagger": "^11.2.0",
+    "@nestjs/websockets": "^11.1.6",
     "@prisma/client": "^6.9.0",
     "bull": "^4.16.5",
     "class-transformer": "^0.5.1",
@@ -64,6 +72,7 @@
     "reflect-metadata": "^0.2.2",
     "rimraf": "^3.0.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^11.1.0",
     "xlsx": "^0.18.5"
