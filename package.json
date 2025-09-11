@@ -5,40 +5,41 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
-  "scripts": {
+ "scripts": {
     "prebuild": "rimraf dist",
     "build": "prisma generate && nest build -p tsconfig.build.json",
-    "build:railway": "prisma generate && nest build -p tsconfig.build.json",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "npx prisma migrate deploy && node --enable-source-maps dist/main.js",
-    "prestart:prod": "echo 'Starting production server...'",
+    "start:prod": "node --enable-source-maps dist/main.js",
+    
     "postinstall": "prisma generate",
-    "db:migrate": "prisma migrate deploy",
-    "db:migrate:dev": "prisma migrate dev",
-    "db:migrate:reset": "prisma migrate reset --force",
-    "db:migrate:resolve": "prisma migrate resolve",
-    "db:migrate:status": "prisma migrate status",
+    
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
-    "deploy": "npm run build && npm run db:migrate && npm run start:prod",
-    "deploy:railway": "npm run build && npx prisma migrate deploy && npm run start:prod",
-    "deploy:safe": "npm run build && npm run db:migrate:safe && npm run start:prod",
-    "db:migrate:safe": "npm run db:migrate:status && (prisma migrate deploy || npm run db:migrate:fix)",
-    "db:migrate:fix": "npm run db:fix:enum && prisma migrate resolve --rolled-back 20250624130705_update_message_mode_enum && prisma migrate deploy",
-    "db:fix:enum": "prisma db execute --file scripts/fix-enum-migration.sql || echo 'Enum fix completed or not needed'",
+    "db:studio": "prisma studio",
+    
+    "db:migrate:dev": "prisma migrate dev",
+    "db:migrate:reset": "prisma migrate reset --force",
+    
+    "db:migrate:prod": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:health": "echo 'SELECT 1;' | prisma db execute --stdin",
+    
+    "railway:build": "prisma generate && nest build -p tsconfig.build.json",
+    "railway:start": "npm run db:migrate:prod && npm run start:prod",
+    "railway:health": "npm run db:health",
+    
+    "deploy:local": "npm run build && npm run db:migrate:prod && npm run start:prod",
+    
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
-    "railway:build": "prisma generate && nest build -p tsconfig.build.json",
-    "railway:start": "npx prisma migrate deploy && node --enable-source-maps dist/main.js",
-    "db:migrate:production": "prisma migrate deploy --skip-generate",
-    "db:health": "echo 'SELECT 1;' | prisma db execute --stdin"
+    "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
