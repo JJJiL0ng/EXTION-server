@@ -119,17 +119,15 @@ model Message {
   role      MessageRole
   type      MessageType @default(TEXT)
 
-  // AI 분석 관련 메타데이터
-  metadata Json? // 토큰 수, 처리 시간, 캐시 여부 등
-
-  // 스프레드시트 컨텍스트 (메시지 작성 시점의 상태)
-  sheetContext Json? // 관련 시트 정보, 셀 범위 등
+  // AI 답변 메타데이터(aiChatRes) (JSONB로 변경)
+  metadata Json? @db.JsonB // AI 응답 전체 데이터, 토큰 수, 처리 시간, 캐시 여부 등
 
   // 관계
   chatId String
   chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId, createdAt])
+  @@index([metadata], type: Gin) // JSONB 검색을 위한 GIN 인덱스
 }
 
 
