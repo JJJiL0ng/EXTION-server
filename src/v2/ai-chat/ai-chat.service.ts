@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiAgentService } from '../ai-agent/ai-agent.service';
-import { aiChatApiReq } from './types/aiChat.types';
+import { aiChatApiReq, aiChatApiRes } from './types/aiChat.types';
 import { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 import { SpreadSheetStructure, createSafeError } from '../sheet/types/spreadsheet.types';
 import { PrismaService } from '../prisma/prisma.service';
@@ -172,6 +172,111 @@ export class AiChatService {
       const safeError = createSafeError(error);
       this.logger.error(`Failed to load parsed spreadsheet data: ${safeError.message}`, safeError.details);
       return null;
+    }
+  }
+
+  /**
+   * 사용자 메시지를 데이터베이스에 저장합니다
+   * @param aiReq - AI 채팅 요청 객체
+   * @returns 저장된 메시지 ID
+   */
+  async saveUserMessage(aiReq: aiChatApiReq): Promise<string> {
+    try {
+      this.logger.log(`사용자 메시지 저장 시작 - chatId: ${aiReq.chatId}, userId: ${aiReq.userId}`);
+
+      return await this.prisma.$transaction(async (tx) => {
+        // 1. Chat 존재 확인 및 생성
+        const existingChat = await tx.chat.findUnique({
+          where: { id: aiReq.chatId }
+        });
+
+        if (!existingChat) {
+          // Chat이 없으면 새로 생성
+          await tx.chat.create({
+            data: {
+              id: aiReq.chatId,
+              title: '새 채팅', // 기본 제목
+              userId: aiReq.userId,
+              spreadSheetId: aiReq.spreadsheetId,
+              messageCount: 0
+            }
+          });
+          this.logger.log(`새 채팅 생성됨 - chatId: ${aiReq.chatId}`);
+        }
+
+        // 2. 사용자 메시지 저장 (metadata 없이)
+        const message = await tx.message.create({
+          data: {
+            content: aiReq.userQuestionMessage,
+            role: 'USER',
+            type: 'TEXT',
+            chatId: aiReq.chatId,
+            // metadata는 사용자 메시지에서는 저장하지 않음
+          }
+        });
+
+        // 3. Chat 메시지 카운트 업데이트
+        await tx.chat.update({
+          where: { id: aiReq.chatId },
+          data: {
+            messageCount: { increment: 1 },
+            updatedAt: new Date()
+          }
+        });
+
+        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}`);
+        return message.id;
+      });
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`사용자 메시지 저장 실패: ${safeError.message}`, safeError.details);
+      throw new Error(`사용자 메시지 저장 실패: ${safeError.message}`);
+    }
+  }
+
+  /**
+   * AI(Assistant) 메시지를 데이터베이스에 저장합니다
+   * @param chatId - 채팅 ID
+   * @param aiChatRes - AI 채팅 응답 객체 (전체)
+   * @returns 저장된 메시지 ID
+   */
+  async saveAssistantMessage(
+    chatId: string, 
+    aiChatRes: aiChatApiRes, 
+  ): Promise<string> {
+    try {
+      this.logger.log(`AI 응답 메시지 저장 시작 - chatId: ${chatId}, jobId: ${aiChatRes.jobId}`);
+
+      return await this.prisma.$transaction(async (tx) => {
+        // AI 응답 메시지 저장
+        const message = await tx.message.create({
+          data: {
+            content: aiChatRes.taskManagerOutput.reason, // 사용자 친화적 설명
+            role: 'ASSISTANT',
+            type: 'ANALYSIS',
+            chatId,
+            metadata: aiChatRes as any // 전체 aiChatRes를 JSONB로 저장
+          }
+        });
+
+        // Chat 메시지 카운트 업데이트
+        await tx.chat.update({
+          where: { id: chatId },
+          data: {
+            messageCount: { increment: 1 },
+            updatedAt: new Date()
+          }
+        });
+
+        this.logger.log(`AI 응답 메시지 저장 완료 - messageId: ${message.id}`);
+        return message.id;
+      });
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`AI 응답 메시지 저장 실패: ${safeError.message}`, safeError.details);
+      throw new Error(`AI 응답 메시지 저장 실패: ${safeError.message}`);
     }
   }
 }
