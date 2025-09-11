@@ -38,8 +38,7 @@
     "railway:build": "prisma generate && nest build -p tsconfig.build.json",
     "railway:start": "npx prisma migrate deploy && node --enable-source-maps dist/main.js",
     "db:migrate:production": "prisma migrate deploy --skip-generate",
-    "db:health": "echo 'SELECT 1;' | prisma db execute --stdin",
-    "prestart:prod": "npm run db:health || (echo 'DB connection failed' && exit 1)"
+    "db:health": "echo 'SELECT 1;' | prisma db execute --stdin"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.53.0",
