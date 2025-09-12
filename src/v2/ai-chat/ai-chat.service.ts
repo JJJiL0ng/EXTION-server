@@ -12,6 +12,11 @@ export interface filteredSheetReturns {
   [sheetName: string]: any;
 }
 
+export interface OldMessages {
+  chatId: string;
+  messages: OldChatMessage[];
+}
+
 export interface UserOldMessage {
   role: 'user';
   userQuestionMessage: string;
