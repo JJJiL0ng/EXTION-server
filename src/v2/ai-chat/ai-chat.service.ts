@@ -12,6 +12,20 @@ export interface filteredSheetReturns {
   [sheetName: string]: any;
 }
 
+export interface UserOldMessage {
+  role: 'user';
+  userQuestionMessage: string;
+}
+
+export interface AiOldmessages {
+  role: 'assistant';
+  aiChatRes: aiChatApiRes;
+}
+export type OldChatMessage = UserOldMessage | AiOldmessages;
+
+// 전체 히스토리 (시간순 배열)
+export type ChatHistory = OldChatMessage[];
+
 @Injectable()
 export class AiChatService {
   private readonly logger = new Logger(AiChatService.name);
@@ -242,8 +256,8 @@ export class AiChatService {
    * @returns 저장된 메시지 ID
    */
   async saveAssistantMessage(
-    chatId: string, 
-    aiChatRes: aiChatApiRes, 
+    chatId: string,
+    aiChatRes: aiChatApiRes,
   ): Promise<string> {
     try {
       this.logger.log(`AI 응답 메시지 저장 시작 - chatId: ${chatId}, jobId: ${aiChatRes.jobId}`);
@@ -254,9 +268,9 @@ export class AiChatService {
           data: {
             content: aiChatRes.taskManagerOutput.reason, // 사용자 친화적 설명
             role: 'ASSISTANT',
-            type: 'ANALYSIS',
+            type: 'SUGGESTION',
             chatId,
-            metadata: aiChatRes as any // 전체 aiChatRes를 JSONB로 저장
+            aiChatRes: aiChatRes as any // 전체 aiChatRes를 JSONB로 저장
           }
         });
 
@@ -278,6 +292,9 @@ export class AiChatService {
       this.logger.error(`AI 응답 메시지 저장 실패: ${safeError.message}`, safeError.details);
       throw new Error(`AI 응답 메시지 저장 실패: ${safeError.message}`);
     }
+  }
+  async loadOldMesssages() {
+
   }
 }
 

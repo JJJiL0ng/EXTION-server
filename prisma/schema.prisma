@@ -29,7 +29,7 @@ model User {
 model SpreadSheet {
   id         String            @id @default(cuid())
   fileName   String
-  fileSize   Int?              // 바이트 단위 (메타데이터로 유지, 실제 JSON 크기와 다를 수 있음)
+  fileSize   Int? // 바이트 단위 (메타데이터로 유지, 실제 JSON 크기와 다를 수 있음)
   createdAt  DateTime          @default(now())
   updatedAt  DateTime          @updatedAt
   lastOpened DateTime          @default(now()) // 최근 열어본 시간
@@ -72,7 +72,7 @@ model EditHistory {
   id            String     @id @default(cuid())
   spreadSheetId String
   sessionStart  DateTime   @default(now())
-  sessionEnd    DateTime?  // null이면 진행중
+  sessionEnd    DateTime? // null이면 진행중
   deltaCount    Int        @default(0) // 이 세션에서 발생한 델타의 총 개수 (델타 데이터는 직접 저장하지 않음)
   status        EditStatus @default(ACTIVE)
 
@@ -85,7 +85,6 @@ model EditHistory {
   @@index([spreadSheetId, sessionStart])
   @@index([status])
 }
-
 
 // 채팅 (AI 대화)
 model Chat {
@@ -120,16 +119,15 @@ model Message {
   type      MessageType @default(TEXT)
 
   // AI 답변 메타데이터(aiChatRes) (JSONB로 변경)
-  metadata Json? @db.JsonB // AI 응답 전체 데이터, 토큰 수, 처리 시간, 캐시 여부 등
+  aiChatRes Json? @db.JsonB // AI 응답 전체 데이터, 토큰 수, 처리 시간, 캐시 여부 등
 
   // 관계
   chatId String
   chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
 
   @@index([chatId, createdAt])
-  @@index([metadata], type: Gin) // JSONB 검색을 위한 GIN 인덱스
+  @@index([aiChatRes], type: Gin) // JSONB 검색을 위한 GIN 인덱스
 }
-
 
 // Enum 정의
 enum SpreadSheetStatus {
@@ -143,7 +141,6 @@ enum EditStatus {
   COMPLETED // 완료됨
   ERROR // 오류 발생
 }
-
 
 enum ChatStatus {
   ACTIVE
@@ -163,4 +160,3 @@ enum MessageType {
   SUGGESTION // AI 제안
   ERROR // 오류 메시지
 }
-
