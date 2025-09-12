@@ -65,7 +65,10 @@ export class AiChatController {
 
       // 스프레드시트 데이터 로드
       this.logger.log(`컨트롤러에서 loadParsedSpreadsheetData 호출 전 - spreadsheetId: ${processedReq.spreadsheetId}, parsedSheetNames: ${JSON.stringify(processedReq.parsedSheetNames)}, userId: ${processedReq.userId}`);
-      
+
+      const previousMessages = await this.aiChatService.loadMultiturnMessages(processedReq.chatId);
+
+
       const dataContext = await this.aiChatService.loadParsedSpreadsheetData(
         processedReq.spreadsheetId, 
         processedReq.parsedSheetNames, 
@@ -87,12 +90,12 @@ export class AiChatController {
       }
 
       // 1) 계획 수립
-      const { plan } = await this.aiChatService.planTasks(processedReq, dataContext);
+      const { plan } = await this.aiChatService.planTasks(processedReq, dataContext, previousMessages);
 
       // 2) 작업 실행 (agent 모드인 경우에만)
       let results: dataEditCommand[] = [];
       if (processedReq.chatMode === 'agent') {
-        const executionResult = await this.aiChatService.runPlannedTasks(plan, processedReq, dataContext);
+        const executionResult = await this.aiChatService.runPlannedTasks(plan, dataContext, previousMessages);
         results = executionResult.results;
       }
 

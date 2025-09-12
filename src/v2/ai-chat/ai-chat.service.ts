@@ -12,24 +12,24 @@ export interface filteredSheetReturns {
   [sheetName: string]: any;
 }
 
-export interface OldMessages {
+export interface PreviousMessages {
   chatId: string;
-  messages: OldChatMessage[];
+  messages: PreviousChatMessage[];
 }
 
-export interface UserOldMessage {
+export interface UserPreviousMessage {
   role: 'user';
   userQuestionMessage: string;
 }
 
-export interface AiOldMessage {
+export interface AiPreviousMessage {
   role: 'assistant';
   aiChatRes: aiChatApiRes;
 }
-export type OldChatMessage = UserOldMessage | AiOldMessage;
+export type PreviousChatMessage = UserPreviousMessage | AiPreviousMessage;
 
 // 전체 히스토리 (시간순 배열)
-export type ChatHistory = OldChatMessage[];
+export type ChatHistory = PreviousChatMessage[];
 
 /**
  * aiChatApiRes 타입 가드 함수
@@ -85,11 +85,12 @@ export class AiChatService {
   /**
   * 계획을 수립합니다
   */
-  async planTasks(aiChatApiReq: aiChatApiReq, dataContext: filteredSheetReturns) {
+  async planTasks(aiChatApiReq: aiChatApiReq, dataContext: filteredSheetReturns, previousMessages: PreviousChatMessage[]) {
     // 1. Task Manager를 호출하여 전체 계획을 수립합니다.
     const plan = await this.aiAgentService.runTaskManager(
       aiChatApiReq.userQuestionMessage,
-      dataContext
+      dataContext,
+      previousMessages
     );
 
     return {
@@ -97,12 +98,12 @@ export class AiChatService {
     };
   }
 
-  async runPlannedTasks(TaskManagerOutput: TaskManagerOutput, aiChatApiReq: aiChatApiReq, dataContext: filteredSheetReturns) {
+  async runPlannedTasks(TaskManagerOutput: TaskManagerOutput, dataContext: filteredSheetReturns, previousMessages: PreviousChatMessage[]) {
     // 1. 계획된 모든 Task를 순차적으로 실행합니다.
     const results = await Promise.all(
       TaskManagerOutput.tasks.map((task) => {
         // return this.aiAgentService.runSingleTask(task, aiChatApiReq.userQuestionMessage, dataContext, 'small');
-        return this.aiAgentService.runSingleTask(task, task.description, dataContext, 'small');
+        return this.aiAgentService.runSingleTask(previousMessages, task, task.description, dataContext, 'small');
       })
     );
 
@@ -375,7 +376,7 @@ export class AiChatService {
       // 타입에 맞게 변환
       const chatHistory: ChatHistory = sortedMessages.map(message => {
         if (message.role === 'USER') {
-          const userMessage: UserOldMessage = {
+          const userMessage: UserPreviousMessage = {
             role: 'user',
             userQuestionMessage: message.content
           };
@@ -385,7 +386,7 @@ export class AiChatService {
           const parsedAiChatRes = parseAiChatApiRes(message.aiChatRes);
           
           if (parsedAiChatRes) {
-            const assistantMessage: AiOldMessage = {
+            const assistantMessage: AiPreviousMessage = {
               role: 'assistant',
               aiChatRes: parsedAiChatRes
             };
@@ -393,7 +394,7 @@ export class AiChatService {
           } else {
             // aiChatRes 파싱 실패 시 경고 로그 출력하고 사용자 메시지로 폴백
             this.logger.warn(`aiChatRes 파싱 실패 - messageId: ${message.id}, chatId: ${chatId}`);
-            const userMessage: UserOldMessage = {
+            const userMessage: UserPreviousMessage = {
               role: 'user',
               userQuestionMessage: message.content
             };
@@ -401,7 +402,7 @@ export class AiChatService {
           }
         } else {
           // SYSTEM 메시지나 aiChatRes가 없는 ASSISTANT 메시지는 사용자 메시지로 처리
-          const userMessage: UserOldMessage = {
+          const userMessage: UserPreviousMessage = {
             role: 'user',
             userQuestionMessage: message.content
           };

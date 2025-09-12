@@ -243,7 +243,6 @@ export class TableDataJsonSaveService {
         },
         data: {
           data: JSON.parse(JSON.stringify(currentData)), // JSON 직렬화로 타입 호환성 확보
-          originalSize: jsonString.length,
           savedAt: now
         } as any
       });

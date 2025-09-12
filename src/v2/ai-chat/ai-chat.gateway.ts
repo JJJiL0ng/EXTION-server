@@ -14,7 +14,7 @@ import { SpreadSheetStructure } from '../sheet/types/spreadsheet.types';
 import type { aiChatApiReq } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
-import { filteredSheetReturns } from './ai-chat.service';
+import { filteredSheetReturns, PreviousChatMessage } from './ai-chat.service';
 
 @WebSocketGateway({
   cors: {
@@ -42,6 +42,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       clientId: string;
       createdAt: number;
       dataContext: SpreadSheetStructure;
+      previousMessages: PreviousChatMessage[];
     }
   >();
 
@@ -119,10 +120,12 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
 
+      const previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId);
+
       const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId);
 
       // 1) 계획 수립
-      const { plan } = await this.aiChatService.planTasks(aiReq, dataContext!);
+      const { plan } = await this.aiChatService.planTasks(aiReq, dataContext!, previousMessages!);
 
       // 2) 클라이언트에게 계획 전송
 
@@ -136,7 +139,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       //   await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
       // }
 
-      await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
+      await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id);
 
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -198,7 +201,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (feedback === 'SUCCESS') {
         this.logger.log(`작업 실행 계속 - ID: ${jobId}`);
-        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.clientId);
+        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.previousMessages, job.clientId);
       } else {
         // 실행 취소
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
@@ -227,6 +230,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     aiReq: aiChatApiReq,
     plan: TaskManagerOutput,
     dataContext: filteredSheetReturns,
+    previousMessages: PreviousChatMessage[],
     clientId: string
   ) {
     const executionStartTime = Date.now();
@@ -236,7 +240,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       // 작업 실행
       this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
-      const { results } = await this.aiChatService.runPlannedTasks(plan, aiReq, dataContext);
+      const { results } = await this.aiChatService.runPlannedTasks(plan, dataContext, previousMessages);
 
       const executionTime = Date.now() - executionStartTime;
       this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
