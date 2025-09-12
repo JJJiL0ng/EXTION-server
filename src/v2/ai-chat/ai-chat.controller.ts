@@ -89,6 +89,14 @@ export class AiChatController {
         );
       }
 
+      // (추가) 사용자 메시지 저장: previousMessages/dataContext 조회 이후, 플랜 수립 이전
+      try {
+        await this.aiChatService.saveUserMessage(processedReq);
+      } catch (saveUserErr) {
+        this.logger.error(`사용자 메시지 저장 실패 - JobId: ${processedReq.jobId}, ${(saveUserErr as Error).message}`);
+        // 실패해도 흐름 중단하지 않음
+      }
+
       // 1) 계획 수립
       const { plan } = await this.aiChatService.planTasks(processedReq, dataContext, previousMessages);
 
@@ -101,15 +109,24 @@ export class AiChatController {
 
       const executionTime = Date.now() - startTime;
       this.logger.log(`AI Chat REST API 완료 - JobId: ${processedReq.jobId}, 소요시간: ${executionTime}ms, 결과 수: ${results.length}`);
-
-      // 응답 반환 (WebSocket 응답 형식과 통일)
-      return {
+      const apiRes: aiChatApiRes = {
         jobId: processedReq.jobId,
         taskManagerOutput: plan,
         dataEditChatRes: {
           dataEditCommands: results
         }
       };
+
+      // (추가) AI 메시지 저장: agent 모드에서 결과가 존재할 때. 비동기(논블로킹) 저장
+      if (processedReq.chatMode === 'agent' && results.length > 0) {
+        void this.aiChatService.saveAssistantMessage(processedReq.chatId, apiRes)
+          .catch(err => {
+            this.logger.error(`AI 응답 저장 실패 - JobId: ${processedReq.jobId}, ${err instanceof Error ? err.message : err}`);
+          });
+      }
+
+      // 응답 반환 (WebSocket 응답 형식과 통일)
+      return apiRes;
 
     } catch (error) {
       const executionTime = Date.now() - startTime;
