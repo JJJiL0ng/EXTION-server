@@ -12,6 +12,7 @@ import { AiChatService } from './ai-chat.service';
 
 import { SpreadSheetStructure } from '../sheet/types/spreadsheet.types';
 import type { aiChatApiReq } from './types/aiChat.types';
+import type { aiChatApiRes } from './types/aiChat.types'; // AI 응답 저장용 타입 추가
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
 import { filteredSheetReturns, PreviousChatMessage } from './ai-chat.service';
@@ -118,11 +119,14 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         jobId: payload.jobId,
       };
 
+
       this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
 
       const previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId);
 
       const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId);
+
+      await this.aiChatService.saveUserMessage(aiReq);
 
       // 1) 계획 수립
       const { plan } = await this.aiChatService.planTasks(aiReq, dataContext!, previousMessages!);
@@ -140,6 +144,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // }
 
       await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id);
+
 
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -245,15 +250,28 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const executionTime = Date.now() - executionStartTime;
       this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
 
-      // runPlannedTasks는 dataEditCommand[]를 반환(배열)하므로 프론트가 쓰기 쉽게 래핑
-      this.server.to(clientId).emit('ai_tasks_executed', {
+      // AI 응답 객체 구성 (DB 저장 + 프론트 전달 공용)
+      const aiChatRes: aiChatApiRes = {
         jobId: aiReq.jobId,
+        taskManagerOutput: plan,
         dataEditChatRes: {
           dataEditCommands: results,
         },
+      };
+
+      // 먼저 클라이언트에 결과 전송 (지연 최소화)
+      this.server.to(clientId).emit('ai_tasks_executed', {
+        jobId: aiReq.jobId,
+        dataEditChatRes: aiChatRes.dataEditChatRes,
         executionTime,
         timestamp: new Date().toISOString(),
       });
+
+      // 비동기적으로(논블로킹) AI 응답 저장 - 실패해도 흐름 영향 X
+      void this.aiChatService.saveAssistantMessage(aiReq.chatId, aiChatRes)
+        .catch(err => {
+          this.logger.error(`AI 응답 저장 실패 - jobId: ${aiReq.jobId}, ${err instanceof Error ? err.message : err}`);
+        });
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;
       this.logger.error(`작업 실행 실패 - 소요시간: ${executionTime}ms, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
