@@ -22,14 +22,55 @@ export interface UserOldMessage {
   userQuestionMessage: string;
 }
 
-export interface AiOldmessages {
+export interface AiOldMessage {
   role: 'assistant';
   aiChatRes: aiChatApiRes;
 }
-export type OldChatMessage = UserOldMessage | AiOldmessages;
+export type OldChatMessage = UserOldMessage | AiOldMessage;
 
 // 전체 히스토리 (시간순 배열)
 export type ChatHistory = OldChatMessage[];
+
+/**
+ * aiChatApiRes 타입 가드 함수
+ * @param obj - 검증할 객체
+ * @returns aiChatApiRes 타입인지 여부
+ */
+function isAiChatApiRes(obj: any): obj is aiChatApiRes {
+  return (
+    obj &&
+    typeof obj === 'object' &&
+    typeof obj.jobId === 'string' &&
+    obj.taskManagerOutput &&
+    typeof obj.taskManagerOutput === 'object' &&
+    obj.dataEditChatRes &&
+    typeof obj.dataEditChatRes === 'object'
+  );
+}
+
+/**
+ * JsonValue를 aiChatApiRes로 안전하게 변환하는 함수
+ * @param jsonValue - Prisma JsonValue
+ * @returns aiChatApiRes 또는 null
+ */
+function parseAiChatApiRes(jsonValue: any): aiChatApiRes | null {
+  if (!jsonValue) {
+    return null;
+  }
+
+  try {
+    // JsonValue가 이미 객체인 경우와 문자열인 경우 모두 처리
+    const obj = typeof jsonValue === 'string' ? JSON.parse(jsonValue) : jsonValue;
+    
+    if (isAiChatApiRes(obj)) {
+      return obj;
+    }
+    
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
 
 @Injectable()
 export class AiChatService {
@@ -267,6 +308,11 @@ export class AiChatService {
     try {
       this.logger.log(`AI 응답 메시지 저장 시작 - chatId: ${chatId}, jobId: ${aiChatRes.jobId}`);
 
+      // aiChatApiRes 타입 검증
+      if (!isAiChatApiRes(aiChatRes)) {
+        throw new Error('유효하지 않은 aiChatApiRes 데이터입니다');
+      }
+
       return await this.prisma.$transaction(async (tx) => {
         // AI 응답 메시지 저장
         const message = await tx.message.create({
@@ -275,7 +321,7 @@ export class AiChatService {
             role: 'ASSISTANT',
             type: 'SUGGESTION',
             chatId,
-            aiChatRes: aiChatRes as any // 전체 aiChatRes를 JSONB로 저장
+            aiChatRes: aiChatRes as unknown as any // 타입 안전성을 위한 unknown을 통한 변환
           }
         });
 
@@ -298,8 +344,79 @@ export class AiChatService {
       throw new Error(`AI 응답 메시지 저장 실패: ${safeError.message}`);
     }
   }
-  async loadOldMesssages() {
+  /**
+   * 멀티턴 AI를 위해 최근 10개의 메시지를 불러옵니다 (사용자 5개, 어시스턴트 5개)
+   * @param chatId - 채팅 ID
+   * @returns 시간순으로 정렬된 ChatHistory 배열
+   */
+  async loadMultiturnMessages(chatId: string): Promise<ChatHistory> {
+    try {
+      this.logger.log(`멀티턴 메시지 로드 시작 - chatId: ${chatId}`);
 
+      // 최근 10개 메시지 조회 (사용자 메시지 5개, 어시스턴트 메시지 5개를 합쳐서)
+      const messages = await this.prisma.message.findMany({
+        where: {
+          chatId: chatId
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 10
+      });
+
+      if (!messages || messages.length === 0) {
+        this.logger.log(`채팅에서 메시지를 찾을 수 없음 - chatId: ${chatId}`);
+        return [];
+      }
+
+      // 메시지를 시간순으로 정렬 (오래된 것부터)
+      const sortedMessages = messages.reverse();
+
+      // 타입에 맞게 변환
+      const chatHistory: ChatHistory = sortedMessages.map(message => {
+        if (message.role === 'USER') {
+          const userMessage: UserOldMessage = {
+            role: 'user',
+            userQuestionMessage: message.content
+          };
+          return userMessage;
+        } else if (message.role === 'ASSISTANT' && message.aiChatRes) {
+          // aiChatRes 타입 안전성 검증
+          const parsedAiChatRes = parseAiChatApiRes(message.aiChatRes);
+          
+          if (parsedAiChatRes) {
+            const assistantMessage: AiOldMessage = {
+              role: 'assistant',
+              aiChatRes: parsedAiChatRes
+            };
+            return assistantMessage;
+          } else {
+            // aiChatRes 파싱 실패 시 경고 로그 출력하고 사용자 메시지로 폴백
+            this.logger.warn(`aiChatRes 파싱 실패 - messageId: ${message.id}, chatId: ${chatId}`);
+            const userMessage: UserOldMessage = {
+              role: 'user',
+              userQuestionMessage: message.content
+            };
+            return userMessage;
+          }
+        } else {
+          // SYSTEM 메시지나 aiChatRes가 없는 ASSISTANT 메시지는 사용자 메시지로 처리
+          const userMessage: UserOldMessage = {
+            role: 'user',
+            userQuestionMessage: message.content
+          };
+          return userMessage;
+        }
+      });
+
+      this.logger.log(`멀티턴 메시지 로드 완료 - 총 ${chatHistory.length}개 메시지`);
+      return chatHistory;
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`멀티턴 메시지 로드 실패: ${safeError.message}`, safeError.details);
+      throw new Error(`멀티턴 메시지 로드 실패: ${safeError.message}`);
+    }
   }
 }
 

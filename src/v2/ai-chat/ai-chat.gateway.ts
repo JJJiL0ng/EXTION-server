@@ -135,7 +135,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // if (aiReq.chatMode === 'agent') {
       //   await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
       // }
-      
+
       await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
 
     } catch (err) {
