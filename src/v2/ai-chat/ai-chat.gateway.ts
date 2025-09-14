@@ -16,6 +16,8 @@ import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types'
 
 import { filteredSheetReturns, PreviousChatMessage } from './ai-chat.service';
 
+import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
+
 @WebSocketGateway({
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
@@ -31,6 +33,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private readonly aiChatService: AiChatService,
+    private readonly tableDataJsonSaveService: TableDataJsonSaveService,
   ) { }
 
   // 간단한 메모리 상태 저장 (jobId -> 상태)
@@ -92,7 +95,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client: Socket,
     payload: aiChatApiReq,
   ): Promise<void> {
-    const startTime = Date.now();
     this.logger.log(`AI 작업 시작 요청 - 클라이언트: ${client.id}, 스프레드시트: ${payload.spreadsheetId}`);
 
     try {
@@ -139,13 +141,20 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         plan,
       });
 
-      // 3) agent 모드라면 즉시 실행 | 일단은 프론트단에서 챗모드에 맞게 적용 예정
-      // if (aiReq.chatMode === 'agent') {
-      //   await this.executeJobDirectly(aiReq, plan, dataContext!, client.id);
-      // }
-
       await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id);
 
+
+      // 새로운 버전일경우 사용하여 새로운 시트 업데이트
+      if (aiReq.newVersionSpreadSheetData) {
+         this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
+        userId: aiReq.userId,
+        spreadSheetId: aiReq.spreadsheetId,
+        spreadSheetVersionNumber: aiReq.spreadsheetVersionNumber,
+        jsonData: aiReq.newVersionSpreadSheetData,
+      }).catch(err => {
+        this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
+      });
+      }
 
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);

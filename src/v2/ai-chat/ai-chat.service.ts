@@ -243,6 +243,99 @@ export class AiChatService {
     }
   }
 
+  async parseNewVersionSpreadSheetData(
+    parsedSheetNames: string[],
+    newVersionSpreadSheetData: Record<string, any>,
+  ): Promise<filteredSheetReturns | null> {
+    console.log(`[DEBUG] parseNewVersionSpreadSheetData START - parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
+    this.logger.log(`parseNewVersionSpreadSheetData called with - parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
+
+    if (!newVersionSpreadSheetData) {
+      console.log(`[DEBUG] newVersionSpreadSheetData is null or undefined`);
+      this.logger.warn(`newVersionSpreadSheetData is null or undefined`);
+      return null;
+    }
+
+    // parsedSheetNames가 비어있는 경우 경고만 하고 계속 진행
+    if (!parsedSheetNames || parsedSheetNames.length === 0) {
+      console.log(`[DEBUG] parsedSheetNames is empty, continuing anyway`);
+      this.logger.warn(`parsedSheetNames is empty or null - will load all available sheets. parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
+    }
+
+    try {
+      this.logger.log(`Parsing new version spreadsheet data, sheets: ${parsedSheetNames?.join(', ') || 'ALL'}`);
+
+      let rawData = newVersionSpreadSheetData;
+
+      // 실제 데이터 구조에 따라 sheets 접근 경로 수정
+      let fullData: Record<string, any>;
+      let sheets: any;
+
+      console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));
+
+      if (rawData.spreadsheetData?.sheets) {
+        // 데이터가 spreadsheetData.sheets 구조인 경우
+        sheets = rawData.spreadsheetData.sheets;
+        fullData = rawData.spreadsheetData;
+        this.logger.log(`Using spreadsheetData.sheets structure`);
+      } else if (rawData.sheets) {
+        // 데이터가 직접 sheets 구조인 경우
+        sheets = rawData.sheets;
+        fullData = rawData;
+        this.logger.log(`Using direct sheets structure`);
+      } else {
+        this.logger.warn(`No sheets found in newVersionSpreadSheetData. Available keys:`, Object.keys(rawData));
+        return null;
+      }
+
+      this.logger.log(`Found sheets:`, Object.keys(sheets));
+
+      // 요청된 시트들만 필터링하여 반환
+      let foundSheetCount = 0;
+      const availableSheets = Object.keys(sheets);
+      let filteredSheets: { [sheetName: string]: any } = {};
+
+      if (parsedSheetNames && parsedSheetNames.length > 0) {
+        // 특정 시트들만 요청된 경우 - 해당 시트들만 필터링
+        console.log(`[DEBUG] Filtering sheets - requested: ${JSON.stringify(parsedSheetNames)}, available: ${JSON.stringify(availableSheets)}`);
+
+        for (const sheetName of parsedSheetNames) {
+          if (sheets[sheetName]) {
+            filteredSheets[sheetName] = sheets[sheetName];
+            foundSheetCount++;
+            this.logger.log(`Found and included requested sheet: ${sheetName} in filtered data`);
+          } else {
+            this.logger.warn(`Requested sheet '${sheetName}' not found in newVersionSpreadSheetData. Available sheets: ${availableSheets.join(', ')}`);
+          }
+        }
+
+        if (foundSheetCount === 0) {
+          this.logger.warn(`None of the requested sheets were found in new version data`);
+          return null;
+        }
+
+        this.logger.log(`Successfully filtered ${foundSheetCount}/${parsedSheetNames.length} requested sheets: ${Object.keys(filteredSheets).join(', ')}`);
+      } else {
+        // parsedSheetNames가 없으면 모든 시트를 사용
+        filteredSheets = sheets;
+        foundSheetCount = availableSheets.length;
+        this.logger.log(`No specific sheets requested, using all available sheets: ${availableSheets.join(', ')}`);
+      }
+
+      // fullData에 필터링된 sheets 속성 설정
+      fullData.sheets = filteredSheets;
+
+      const requestedSheetCount = parsedSheetNames?.length || availableSheets.length;
+      this.logger.log(`Successfully parsed new version spreadsheet data with ${Object.keys(filteredSheets).length} sheets (${foundSheetCount}/${requestedSheetCount} requested): ${Object.keys(filteredSheets).join(', ')}`);
+
+      return fullData.sheets;
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`Failed to parse new version spreadsheet data: ${safeError.message}`, safeError.details);
+      return null;
+    }
+  }
+
   /**
    * 사용자 메시지를 데이터베이스에 저장합니다
    * @param aiReq - AI 채팅 요청 객체
