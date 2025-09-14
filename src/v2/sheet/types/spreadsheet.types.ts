@@ -1,3 +1,11 @@
+export interface AddNewVersionSpreadSheetData {
+  spreadSheetId: string;
+  userId: string;
+  spreadSheetVersionNumber: number; // 기존 버전 번호
+  jsonData: Record<string, any>; // 새 버전의 시트 데이터
+}
+
+
 export interface LoadSpreadSheetResponse {
   id: string;
   fileName: string;

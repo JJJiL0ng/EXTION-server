@@ -10,6 +10,7 @@ import {
   DeleteResponse,
   SpreadSheetListItem,
   createSafeError,
+  AddNewVersionSpreadSheetData
 } from '../types/spreadsheet.types';
 
 
@@ -231,6 +232,80 @@ export class TableDataJsonSaveService {
     } catch (error) {
       const safeError = createSafeError(error);
       this.logger.error(`Failed to delete spreadsheet: ${safeError.message}`, safeError.details);
+      throw error;
+    }
+  }
+
+  /**
+   * 새 버전의 스프레드시트 데이터 추가
+   */
+  async addNewVersionSpreadSheetData(dto: AddNewVersionSpreadSheetData): Promise<LoadSpreadSheetResponse> {
+    try {
+      // 1. 사용자 검증
+      await this.userService.validateUser(dto.userId);
+      this.logger.log(`User validated: ${dto.userId}`);
+
+      // 2. 스프레드시트 존재 및 권한 확인
+      const existingSpreadSheet = await this.prisma.spreadSheet.findFirst({
+        where: {
+          id: dto.spreadSheetId,
+          userId: dto.userId,
+          status: SpreadSheetStatus.ACTIVE
+        }
+      });
+
+      if (!existingSpreadSheet) {
+        throw new NotFoundException('SpreadSheet not found or access denied');
+      }
+
+      // 3. 현재 버전이 올바른지 확인 (낙관적 잠금)
+      if (existingSpreadSheet.latestVersion !== dto.spreadSheetVersionNumber) {
+        throw new BadRequestException(
+          `Version conflict: Expected version ${dto.spreadSheetVersionNumber}, but current version is ${existingSpreadSheet.latestVersion}`
+        );
+      }
+
+      const newVersionNumber = dto.spreadSheetVersionNumber + 1;
+
+      // 4. 트랜잭션으로 새 버전 생성 및 메타데이터 업데이트
+      const result = await this.prisma.$transaction(async (tx) => {
+        // 새 버전 데이터 생성
+        const newVersionData = await tx.spreadSheetVersionData.create({
+          data: {
+            spreadSheetId: dto.spreadSheetId,
+            spreadSheetVersionNumber: newVersionNumber,
+            name: null, // 자동 생성된 버전은 이름 없음
+            data: dto.jsonData as any,
+            sheetCount: this.extractSheetCount(dto.jsonData),
+            fileSize: JSON.stringify(dto.jsonData).length,
+          }
+        });
+
+        // 스프레드시트 메타데이터 업데이트
+        const updatedSpreadSheet = await tx.spreadSheet.update({
+          where: { id: dto.spreadSheetId },
+          data: {
+            latestVersion: newVersionNumber,
+            editLockVersion: newVersionNumber, // 낙관적 잠금 버전도 업데이트
+            updatedAt: new Date()
+          }
+        });
+
+        return { spreadSheet: updatedSpreadSheet, versionData: newVersionData };
+      });
+
+      this.logger.log(`Created new version ${newVersionNumber} for spreadsheet: ${dto.spreadSheetId}`);
+
+      return {
+        id: result.spreadSheet.id,
+        fileName: result.spreadSheet.fileName,
+        version: result.spreadSheet.latestVersion,
+        lastModified: result.spreadSheet.updatedAt
+      };
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`Failed to add new version: ${safeError.message}`, safeError.details);
       throw error;
     }
   }

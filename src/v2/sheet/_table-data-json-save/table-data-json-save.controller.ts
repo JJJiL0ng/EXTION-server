@@ -21,6 +21,7 @@ import {
   LoadSpreadSheetResponse,
   DeleteResponse,
   SpreadSheetListItem,
+  AddNewVersionSpreadSheetData,
 } from '../types/spreadsheet.types';
 
 @Controller('v2/table-data-json-save')
@@ -130,6 +131,29 @@ export class TableDataJsonSaveController {
     return {
       success: result.success,
       message: 'SpreadSheet deleted successfully'
+    };
+  }
+
+  /**
+   * 새 버전 스프레드시트 데이터 추가
+   */
+  @Post('add-version')
+  @HttpCode(HttpStatus.CREATED)
+  async addNewVersionSpreadSheetData(
+    @Body() dto: AddNewVersionSpreadSheetData,
+  ): Promise<{
+    success: boolean;
+    data: LoadSpreadSheetResponse;
+    message: string;
+  }> {
+    this.logger.log(`Adding new version for spreadsheet: ${dto.spreadSheetId}, current version: ${dto.spreadSheetVersionNumber}, user: ${dto.userId}`);
+    
+    const result = await this.tableDataJsonSaveService.addNewVersionSpreadSheetData(dto);
+
+    return {
+      success: true,
+      data: result,
+      message: `New version ${result.version} created successfully`
     };
   }
 
