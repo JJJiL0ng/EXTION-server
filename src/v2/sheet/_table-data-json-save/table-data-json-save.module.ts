@@ -3,10 +3,9 @@ import { TableDataJsonSaveService } from './table-data-json-save.service';
 import { TableDataJsonSaveController } from './table-data-json-save.controller';
 import { UserModule } from '../../user/user.module';
 import { PrismaModule } from '../../prisma/prisma.module';
-import { TableDataJsonParserModule } from '../_table-data-json-parser/_table-data-json-parser.module';
 
 @Module({
-  imports: [UserModule, PrismaModule, TableDataJsonParserModule],
+  imports: [UserModule, PrismaModule],
   controllers: [TableDataJsonSaveController],
   providers: [TableDataJsonSaveService],
   exports: [TableDataJsonSaveService],

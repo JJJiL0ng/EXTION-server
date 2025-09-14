@@ -2,26 +2,17 @@
 
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-// Queue imports removed as not currently used
 import { UserService } from '../../user/user.service';
-import { createHash } from 'crypto';
 import { SpreadSheetStatus, EditStatus } from '@prisma/client';
-import { DeltaAction } from 'src/v2/sheet/types/spreadsheet.types';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
 import {
-  CellDelta,
   LoadSpreadSheetResponse,
-  GPTReadyData,
-  SpreadSheetStructure,
-  ApplyDeltaResponse,
-  ForceSaveResponse,
   DeleteResponse,
   SpreadSheetListItem,
-  DeltaValidationError,
   createSafeError,
-  isValidCellAddress,
-  isValidDeltaAction
 } from '../types/spreadsheet.types';
+
+
 @Injectable()
 export class TableDataJsonSaveService {
   private readonly logger = new Logger(TableDataJsonSaveService.name);
@@ -29,7 +20,6 @@ export class TableDataJsonSaveService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userService: UserService,
-    // private readonly parserService: TableDataJsonParserService,
   ) { }
 
 
@@ -271,192 +261,7 @@ export class TableDataJsonSaveService {
   // Private Methods
   // ==============================================================
 
-  /**
-   * 파일명 중복 검사
-   */
-  private async validateUniqueFileName(userId: string, fileName: string): Promise<void> {
-    const existing = await this.prisma.spreadSheet.findFirst({
-      where: {
-        userId,
-        fileName,
-        status: SpreadSheetStatus.ACTIVE
-      }
-    });
-
-    if (existing) {
-      throw new BadRequestException(`File name "${fileName}" already exists`);
-    }
-  }
-
-  /**
-   * 델타 검증
-   */
-  private validateDelta(delta: CellDelta): void {
-    // 액션 유효성 검증
-    if (!isValidDeltaAction(delta.action)) {
-      throw new DeltaValidationError(`Invalid delta action: ${delta.action}`, delta);
-    }
-
-    // 액션별 필수 필드 검증
-    switch (delta.action) {
-      case DeltaAction.SET_CELL_VALUE:
-      case DeltaAction.SET_CELL_FORMULA:
-      case DeltaAction.SET_CELL_STYLE:
-      case DeltaAction.DELETE_CELLS:
-        if (!delta.cellAddress || !isValidCellAddress(delta.cellAddress)) {
-          throw new DeltaValidationError(`Delta action ${delta.action} requires valid cellAddress`, delta);
-        }
-        break;
-
-      case DeltaAction.INSERT_ROWS:
-      case DeltaAction.DELETE_ROWS:
-        if (delta.rowIndex === undefined || delta.count === undefined ||
-          delta.rowIndex < 0 || delta.count <= 0) {
-          throw new DeltaValidationError(`Delta action ${delta.action} requires valid rowIndex and count`, delta);
-        }
-        break;
-    }
-  }
-
-  /**
-   * 델타를 데이터에 적용
-   */
-  private applyDeltasToData(baselineData: SpreadSheetStructure, deltas: CellDelta[]): SpreadSheetStructure {
-    const currentData = JSON.parse(JSON.stringify(baselineData));
-
-    // 타임스탬프 순서로 정렬
-    const sortedDeltas = deltas.sort((a, b) => a.timestamp - b.timestamp);
-
-    for (const delta of sortedDeltas) {
-      this.applyDeltaToData(currentData, delta);
-    }
-
-    return currentData;
-  }
-
-
-  /**
-   * 개별 델타 적용 (기존 메서드 - SpreadSheetStructure용)
-   */
-  private applyDeltaToData(data: SpreadSheetStructure, delta: CellDelta): void {
-    if (!data.sheets) data.sheets = {};
-
-    let sheet = data.sheets[delta.parsedSheetName];
-    if (!sheet) {
-      sheet = data.sheets[delta.parsedSheetName] = {
-        name: delta.parsedSheetName,
-        data: { dataTable: {} }
-      };
-    }
-
-    if (!sheet.data) sheet.data = { dataTable: {} };
-    if (!sheet.data.dataTable) sheet.data.dataTable = {};
-
-    const dataTable = sheet.data.dataTable;
-
-    switch (delta.action) {
-      case DeltaAction.SET_CELL_VALUE:
-        if (delta.cellAddress && delta.value !== undefined) {
-          if (!dataTable[delta.cellAddress]) {
-            dataTable[delta.cellAddress] = {};
-          }
-          dataTable[delta.cellAddress].value = delta.value;
-        }
-        break;
-
-      case DeltaAction.SET_CELL_FORMULA:
-        if (delta.cellAddress && delta.formula !== undefined) {
-          if (!dataTable[delta.cellAddress]) {
-            dataTable[delta.cellAddress] = {};
-          }
-          dataTable[delta.cellAddress].formula = delta.formula;
-        }
-        break;
-
-      case DeltaAction.SET_CELL_STYLE:
-        if (delta.cellAddress && delta.style !== undefined) {
-          if (!dataTable[delta.cellAddress]) {
-            dataTable[delta.cellAddress] = {};
-          }
-          dataTable[delta.cellAddress].style = {
-            ...dataTable[delta.cellAddress].style,
-            ...delta.style
-          };
-        }
-        break;
-
-      case DeltaAction.DELETE_CELLS:
-        if (delta.cellAddress && dataTable[delta.cellAddress]) {
-          delete dataTable[delta.cellAddress];
-        }
-        break;
-
-      // 행/열 삽입/삭제는 더 복잡한 로직 필요
-      case DeltaAction.INSERT_ROWS:
-      case DeltaAction.DELETE_ROWS:
-      case DeltaAction.INSERT_COLUMNS:
-      case DeltaAction.DELETE_COLUMNS:
-        // TODO: 구현 필요
-        this.logger.warn(`Delta action ${delta.action} not yet implemented`);
-        break;
-    }
-  }
-
-  /**
-   * 기본 스프레드시트 구조
-   */
-  private getDefaultSpreadSheetStructure(): SpreadSheetStructure {
-    return {
-      version: '18.1.4',
-      sheets: {
-        'Sheet1': {
-          name: 'Sheet1',
-          data: { dataTable: {} }
-        }
-      }
-    };
-  }
-
-  /**
-   * DB에서 불러온 원시 데이터를 안전하게 SpreadSheetStructure로 변환
-   * - 문자열(JSON)인 경우 파싱
-   * - sheets가 배열이면 name을 키로 하는 맵으로 정규화
-   * - sheets가 없거나 비정상인 경우 기본 시트 생성
-   */
-  private normalizeSpreadSheetData(raw: any): SpreadSheetStructure {
-    try {
-      const obj: any = typeof raw === 'string' ? JSON.parse(raw) : raw ?? {};
-
-      // sheets가 배열 형태로 온 경우 name을 키로 맵핑
-      if (Array.isArray(obj?.sheets)) {
-        const mapped: Record<string, any> = {};
-        for (const s of obj.sheets) {
-          const name: string = s?.name || `Sheet${Object.keys(mapped).length + 1}`;
-          mapped[name] = { ...s, name };
-        }
-        obj.sheets = mapped;
-      }
-
-      // sheets가 객체가 아니면 기본 시트로 초기화
-      if (!obj.sheets || typeof obj.sheets !== 'object' || Array.isArray(obj.sheets)) {
-        obj.sheets = {
-          Sheet1: { name: 'Sheet1', data: { dataTable: {} } }
-        };
-      }
-
-      // 버전 기본값 보정
-      if (!obj.version || typeof obj.version !== 'string') {
-        obj.version = '18.1.4';
-      }
-
-      return obj as SpreadSheetStructure;
-    } catch (e) {
-      this.logger.warn(`Failed to normalize spreadsheet data, using default. Reason: ${(e as Error).message}`);
-      return this.getDefaultSpreadSheetStructure();
-    }
-  }
-
-  private extractSheetCount(json: SpreadSheetStructure): number {
+  private extractSheetCount(json: Record<string, any>): number {
     try {
       const obj: any = typeof (json as any) === 'string' ? JSON.parse(json as unknown as string) : json;
       if (Array.isArray(obj?.sheets)) {

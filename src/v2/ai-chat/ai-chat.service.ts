@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AiAgentService } from '../ai-agent/ai-agent.service';
 import { aiChatApiReq, aiChatApiRes } from './types/aiChat.types';
 import { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
-import { SpreadSheetStructure, createSafeError } from '../sheet/types/spreadsheet.types';
+import { createSafeError } from '../sheet/types/spreadsheet.types';
 import { PrismaService } from '../prisma/prisma.service';
 
 
@@ -167,7 +167,7 @@ export class AiChatService {
       let rawData = (spreadSheetData as any).data;
 
       // 실제 데이터 구조에 따라 sheets 접근 경로 수정
-      let fullData: SpreadSheetStructure;
+      let fullData: Record<string, any>;
       let sheets: any;
 
       console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));

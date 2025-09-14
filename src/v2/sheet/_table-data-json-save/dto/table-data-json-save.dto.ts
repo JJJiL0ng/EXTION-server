@@ -15,7 +15,6 @@ import {
   Matches
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { DeltaAction } from 'src/v2/sheet/types/spreadsheet.types';
 
 // ===============================
 // SpreadJS Format Interface
@@ -146,87 +145,6 @@ export class CellStyleDto {
 }
 
 // ===============================
-// 델타 적용 DTO
-// ===============================
-export class ApplyDeltaDto {
-  @IsEnum(DeltaAction, {
-    message: '올바른 델타 액션을 선택해주세요.'
-  })
-  action: DeltaAction;
-
-  @IsString()
-  @IsNotEmpty()
-  @Length(1, 100)
-  parsedSheetName: string;
-
-  @IsString()
-  @IsNotEmpty()
-  spreadSheetId: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^[A-Z]+[0-9]+$/, {
-    message: '올바른 셀 주소 형식이 아닙니다. (예: A1, B2, AA10)'
-  })
-  cellAddress?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^[A-Z]+[0-9]+:[A-Z]+[0-9]+$/, {
-    message: '올바른 범위 형식이 아닙니다. (예: A1:B5, C1:D10)'
-  })
-  range?: string;
-
-  @IsOptional()
-  value?: any;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^=.+/, {
-    message: '수식은 = 기호로 시작해야 합니다.'
-  })
-  formula?: string;
-
-  @IsOptional()
-  @IsObject()
-  style?: CellStyleDto;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(1048575)
-  rowIndex?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(16383)
-  columnIndex?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(1000)
-  count?: number;
-
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  userId: string;
-}
-
-// ===============================
-// 일괄 델타 적용 DTO
-// ===============================
-export class ApplyBatchDeltasDto {
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => ApplyDeltaDto)
-  @Max(100, { message: '한 번에 최대 100개의 델타만 적용할 수 있습니다.' })
-  deltas: ApplyDeltaDto[];
-}
-
-// ===============================
 // 스프레드시트 쿼리 DTO
 // ===============================
 export class SpreadSheetListQueryDto {
@@ -257,30 +175,6 @@ export class SpreadSheetListQueryDto {
   search?: string;
 }
 
-// ===============================
-// GPT 분석 요청 DTO
-// ===============================
-export class GPTAnalysisRequestDto {
-  @IsString()
-  @IsNotEmpty()
-  @Length(1, 1000)
-  question: string;
-
-  @IsOptional()
-  @IsString()
-  targetSheet?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^[A-Z]+[0-9]+:[A-Z]+[0-9]+$/, {
-    message: '올바른 범위 형식이 아닙니다. (예: A1:C10)'
-  })
-  targetRange?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  useCache?: boolean = true;
-}
 
 // ===============================
 // 응답 DTO들
@@ -298,26 +192,6 @@ export class SpreadSheetInfoDto {
   chatCount: number;
   editCount: number;
   isActive: boolean;
-}
-
-export class DeltaApplyResponseDto {
-  success: boolean;
-  version: number;
-  appliedDeltas: number;
-  pendingDeltas: number;
-}
-
-export class GPTDataResponseDto {
-  totalCells: number;
-  sheetCount: number;
-  dataHash: string;
-  parsedAt: Date;
-  sheets: Array<{
-    name: string;
-    cellCount: number;
-    csvData: string;
-    metadata: any;
-  }>;
 }
 
 export class SaveResponseDto {

@@ -10,7 +10,6 @@ import { Logger } from '@nestjs/common';
 
 import { AiChatService } from './ai-chat.service';
 
-import { SpreadSheetStructure } from '../sheet/types/spreadsheet.types';
 import type { aiChatApiReq } from './types/aiChat.types';
 import type { aiChatApiRes } from './types/aiChat.types'; // AI 응답 저장용 타입 추가
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
@@ -42,7 +41,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       plan: TaskManagerOutput;
       clientId: string;
       createdAt: number;
-      dataContext: SpreadSheetStructure;
+      dataContext: Record<string, any>;
       previousMessages: PreviousChatMessage[];
     }
   >();
