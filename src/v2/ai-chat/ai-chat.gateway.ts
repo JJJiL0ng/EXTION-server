@@ -127,7 +127,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       const previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId);
 
-      const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId, aiReq.spreadsheetVersionNumber);
+
+      const dataContext = aiReq.newVersionSpreadSheetData
+        ? await this.aiChatService.parseNewVersionSpreadSheetData(aiReq.parsedSheetNames, aiReq.newVersionSpreadSheetData)
+        : await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId, aiReq.spreadsheetVersionNumber);
+
 
       await this.aiChatService.saveUserMessage(aiReq);
 
@@ -146,14 +150,14 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // 새로운 버전일경우 사용하여 새로운 시트 업데이트
       if (aiReq.newVersionSpreadSheetData) {
-         this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
-        userId: aiReq.userId,
-        spreadSheetId: aiReq.spreadsheetId,
-        spreadSheetVersionNumber: aiReq.spreadsheetVersionNumber,
-        jsonData: aiReq.newVersionSpreadSheetData,
-      }).catch(err => {
-        this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
-      });
+        this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
+          userId: aiReq.userId,
+          spreadSheetId: aiReq.spreadsheetId,
+          spreadSheetVersionNumber: aiReq.spreadsheetVersionNumber,
+          jsonData: aiReq.newVersionSpreadSheetData,
+        }).catch(err => {
+          this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
+        });
       }
 
     } catch (err) {
