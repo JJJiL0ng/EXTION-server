@@ -19,7 +19,6 @@ export interface SpreadSheetListItem {
   lastOpened: Date;
   sheetCount: number;
   chatCount: number;
-  editCount: number;
   isActive: boolean;
 }
 

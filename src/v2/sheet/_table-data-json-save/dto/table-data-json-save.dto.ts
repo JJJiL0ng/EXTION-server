@@ -190,7 +190,6 @@ export class SpreadSheetInfoDto {
   sheetCount: number;
   compressedSize: number;
   chatCount: number;
-  editCount: number;
   isActive: boolean;
 }
 

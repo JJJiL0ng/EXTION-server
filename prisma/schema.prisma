@@ -43,7 +43,6 @@ model SpreadSheet {
 
   // 관계: 스프레드시트 데이터와 1:1 관계 유지
   data        SpreadSheetData?
-  editHistory EditHistory[] // 편집 이력 모델은 유지하지만, 델타 레코드와의 직접적인 관계는 사라짐
   chats       Chat[]
 
   @@unique([userId, id]) // 사용자별 스프레드시트 ID 고유
@@ -68,23 +67,6 @@ model SpreadSheetData {
 
 // 편집 히스토리 (단순화된 세션 관리)
 // 개별 델타 기록이 사라지므로, 세션 단위의 변경 메타데이터만 남습니다.
-model EditHistory {
-  id            String     @id @default(cuid())
-  spreadSheetId String
-  sessionStart  DateTime   @default(now())
-  sessionEnd    DateTime? // null이면 진행중
-  deltaCount    Int        @default(0) // 이 세션에서 발생한 델타의 총 개수 (델타 데이터는 직접 저장하지 않음)
-  status        EditStatus @default(ACTIVE)
-
-  // 메타데이터
-  metadata Json? // 편집 통계, 브라우저 정보, 요약된 변경 내역 등
-
-  // 관계
-  spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-
-  @@index([spreadSheetId, sessionStart])
-  @@index([status])
-}
 
 // 채팅 (AI 대화)
 model Chat {
@@ -136,11 +118,6 @@ enum SpreadSheetStatus {
   DELETED // 삭제됨 (소프트 삭제)
 }
 
-enum EditStatus {
-  ACTIVE // 편집 중
-  COMPLETED // 완료됨
-  ERROR // 오류 발생
-}
 
 enum ChatStatus {
   ACTIVE

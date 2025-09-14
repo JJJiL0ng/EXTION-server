@@ -3,7 +3,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserService } from '../../user/user.service';
-import { SpreadSheetStatus, EditStatus } from '@prisma/client';
+import { SpreadSheetStatus } from '@prisma/client';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
 import {
   LoadSpreadSheetResponse,
@@ -112,18 +112,6 @@ export class TableDataJsonSaveService {
           } as any
         });
 
-        // EditHistory 시작
-        await tx.editHistory.create({
-          data: {
-            spreadSheetId: spreadSheet.id,
-            status: EditStatus.ACTIVE,
-            metadata: {
-              createdBy: 'system',
-              initialCreation: true
-            }
-          }
-        });
-
         return { spreadSheet, sheetDataId: sheetData.id };
       });
 
@@ -163,7 +151,6 @@ export class TableDataJsonSaveService {
           _count: {
             select: {
               chats: true,
-              editHistory: true
             }
           }
         },
@@ -180,7 +167,6 @@ export class TableDataJsonSaveService {
         lastOpened: sheet.lastOpened,
         sheetCount: sheet.data?.sheetCount || 1,
         chatCount: sheet._count.chats,
-        editCount: sheet._count.editHistory,
         isActive: false // 현재 캐싱을 사용하지 않으므로 항상 false
       }));
 
