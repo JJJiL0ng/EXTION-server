@@ -18,11 +18,16 @@ import { aiChatApiReq, aiChatApiRes } from './types/aiChat.types';
 import { dataEditCommand } from '../ai-agent/types/dataEdit.types';
 import { v4 as uuidv4 } from 'uuid';
 
+import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
+
 @Controller('ai-chat')
 export class AiChatController {
   private readonly logger = new Logger(AiChatController.name);
 
-  constructor(private readonly aiChatService: AiChatService) {}
+  constructor(
+    private readonly aiChatService: AiChatService,
+    private readonly tableDataJsonSaveService: TableDataJsonSaveService
+  ) {}
 
   /**
    * AI Chat REST API - WebSocket 대신 사용할 수 있는 동기적 AI 채팅 엔드포인트
@@ -115,7 +120,8 @@ export class AiChatController {
         taskManagerOutput: plan,
         dataEditChatRes: {
           dataEditCommands: results
-        }
+        },
+        spreadsheetVersionNumber: processedReq.spreadsheetVersionNumber + 1 // 편집 명령이 있으면 버전 번호 1 증가
       };
 
       // (추가) AI 메시지 저장: agent 모드에서 결과가 존재할 때. 비동기(논블로킹) 저장
@@ -124,6 +130,17 @@ export class AiChatController {
           .catch(err => {
             this.logger.error(`AI 응답 저장 실패 - JobId: ${processedReq.jobId}, ${err instanceof Error ? err.message : err}`);
           });
+      }
+       // 백앤드에서 응답에 성공하면 새로운 버전일경우 사용하여 새로운 시트 업데이트
+      if (processedReq.newVersionSpreadSheetData) {
+        this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
+          userId: processedReq.userId,
+          spreadSheetId: processedReq.spreadsheetId,
+          spreadSheetVersionNumber: processedReq.spreadsheetVersionNumber,
+          jsonData: processedReq.newVersionSpreadSheetData,
+        }).catch(err => {
+          this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${processedReq.userId}, spreadsheetId: ${processedReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
+        });
       }
 
       // 응답 반환 (WebSocket 응답 형식과 통일)

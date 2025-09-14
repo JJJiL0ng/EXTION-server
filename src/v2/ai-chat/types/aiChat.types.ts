@@ -18,4 +18,5 @@ export interface aiChatApiRes {
     jobId: string;
     taskManagerOutput: TaskManagerOutput;
     dataEditChatRes: dataEditChatRes;
+    spreadsheetVersionNumber: number;
 }

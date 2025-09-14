@@ -147,19 +147,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id);
 
-
-      // 새로운 버전일경우 사용하여 새로운 시트 업데이트
-      if (aiReq.newVersionSpreadSheetData) {
-        this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
-          userId: aiReq.userId,
-          spreadSheetId: aiReq.spreadsheetId,
-          spreadSheetVersionNumber: aiReq.spreadsheetVersionNumber,
-          jsonData: aiReq.newVersionSpreadSheetData,
-        }).catch(err => {
-          this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
-        });
-      }
-
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
 
@@ -271,9 +258,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         dataEditChatRes: {
           dataEditCommands: results,
         },
+        spreadsheetVersionNumber: aiReq.spreadsheetVersionNumber + 1,
       };
 
-      // 먼저 클라이언트에 결과 전송 (지연 최소화)
+      // 🚀 최우선: 클라이언트에 즉시 결과 전송 (지연 최소화)
       this.server.to(clientId).emit('ai_tasks_executed', {
         jobId: aiReq.jobId,
         dataEditChatRes: aiChatRes.dataEditChatRes,
@@ -281,11 +269,8 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         timestamp: new Date().toISOString(),
       });
 
-      // 비동기적으로(논블로킹) AI 응답 저장 - 실패해도 흐름 영향 X
-      void this.aiChatService.saveAssistantMessage(aiReq.chatId, aiChatRes)
-        .catch(err => {
-          this.logger.error(`AI 응답 저장 실패 - jobId: ${aiReq.jobId}, ${err instanceof Error ? err.message : err}`);
-        });
+      // 📊 모든 DB 저장 작업을 비동기로 병렬 처리 (클라이언트 응답에 영향 없음)
+      this.processAsyncDbOperations(aiReq, aiChatRes);
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;
       this.logger.error(`작업 실행 실패 - 소요시간: ${executionTime}ms, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -302,7 +287,54 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         executionTime,
         timestamp: new Date().toISOString(),
       });
+
     }
+  }
+
+  /**
+   * 모든 DB 저장 작업을 비동기로 병렬 처리합니다.
+   * 클라이언트 응답 지연에 영향을 주지 않도록 완전히 분리된 처리
+   */
+  private processAsyncDbOperations(aiReq: aiChatApiReq, aiChatRes: aiChatApiRes): void {
+    // Promise.allSettled를 사용하여 모든 DB 작업을 병렬로 실행
+    const dbOperations: Promise<any>[] = [];
+
+    // 1. AI 응답 저장 작업
+    const saveAssistantMessagePromise = this.aiChatService.saveAssistantMessage(aiReq.chatId, aiChatRes)
+      .then(() => {
+        this.logger.log(`AI 응답 저장 성공 - jobId: ${aiReq.jobId}, chatId: ${aiReq.chatId}`);
+      })
+      .catch(err => {
+        this.logger.error(`AI 응답 저장 실패 - jobId: ${aiReq.jobId}, ${err instanceof Error ? err.message : err}`);
+      });
+    
+    dbOperations.push(saveAssistantMessagePromise);
+
+    // 2. 새 버전 스프레드시트 데이터 저장 작업 (조건부)
+    if (aiReq.newVersionSpreadSheetData) {
+      const saveSpreadsheetDataPromise = this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
+        userId: aiReq.userId,
+        spreadSheetId: aiReq.spreadsheetId,
+        spreadSheetVersionNumber: aiReq.spreadsheetVersionNumber,
+        jsonData: aiReq.newVersionSpreadSheetData,
+      })
+        .then(() => {
+          this.logger.log(`새 버전 스프레드시트 데이터 저장 성공 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, version: ${aiReq.spreadsheetVersionNumber}`);
+        })
+        .catch(err => {
+          this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
+        });
+      
+      dbOperations.push(saveSpreadsheetDataPromise);
+    }
+
+    // 🔥 모든 DB 작업을 비동기로 병렬 실행 (결과 대기 안함)
+    void Promise.allSettled(dbOperations).then(results => {
+      const successCount = results.filter(result => result.status === 'fulfilled').length;
+      const failureCount = results.filter(result => result.status === 'rejected').length;
+      
+      this.logger.log(`DB 작업 완료 - 성공: ${successCount}, 실패: ${failureCount}, 총 작업: ${results.length} (jobId: ${aiReq.jobId})`);
+    });
   }
 
   /**
