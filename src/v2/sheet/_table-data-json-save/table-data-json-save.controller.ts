@@ -17,16 +17,12 @@ import { TableDataJsonSaveService } from './table-data-json-save.service';
 import {
   CreateSpreadSheetDto,
   ApplyDeltaDto,
-  LoadSpreadSheetDto,
   CellStyleDto,
 } from './dto/table-data-json-save.dto';
 import {
   LoadSpreadSheetResponse,
-  ApplyDeltaResponse,
-  ForceSaveResponse,
   DeleteResponse,
   SpreadSheetListItem,
-  GPTReadyData,
   CellStyle,
   CellDelta
 } from '../types/spreadsheet.types';
@@ -134,89 +130,6 @@ export class TableDataJsonSaveController {
       success: true,
       data: result,
       message: 'SpreadSheet loaded successfully'
-    };
-  }
-
-  /**
-   * 실시간 델타 적용
-   */
-  @Put('delta')
-  @HttpCode(HttpStatus.OK)
-  async applyDelta(
-    @Body() dto: ApplyDeltaDto,
-  ) {
-    this.logger.log(`[DEBUG] Controller received delta request for user: ${dto.userId}, spreadSheetId: ${dto.spreadSheetId}`);
-    this.logger.log(`[DEBUG] Delta action: ${dto.action}, parsedSheetName: ${dto.parsedSheetName}`);
-    
-    const deltaData = this.convertDtoToDelta(dto);
-    this.logger.log(`[DEBUG] Converted delta data:`, JSON.stringify(deltaData, null, 2));
-    
-    const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(dto.userId, {
-      ...deltaData,
-      timestamp: Date.now()
-    });
-
-    this.logger.log(`[DEBUG] Delta application result:`, JSON.stringify(result, null, 2));
-
-    return {
-      success: result.success,
-      data: {
-        version: result.version,
-        applied: true
-      },
-      message: 'Delta applied successfully'
-    };
-  }
-
-  /**
-   * 여러 델타 일괄 적용
-   */
-  @Put('deltas/batch')
-  @HttpCode(HttpStatus.OK)
-  async applyBatchDeltas(
-    @Body() dto: { deltas: ApplyDeltaDto[]; userId: string },
-  ) {
-    this.logger.log(`[DEBUG] Applying ${dto.deltas.length} deltas for user: ${dto.userId}`);
-    
-    const results: ApplyDeltaResponse[] = [];
-    for (let i = 0; i < dto.deltas.length; i++) {
-      const deltaDto = dto.deltas[i];
-      this.logger.log(`[DEBUG] Processing delta ${i + 1}/${dto.deltas.length}`);
-      this.logger.log(`[DEBUG] Delta DTO:`, JSON.stringify(deltaDto, null, 2));
-      
-      const deltaData = this.convertDtoToDelta(deltaDto);
-      this.logger.log(`[DEBUG] Converted delta data:`, JSON.stringify(deltaData, null, 2));
-      
-      const result: ApplyDeltaResponse = await this.tableDataJsonSaveService.applyDelta(dto.userId, {
-        ...deltaData,
-        timestamp: Date.now()
-      });
-      results.push(result);
-    }
-
-    this.logger.log(`[DEBUG] All ${results.length} deltas processed successfully`);
-
-    return {
-      success: true,
-      data: {
-        appliedCount: results.length,
-        version: results[results.length - 1]?.version
-      },
-      message: `${results.length} deltas applied successfully`
-    };
-  }
-
-  /**
-   * 현재 상태 조회 (GPT용)
-   */
-  @Get('current-state')
-  async getCurrentState(@Query('userId') userId: string) {
-    const currentState = await this.tableDataJsonSaveService.getCurrentState(userId);
-
-    return {
-      success: true,
-      data: currentState,
-      message: 'Current state retrieved successfully'
     };
   }
 
