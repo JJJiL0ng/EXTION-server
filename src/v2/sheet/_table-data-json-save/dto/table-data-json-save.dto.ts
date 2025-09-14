@@ -1,11 +1,11 @@
-import { 
-  IsString, 
-  IsNotEmpty, 
-  IsOptional, 
-  IsObject, 
-  IsEnum, 
-  IsNumber, 
-  IsArray, 
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsObject,
+  IsEnum,
+  IsNumber,
+  IsArray,
   IsBoolean,
   IsUUID,
   ValidateNested,
@@ -81,24 +81,20 @@ export class CreateSpreadSheetDto {
 }
 
 export class AddNewVersionSpreadSheetDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
+  spreadSheetId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
   @IsNumber()
   @IsNotEmpty()
   @Min(1)
   spreadSheetVersionNumber: number; // 기존 버전 번호
 
-  @IsString()
-  @IsNotEmpty()
-  @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
-  spreadsheetId: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @IsUUID('4', { message: '올바른 채팅 ID 형식이 아닙니다.' })
-  chatId: string;
-
-  @IsString()
-  @IsNotEmpty()
-  userId: string;
 
   @IsNotEmpty()
   @IsObject()

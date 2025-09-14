@@ -16,12 +16,12 @@ import {
 import { TableDataJsonSaveService } from './table-data-json-save.service';
 import {
   CreateSpreadSheetDto,
+  AddNewVersionSpreadSheetDto
 } from './dto/table-data-json-save.dto';
 import {
   LoadSpreadSheetResponse,
   DeleteResponse,
   SpreadSheetListItem,
-  AddNewVersionSpreadSheetData,
 } from '../types/spreadsheet.types';
 
 @Controller('v2/table-data-json-save')
@@ -140,7 +140,7 @@ export class TableDataJsonSaveController {
   @Post('add-version')
   @HttpCode(HttpStatus.CREATED)
   async addNewVersionSpreadSheetData(
-    @Body() dto: AddNewVersionSpreadSheetData,
+    @Body() dto: AddNewVersionSpreadSheetDto,
   ): Promise<{
     success: boolean;
     data: LoadSpreadSheetResponse;
@@ -153,7 +153,7 @@ export class TableDataJsonSaveController {
     return {
       success: true,
       data: result,
-      message: `New version ${result.version} created successfully`
+      message: `New version ${result.spreadSheetVersionNumber} created successfully`
     };
   }
 

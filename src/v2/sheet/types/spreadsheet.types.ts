@@ -7,9 +7,9 @@ export interface AddNewVersionSpreadSheetData {
 
 
 export interface LoadSpreadSheetResponse {
-  id: string;
+  spreadSheetId: string;
   fileName: string;
-  version: number;
+  spreadSheetVersionNumber: number;
   lastModified: Date;
 }
 

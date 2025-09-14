@@ -60,10 +60,10 @@ export class TableDataJsonSaveService {
       this.logger.log(`Loaded spreadsheet: ${spreadSheetId} for user: ${userId}`);
 
       return {
-        id: spreadSheet.id,
+        spreadSheetId: spreadSheet.id,
         fileName: spreadSheet.fileName,
         // data: loadedData,
-        version: spreadSheet.latestVersion,
+        spreadSheetVersionNumber: spreadSheet.latestVersion,
         lastModified: spreadSheet.updatedAt
       };
 
@@ -126,9 +126,9 @@ export class TableDataJsonSaveService {
       this.logger.log(`Created new spreadsheet: ${result.spreadSheet.id}`);
 
       return {
-        id: result.spreadSheet.id,
+        spreadSheetId: result.spreadSheet.id,
         fileName: result.spreadSheet.fileName,
-        version: 1,
+        spreadSheetVersionNumber: 1,
         lastModified: result.spreadSheet.updatedAt
       };
 
@@ -239,17 +239,17 @@ export class TableDataJsonSaveService {
   /**
    * 새 버전의 스프레드시트 데이터 추가
    */
-  async addNewVersionSpreadSheetData(dto: AddNewVersionSpreadSheetData): Promise<LoadSpreadSheetResponse> {
+  async addNewVersionSpreadSheetData(addNewVersionSpreadSheetData: AddNewVersionSpreadSheetData): Promise<LoadSpreadSheetResponse> {
     try {
       // 1. 사용자 검증
-      await this.userService.validateUser(dto.userId);
-      this.logger.log(`User validated: ${dto.userId}`);
+      await this.userService.validateUser(addNewVersionSpreadSheetData.userId);
+      this.logger.log(`User validated: ${addNewVersionSpreadSheetData.userId}`);
 
       // 2. 스프레드시트 존재 및 권한 확인
       const existingSpreadSheet = await this.prisma.spreadSheet.findFirst({
         where: {
-          id: dto.spreadSheetId,
-          userId: dto.userId,
+          id: addNewVersionSpreadSheetData.spreadSheetId,
+          userId: addNewVersionSpreadSheetData.userId,
           status: SpreadSheetStatus.ACTIVE
         }
       });
@@ -259,31 +259,32 @@ export class TableDataJsonSaveService {
       }
 
       // 3. 현재 버전이 올바른지 확인 (낙관적 잠금)
-      if (existingSpreadSheet.latestVersion !== dto.spreadSheetVersionNumber) {
+      if (existingSpreadSheet.latestVersion !== addNewVersionSpreadSheetData.spreadSheetVersionNumber) {
         throw new BadRequestException(
-          `Version conflict: Expected version ${dto.spreadSheetVersionNumber}, but current version is ${existingSpreadSheet.latestVersion}`
+          `Version conflict: Expected version ${addNewVersionSpreadSheetData.spreadSheetVersionNumber}, but current version is ${existingSpreadSheet.latestVersion}`
         );
       }
 
-      const newVersionNumber = dto.spreadSheetVersionNumber + 1;
+      // 새 버전 번호는 기존 버전 번호 + 1
+      const newVersionNumber = addNewVersionSpreadSheetData.spreadSheetVersionNumber + 1;
 
       // 4. 트랜잭션으로 새 버전 생성 및 메타데이터 업데이트
       const result = await this.prisma.$transaction(async (tx) => {
         // 새 버전 데이터 생성
         const newVersionData = await tx.spreadSheetVersionData.create({
           data: {
-            spreadSheetId: dto.spreadSheetId,
+            spreadSheetId: addNewVersionSpreadSheetData.spreadSheetId,
             spreadSheetVersionNumber: newVersionNumber,
             name: null, // 자동 생성된 버전은 이름 없음
-            data: dto.jsonData as any,
-            sheetCount: this.extractSheetCount(dto.jsonData),
-            fileSize: JSON.stringify(dto.jsonData).length,
+            data: addNewVersionSpreadSheetData.jsonData as any,
+            sheetCount: this.extractSheetCount(addNewVersionSpreadSheetData.jsonData),
+            fileSize: JSON.stringify(addNewVersionSpreadSheetData.jsonData).length,
           }
         });
 
         // 스프레드시트 메타데이터 업데이트
         const updatedSpreadSheet = await tx.spreadSheet.update({
-          where: { id: dto.spreadSheetId },
+          where: { id: addNewVersionSpreadSheetData.spreadSheetId },
           data: {
             latestVersion: newVersionNumber,
             editLockVersion: newVersionNumber, // 낙관적 잠금 버전도 업데이트
@@ -294,12 +295,12 @@ export class TableDataJsonSaveService {
         return { spreadSheet: updatedSpreadSheet, versionData: newVersionData };
       });
 
-      this.logger.log(`Created new version ${newVersionNumber} for spreadsheet: ${dto.spreadSheetId}`);
+      this.logger.log(`Created new version ${newVersionNumber} for spreadsheet: ${addNewVersionSpreadSheetData.spreadSheetId}`);
 
       return {
-        id: result.spreadSheet.id,
+        spreadSheetId: result.spreadSheet.id,
         fileName: result.spreadSheet.fileName,
-        version: result.spreadSheet.latestVersion,
+        spreadSheetVersionNumber: result.spreadSheet.latestVersion,
         lastModified: result.spreadSheet.updatedAt
       };
 
