@@ -1,3 +1,5 @@
+// /prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -15,8 +17,8 @@ model User {
   isGuest      Boolean  @default(false)
   createdAt    DateTime @default(now())
   lastActiveAt DateTime @updatedAt
-  preferences  Json? // UI 설정, 기본값 등
-  statistics   Json? // 사용 통계
+  preferences  Json?    // UI 설정, 기본값 등
+  statistics   Json?    // 사용 통계
 
   // 관계
   spreadSheets SpreadSheet[]
@@ -27,97 +29,93 @@ model User {
 
 // 메인 스프레드시트 모델 (메타데이터 관리)
 model SpreadSheet {
-  id         String            @id @default(cuid())
-  fileName   String
-  fileSize   Int? // 바이트 단위 (메타데이터로 유지, 실제 JSON 크기와 다를 수 있음)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  lastOpened DateTime          @default(now()) // 최근 열어본 시간
-  version    Int               @default(1) // 파일 버전 (낙관적 잠금을 위한 핵심 필드)
-  status     SpreadSheetStatus @default(ACTIVE)
+  id             String   @id @default(cuid())
+  fileName       String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastOpened     DateTime @default(now())
+  status         SpreadSheetStatus @default(ACTIVE)
+  
+  // ⭐️ 변경점: 낙관적 잠금용 필드 이름 명확화
+  editLockVersion Int      @default(1) // Optimistic Locking을 위한 버전
+
+  // ⭐️ 추가: 최신 버전을 가리키는 필드
+  latestVersion  Int      @default(1) // 히스토리 관리를 위한 최신 버전 번호
 
   // 외래키
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chatId String // 스프레드시트에 연결된 기본 채팅 ID (옵션)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId         String?  // 스프레드시트에 연결된 기본 채팅 ID
 
-  // 관계: 스프레드시트 데이터와 1:1 관계 유지
-  data        SpreadSheetData?
-  chats       Chat[]
-
-  @@unique([userId, id]) // 사용자별 스프레드시트 ID 고유
+  // ⭐️ 변경점: 관계를 1:N으로 변경
+  spreadSheetVersions      SpreadSheetVersionData[]
+  chats          Chat[]
+ 
+  @@unique([userId, id])
   @@index([userId, updatedAt])
   @@index([userId, lastOpened])
 }
 
-// 스프레드시트 데이터 저장 (압축되지 않은 JSONB)
-// 이제 전체 스프레드시트의 JSON 데이터를 압축 없이 그대로 저장합니다.
-model SpreadSheetData {
+// 이제 각 버전의 데이터 스냅샷을 저장합니다.
+model SpreadSheetVersionData {
   id            String   @id @default(cuid())
-  spreadSheetId String   @unique
+  
+  // ⭐️ 변경점: 더 이상 unique가 아님
+  spreadSheetId String
+  
+  // ⭐️ 추가: 버전 정보
+  spreadSheetVersionNumber Int      // 해당 스프레드시트 내에서의 버전 번호 (e.g., 1, 2, 3...)
+  name          String?  // 사용자가 버전에 붙이는 이름 (e.g., "1분기 마감", "초안")
+  
+  // 데이터
   data          Json     @db.JsonB // 압축되지 않은 전체 스프레드시트 JSON 데이터
-  sheetCount    Int      @default(1) // 포함된 시트 수
+  sheetCount    Int      @default(1)
+  fileSize      Int?     // 이 버전의 데이터 크기
   savedAt       DateTime @default(now())
 
   // 관계
   spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
+  // ⭐️ 추가: 특정 스프레드시트 내에서 버전 번호는 고유해야 함
+  @@unique([spreadSheetId, spreadSheetVersionNumber])
   @@index([savedAt])
 }
 
-// 편집 히스토리 (단순화된 세션 관리)
-// 개별 델타 기록이 사라지므로, 세션 단위의 변경 메타데이터만 남습니다.
-
-// 채팅 (AI 대화)
+// (Chat, Message 및 Enum 모델은 변경 없음)
 model Chat {
-  id           String     @id @default(cuid())
-  title        String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  messageCount Int        @default(0)
-  status       ChatStatus @default(ACTIVE)
-
-  // 스프레드시트 연결 (옵션)
+  id            String     @id @default(cuid())
+  title         String
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  messageCount  Int        @default(0)
+  status        ChatStatus @default(ACTIVE)
   spreadSheetId String?
   spreadSheet   SpreadSheet? @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-
-  // 사용자 연결
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // 관계
-  messages Message[]
-
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages      Message[]
   @@index([userId, status, updatedAt])
   @@index([spreadSheetId, updatedAt])
 }
 
-// 메시지
 model Message {
   id        String      @id @default(cuid())
-  content   String      @db.Text // 긴 텍스트 지원
+  content   String      @db.Text
   createdAt DateTime    @default(now())
   role      MessageRole
   type      MessageType @default(TEXT)
-
-  // AI 답변 메타데이터(aiChatRes) (JSONB로 변경)
-  aiChatRes Json? @db.JsonB // AI 응답 전체 데이터, 토큰 수, 처리 시간, 캐시 여부 등
-
-  // 관계
-  chatId String
-  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-
+  aiChatRes Json?       @db.JsonB
+  chatId    String
+  chat      Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
   @@index([chatId, createdAt])
-  @@index([aiChatRes], type: Gin) // JSONB 검색을 위한 GIN 인덱스
+  @@index([aiChatRes], type: Gin)
 }
 
-// Enum 정의
 enum SpreadSheetStatus {
-  ACTIVE // 활성 상태
-  ARCHIVED // 보관됨
-  DELETED // 삭제됨 (소프트 삭제)
+  ACTIVE
+  ARCHIVED
+  DELETED
 }
-
 
 enum ChatStatus {
   ACTIVE
@@ -132,8 +130,8 @@ enum MessageRole {
 }
 
 enum MessageType {
-  TEXT // 일반 텍스트
-  ANALYSIS // 데이터 분석 결과
-  SUGGESTION // AI 제안
-  ERROR // 오류 메시지
+  TEXT
+  ANALYSIS
+  SUGGESTION
+  ERROR
 }
