@@ -72,7 +72,8 @@ export class AiChatController {
       const dataContext = await this.aiChatService.loadParsedSpreadsheetData(
         processedReq.spreadsheetId, 
         processedReq.parsedSheetNames, 
-        processedReq.userId
+        processedReq.userId,
+        processedReq.spreadsheetVersionNumber
       );
 
       this.logger.log(`컨트롤러에서 loadParsedSpreadsheetData 호출 후 - dataContext: ${dataContext ? 'SUCCESS' : 'NULL'}`);

@@ -112,15 +112,14 @@ export class AiChatService {
     };
   }
 
-
-
   async loadParsedSpreadsheetData(
     spreadsheetId: string,
     parsedSheetNames: string[],
-    userId: string
+    userId: string,
+    spreadsheetVersionNumber: number
   ): Promise<filteredSheetReturns | null> {
-    console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}`);
-    this.logger.log(`loadParsedSpreadsheetData called with - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}`);
+    console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionNumber: ${spreadsheetVersionNumber}`);
+    this.logger.log(`loadParsedSpreadsheetData called with - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionNumber: ${spreadsheetVersionNumber}`);
 
     if (!spreadsheetId || !userId) {
       console.log(`[DEBUG] Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
@@ -140,31 +139,39 @@ export class AiChatService {
       // SpreadSheetData에서 JSONB 데이터 조회
       this.logger.log(`Querying SpreadSheetData for spreadsheet: ${spreadsheetId}, user: ${userId}`);
 
-      const spreadSheetData = await this.prisma.spreadSheetData.findFirst({
-        where: {
-          spreadSheet: {
-            id: spreadsheetId,
-            userId: userId,
-            status: 'ACTIVE'
-          }
-        },
-        orderBy: {
-          savedAt: 'desc'
+      // 특정 버전이 지정되었으면 그 버전을, 없으면 최신 버전을 가져오기
+      const whereClause: any = {
+        spreadSheet: {
+          id: spreadsheetId,
+          userId: userId,
+          status: 'ACTIVE'
         }
+      };
+
+      // 특정 버전 번호가 지정되었으면 해당 버전을 조회
+      if (spreadsheetVersionNumber !== undefined) {
+        whereClause.spreadSheetVersionNumber = spreadsheetVersionNumber;
+      }
+
+      const spreadSheetVersionData = await this.prisma.spreadSheetVersionData.findFirst({
+        where: whereClause,
+        orderBy: spreadsheetVersionNumber !== undefined 
+          ? undefined 
+          : { spreadSheetVersionNumber: 'desc' } // 특정 버전이 아니면 최신 버전 가져오기
       });
 
-      this.logger.log(`SpreadSheetData query result:`, {
-        found: !!spreadSheetData,
-        hasData: !!(spreadSheetData as any)?.data,
-        dataType: typeof (spreadSheetData as any)?.data
+      this.logger.log(`SpreadSheetVersionData query result:`, {
+        found: !!spreadSheetVersionData,
+        hasData: !!(spreadSheetVersionData as any)?.data,
+        dataType: typeof (spreadSheetVersionData as any)?.data
       });
 
-      if (!spreadSheetData || !(spreadSheetData as any).data) {
-        this.logger.warn(`No JSONB data found for spreadsheet: ${spreadsheetId}. SpreadSheetData exists: ${!!spreadSheetData}`);
+      if (!spreadSheetVersionData || !(spreadSheetVersionData as any).data) {
+        this.logger.warn(`No JSONB data found for spreadsheet: ${spreadsheetId}. SpreadSheetVersionData exists: ${!!spreadSheetVersionData}`);
         return null;
       }
 
-      let rawData = (spreadSheetData as any).data;
+      let rawData = (spreadSheetVersionData as any).data;
 
       // 실제 데이터 구조에 따라 sheets 접근 경로 수정
       let fullData: Record<string, any>;

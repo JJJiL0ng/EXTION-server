@@ -31,14 +31,19 @@ export class TableDataJsonSaveService {
       // 1. 사용자 검증
       await this.userService.validateUser(userId);
 
-      // 2. 데이터베이스에서 사용자가 요청한 시트만 로드
+      // 2. 데이터베이스에서 사용자가 요청한 시트만 로드 (최신 버전)
       const spreadSheet = await this.prisma.spreadSheet.findFirst({
         where: {
           id: spreadSheetId,
           userId,
           status: SpreadSheetStatus.ACTIVE
         },
-        include: { data: true }
+        include: { 
+          spreadSheetVersions: {
+            orderBy: { spreadSheetVersionNumber: 'desc' },
+            take: 1
+          }
+        }
       });
 
       if (!spreadSheet) {
@@ -57,7 +62,7 @@ export class TableDataJsonSaveService {
         id: spreadSheet.id,
         fileName: spreadSheet.fileName,
         // data: loadedData,
-        version: spreadSheet.version,
+        version: spreadSheet.latestVersion,
         lastModified: spreadSheet.updatedAt
       };
 
@@ -96,23 +101,25 @@ export class TableDataJsonSaveService {
             fileName: dto.fileName,
             userId: dto.userId,
             chatId: dto.chatId, // 프론트엔드에서 제공한 chatId 사용
-            fileSize: JSON.stringify(jsonData).length,
-            version: 1,
+            editLockVersion: 1, // 낙관적 잠금용
+            latestVersion: 1, // 최신 버전 번호
             status: SpreadSheetStatus.ACTIVE
           }
         });
 
-        // SpreadSheetData 생성
-        const sheetData = await tx.spreadSheetData.create({
+        // SpreadSheetVersionData 생성 (버전 1로)
+        const sheetVersionData = await tx.spreadSheetVersionData.create({
           data: {
             spreadSheetId: spreadSheet.id,
-            // JSON 객체 그대로 저장 (DB 필드가 Json 타입이어야 함)
-            data: jsonData as any,
+            spreadSheetVersionNumber: 1, // 첫 번째 버전
+            name: null, // 기본 버전은 이름 없음
+            data: jsonData as any, // JSON 객체 그대로 저장
             sheetCount: this.extractSheetCount(jsonData),
-          } as any
+            fileSize: JSON.stringify(jsonData).length,
+          }
         });
 
-        return { spreadSheet, sheetDataId: sheetData.id };
+        return { spreadSheet, sheetVersionDataId: sheetVersionData.id };
       });
 
       this.logger.log(`Created new spreadsheet: ${result.spreadSheet.id}`);
@@ -142,11 +149,14 @@ export class TableDataJsonSaveService {
           status: SpreadSheetStatus.ACTIVE
         },
         include: {
-          data: {
+          spreadSheetVersions: {
             select: {
               sheetCount: true,
-              savedAt: true
-            }
+              savedAt: true,
+              fileSize: true
+            },
+            orderBy: { spreadSheetVersionNumber: 'desc' },
+            take: 1
           },
           _count: {
             select: {
@@ -157,18 +167,21 @@ export class TableDataJsonSaveService {
         orderBy: { lastOpened: 'desc' }
       });
 
-      return spreadSheets.map(sheet => ({
-        id: sheet.id,
-        fileName: sheet.fileName,
-        fileSize: sheet.fileSize,
-        version: sheet.version,
-        createdAt: sheet.createdAt,
-        updatedAt: sheet.updatedAt,
-        lastOpened: sheet.lastOpened,
-        sheetCount: sheet.data?.sheetCount || 1,
-        chatCount: sheet._count.chats,
-        isActive: false // 현재 캐싱을 사용하지 않으므로 항상 false
-      }));
+      return spreadSheets.map(sheet => {
+        const latestVersion = sheet.spreadSheetVersions[0]; // 첫 번째가 최신 버전
+        return {
+          id: sheet.id,
+          fileName: sheet.fileName,
+          fileSize: latestVersion?.fileSize || 0,
+          version: sheet.latestVersion,
+          createdAt: sheet.createdAt,
+          updatedAt: sheet.updatedAt,
+          lastOpened: sheet.lastOpened,
+          sheetCount: latestVersion?.sheetCount || 1,
+          chatCount: sheet._count.chats,
+          isActive: false // 현재 캐싱을 사용하지 않으므로 항상 false
+        };
+      });
 
     } catch (error) {
       const safeError = createSafeError(error);

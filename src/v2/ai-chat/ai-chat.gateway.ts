@@ -116,6 +116,8 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         userQuestionMessage: payload.userQuestionMessage,
         parsedSheetNames: payload.parsedSheetNames ?? [],
         jobId: payload.jobId,
+        spreadsheetVersionNumber: payload.spreadsheetVersionNumber,
+        newVersionSpreadSheetData: payload.newVersionSpreadSheetData,
       };
 
 
@@ -123,7 +125,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       const previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId);
 
-      const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId);
+      const dataContext = await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId, aiReq.spreadsheetVersionNumber);
 
       await this.aiChatService.saveUserMessage(aiReq);
 
