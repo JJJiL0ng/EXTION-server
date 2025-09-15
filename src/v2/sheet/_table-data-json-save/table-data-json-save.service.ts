@@ -23,60 +23,9 @@ export class TableDataJsonSaveService {
     private readonly userService: UserService,
   ) { }
 
-
-  /**
-   * 스프레드시트 로드 (메모리로)
-   */
-  async loadSpreadSheet(spreadSheetId: string, userId: string): Promise<LoadSpreadSheetResponse> {
-    try {
-      // 1. 사용자 검증
-      await this.userService.validateUser(userId);
-
-      // 2. 데이터베이스에서 사용자가 요청한 시트만 로드 (최신 버전)
-      const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: spreadSheetId,
-          userId,
-          status: SpreadSheetStatus.ACTIVE
-        },
-        include: { 
-          spreadSheetVersions: {
-            orderBy: { spreadSheetVersionNumber: 'desc' },
-            take: 1
-          }
-        }
-      });
-
-      if (!spreadSheet) {
-        throw new NotFoundException('SpreadSheet not found');
-      }
-
-      // 4. lastOpened 업데이트
-      await this.prisma.spreadSheet.update({
-        where: { id: spreadSheetId },
-        data: { lastOpened: new Date() }
-      });
-
-      this.logger.log(`Loaded spreadsheet: ${spreadSheetId} for user: ${userId}`);
-
-      return {
-        spreadSheetId: spreadSheet.id,
-        fileName: spreadSheet.fileName,
-        // data: loadedData,
-        spreadSheetVersionNumber: spreadSheet.latestVersion,
-        lastModified: spreadSheet.updatedAt
-      };
-
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to load spreadsheet: ${safeError.message}`, safeError.details);
-      throw error;
-    }
-  }
-
-  /**
-   * 새 스프레드시트 생성
-   */
+  //=============================================================
+  // Create New SpreadSheet and New Version
+  //=============================================================
   async createSpreadSheet(dto: CreateSpreadSheetDto): Promise<LoadSpreadSheetResponse> {
     try {
       // 1. 사용자 검증
@@ -135,103 +84,6 @@ export class TableDataJsonSaveService {
     } catch (error) {
       const safeError = createSafeError(error);
       this.logger.error(`Failed to create spreadsheet: ${safeError.message}`, safeError.details);
-      throw error;
-    }
-  }
-
-  /**
-   * 스프레드시트 목록 조회
-   */
-  async getUserSpreadSheets(userId: string): Promise<SpreadSheetListItem[]> {
-    try {
-      const spreadSheets = await this.prisma.spreadSheet.findMany({
-        where: {
-          userId,
-          status: SpreadSheetStatus.ACTIVE
-        },
-        include: {
-          spreadSheetVersions: {
-            select: {
-              sheetCount: true,
-              savedAt: true,
-              fileSize: true
-            },
-            orderBy: { spreadSheetVersionNumber: 'desc' },
-            take: 1
-          },
-          _count: {
-            select: {
-              chats: true,
-            }
-          }
-        },
-        orderBy: { lastOpened: 'desc' }
-      });
-
-      return spreadSheets.map(sheet => {
-        const latestVersion = sheet.spreadSheetVersions[0]; // 첫 번째가 최신 버전
-        return {
-          id: sheet.id,
-          fileName: sheet.fileName,
-          fileSize: latestVersion?.fileSize || 0,
-          version: sheet.latestVersion,
-          createdAt: sheet.createdAt,
-          updatedAt: sheet.updatedAt,
-          lastOpened: sheet.lastOpened,
-          sheetCount: latestVersion?.sheetCount || 1,
-          chatCount: sheet._count.chats,
-          isActive: false // 현재 캐싱을 사용하지 않으므로 항상 false
-        };
-      });
-
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to get user spreadsheets: ${safeError.message}`, safeError.details);
-      throw error;
-    }
-  }
-
-  /**
-   * 스프레드시트 삭제 (소프트 삭제)
-   */
-  async deleteSpreadSheet(spreadSheetId: string, userId: string): Promise<DeleteResponse> {
-    try {
-      // 1. 권한 확인
-      const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: { id: spreadSheetId, userId }
-      });
-
-      if (!spreadSheet) {
-        throw new NotFoundException('SpreadSheet not found');
-      }
-
-      // 2. 활성 데이터가 삭제 대상이면 정리 - 현재 사용하지 않음
-      /*
-      if (this.activeSpreadSheet?.id === spreadSheetId) {
-        if (this.activeSpreadSheet.metadata.isDirty) {
-          await this.forceSave();
-        }
-        this.activeSpreadSheet = null;
-        this.clearSaveTimer();
-      }
-      */
-
-      // 3. 소프트 삭제
-      await this.prisma.spreadSheet.update({
-        where: { id: spreadSheetId },
-        data: {
-          status: SpreadSheetStatus.DELETED,
-          updatedAt: new Date()
-        }
-      });
-
-      this.logger.log(`Deleted spreadsheet: ${spreadSheetId}`);
-
-      return { success: true };
-
-    } catch (error) {
-      const safeError = createSafeError(error);
-      this.logger.error(`Failed to delete spreadsheet: ${safeError.message}`, safeError.details);
       throw error;
     }
   }
@@ -311,24 +163,47 @@ export class TableDataJsonSaveService {
     }
   }
 
-  /**
-   * 메모리 정리 - 현재 사용하지 않음
-   */
-  async cleanup(): Promise<void> {
-    try {
-      // 캐싱을 사용하지 않으므로 메모리 정리 로직도 비활성화
-      /*
-      if (this.activeSpreadSheet?.metadata.isDirty) {
-        await this.forceSave();
-      }
-      this.activeSpreadSheet = null;
-      this.clearSaveTimer();
-      */
 
-      this.logger.log('Memory cleanup completed (no-op as caching disabled)');
+
+  //=============================================================
+  // Check is data existing and Load Whole Table Data JSON
+  //=============================================================
+
+  async checkSheetDataExistence(spreadSheetId: string, userId: string): Promise<{ exists: boolean; latestVersion: number | null }> {
+    try {
+      this.logger.log(`시트 데이터 존재 여부 확인 시작 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
+
+      // 1. 사용자 검증
+      await this.userService.validateUser(userId);
+
+      // 2. SpreadSheet 존재 및 권한 확인
+      const spreadSheet = await this.prisma.spreadSheet.findFirst({
+        where: {
+          id: spreadSheetId,
+          userId: userId,
+          status: 'ACTIVE'
+        },
+        select: {
+          id: true,
+          latestVersion: true
+        }
+      });
+
+      if (!spreadSheet) {
+        this.logger.warn(`스프레드시트를 찾을 수 없거나 권한이 없음 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
+        return { exists: false, latestVersion: null };
+      }
+
+      this.logger.log(`시트 데이터 존재 확인 완료 - exists: true, latestVersion: ${spreadSheet.latestVersion}`);
+      return {
+        exists: true,
+        latestVersion: spreadSheet.latestVersion
+      };
+
     } catch (error) {
       const safeError = createSafeError(error);
-      this.logger.error(`Cleanup failed: ${safeError.message}`, safeError.details);
+      this.logger.error(`시트 데이터 존재 여부 확인 실패 - spreadSheetId: ${spreadSheetId}, userId: ${userId}: ${safeError.message}`, safeError.details);
+      return { exists: false, latestVersion: null };
     }
   }
 

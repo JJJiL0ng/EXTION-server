@@ -16,7 +16,9 @@ import {
 import { TableDataJsonSaveService } from './table-data-json-save.service';
 import {
   CreateSpreadSheetDto,
-  AddNewVersionSpreadSheetDto
+  AddNewVersionSpreadSheetDto,
+  CheckAndLoadSpreadSheetDto,
+  CheckAndLoadResDto
 } from './dto/table-data-json-save.dto';
 import {
   LoadSpreadSheetResponse,
@@ -24,13 +26,16 @@ import {
   SpreadSheetListItem,
 } from '../types/spreadsheet.types';
 
+import { AiChatService } from 'src/v2/ai-chat/ai-chat.service'; // AiChatService 임포트
+
 @Controller('v2/table-data-json-save')
 export class TableDataJsonSaveController {
   private readonly logger = new Logger(TableDataJsonSaveController.name);
 
   constructor(
     private readonly tableDataJsonSaveService: TableDataJsonSaveService,
-  ) {}
+    private readonly aiChatService: AiChatService, // AiChatService 주입
+  ) { }
 
   /**
    * 새 스프레드시트 생성
@@ -44,93 +49,13 @@ export class TableDataJsonSaveController {
     message: string;
   }> {
     this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
-    
+
     // const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
     await this.tableDataJsonSaveService.createSpreadSheet(dto);
 
     return {
       success: true,
       message: 'SpreadSheet created successfully'
-    };
-  }
-
-  /**
-   * 스프레드시트 로드
-   */
-  @Get('load/:spreadSheetId')
-  @HttpCode(HttpStatus.OK)
-  async loadSpreadSheet(
-    @Param('spreadSheetId') spreadSheetId: string,
-    @Query('userId') userId: string,
-  ): Promise<{
-    success: boolean;
-    data: LoadSpreadSheetResponse;
-    message: string;
-  }> {
-    this.logger.log(`Loading spreadsheet: ${spreadSheetId} for user: ${userId}`);
-    
-    const result = await this.tableDataJsonSaveService.loadSpreadSheet(
-      spreadSheetId,
-      userId
-    );
-
-    return {
-      success: true,
-      data: result,
-      message: 'SpreadSheet loaded successfully'
-    };
-  }
-
-  /**
-   * 사용자 스프레드시트 목록 조회
-   */
-  @Get('list')
-  async getUserSpreadSheets(
-    @Query('userId') userId: string,
-    @Query('page') page: number = 1,
-    @Query('limit') limit: number = 20,
-  ) {
-    const spreadSheets: SpreadSheetListItem[] = await this.tableDataJsonSaveService.getUserSpreadSheets(userId);
-
-    // 간단한 페이지네이션
-    const startIndex = (page - 1) * limit;
-    const endIndex = startIndex + limit;
-    const paginatedResults = spreadSheets.slice(startIndex, endIndex);
-
-    return {
-      success: true,
-      data: {
-        spreadSheets: paginatedResults,
-        pagination: {
-          currentPage: page,
-          totalItems: spreadSheets.length,
-          totalPages: Math.ceil(spreadSheets.length / limit),
-          itemsPerPage: limit
-        }
-      },
-      message: 'SpreadSheets retrieved successfully'
-    };
-  }
-
-  /**
-   * 스프레드시트 삭제
-   */
-  @Delete(':id')
-  @HttpCode(HttpStatus.OK)
-  async deleteSpreadSheet(
-    @Param('id') spreadSheetId: string,
-    @Query('userId') userId: string,
-  ) {
-    this.logger.log(`Deleting spreadsheet: ${spreadSheetId} for user: ${userId}`);
-
-    const result: DeleteResponse = await this.tableDataJsonSaveService.deleteSpreadSheet(
-      spreadSheetId,
-      userId
-    );
-
-    return {
-      success: result.success,
-      message: 'SpreadSheet deleted successfully'
     };
   }
 
@@ -147,7 +72,7 @@ export class TableDataJsonSaveController {
     message: string;
   }> {
     this.logger.log(`Adding new version for spreadsheet: ${dto.spreadSheetId}, current version: ${dto.spreadSheetVersionNumber}, user: ${dto.userId}`);
-    
+
     const result = await this.tableDataJsonSaveService.addNewVersionSpreadSheetData(dto);
 
     return {
@@ -157,19 +82,25 @@ export class TableDataJsonSaveController {
     };
   }
 
-  /**
-   * 메모리 정리
-   */
-  @Post('cleanup')
-  @HttpCode(HttpStatus.OK)
-  async cleanup(@Body() body: { userId: string }) {
-    this.logger.log(`Cleaning up memory for user: ${body.userId}`);
+  @Get('check-and-load')
+  async checkAndLoad(
+    @Body() dto: CheckAndLoadSpreadSheetDto,
+  ): Promise<CheckAndLoadResDto> {
+    const isSpreadSheetExists = await this.tableDataJsonSaveService.checkSheetDataExistence(dto.spreadSheetId, dto.userId);
 
-    await this.tableDataJsonSaveService.cleanup();
-
+    if (!isSpreadSheetExists.exists) {
+      return {
+        exists: false,
+      };
+    }
+    const loadspreadSheetData = await this.tableDataJsonSaveService.loadWholeTableDataJson(dto.spreadSheetId, dto.userId, isSpreadSheetExists.latestVersion!);
+    const loadUserAiChatHistory = await this.aiChatService.loadUserAiChatHistory(dto.chatId, dto.userId);
     return {
-      success: true,
-      message: 'Memory cleanup completed'
+      exists: true,
+      latestVersion: isSpreadSheetExists.latestVersion,
+      spreadSheetData: loadspreadSheetData.spreadSheetData,
+      chatHistory: loadUserAiChatHistory,
     };
   }
+
 }

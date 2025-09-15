@@ -16,6 +16,8 @@ import {
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
+import { loadChatHistoryRes,previousMessagesContent } from 'src/v2/ai-chat/types/aiChat.types';
+
 // ===============================
 // SpreadJS Format Interface
 // ===============================
@@ -104,7 +106,7 @@ export class AddNewVersionSpreadSheetDto {
 // ===============================
 // 스프레드시트 로드 DTO
 // ===============================
-export class LoadSpreadSheetDto {
+export class CheckAndLoadSpreadSheetDto {
   @IsString()
   @IsNotEmpty()
   @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
@@ -112,7 +114,19 @@ export class LoadSpreadSheetDto {
 
   @IsString()
   @IsNotEmpty()
+  @IsUUID('4', { message: '올바른 채팅 ID 형식이 아닙니다.' })
+  chatId: string;
+
+  @IsString()
+  @IsNotEmpty()
   userId: string;
+}
+
+export class CheckAndLoadResDto {
+  exists: boolean;
+  latestVersion?: number | null;
+  spreadSheetData?: Record<string, any>;
+  chatHistory?: previousMessagesContent[] | null;
 }
 
 // ===============================
