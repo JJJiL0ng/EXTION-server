@@ -1,35 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiAgentService } from '../ai-agent/ai-agent.service';
-import { aiChatApiReq, aiChatApiRes } from './types/aiChat.types';
+import { aiChatApiReq, aiChatApiRes, previousMessagesContent } from './types/aiChat.types';
 import { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 import { createSafeError } from '../sheet/types/spreadsheet.types';
 import { PrismaService } from '../prisma/prisma.service';
-
-
-// import { RedisService } from '...'; // Redis와 같은 상태 저장소 서비스
-
-export interface filteredSheetReturns {
-  [sheetName: string]: any;
-}
-
-export interface PreviousMessages {
-  chatId: string;
-  messages: PreviousChatMessage[];
-}
-
-export interface UserPreviousMessage {
-  role: 'user';
-  userQuestionMessage: string;
-}
-
-export interface AiPreviousMessage {
-  role: 'assistant';
-  aiChatRes: aiChatApiRes;
-}
-export type PreviousChatMessage = UserPreviousMessage | AiPreviousMessage;
-
-// 전체 히스토리 (시간순 배열)
-export type ChatHistory = PreviousChatMessage[];
+import { filteredSheetReturns, PreviousChatMessage, ChatHistory, UserPreviousMessage, AiPreviousMessage } from './types/aiChat.types';
 
 /**
  * aiChatApiRes 타입 가드 함수
@@ -61,11 +36,11 @@ function parseAiChatApiRes(jsonValue: any): aiChatApiRes | null {
   try {
     // JsonValue가 이미 객체인 경우와 문자열인 경우 모두 처리
     const obj = typeof jsonValue === 'string' ? JSON.parse(jsonValue) : jsonValue;
-    
+
     if (isAiChatApiRes(obj)) {
       return obj;
     }
-    
+
     return null;
   } catch (error) {
     return null;
@@ -155,8 +130,8 @@ export class AiChatService {
 
       const spreadSheetVersionData = await this.prisma.spreadSheetVersionData.findFirst({
         where: whereClause,
-        orderBy: spreadsheetVersionNumber !== undefined 
-          ? undefined 
+        orderBy: spreadsheetVersionNumber !== undefined
+          ? undefined
           : { spreadSheetVersionNumber: 'desc' } // 특정 버전이 아니면 최신 버전 가져오기
       });
 
@@ -484,7 +459,7 @@ export class AiChatService {
         } else if (message.role === 'ASSISTANT' && message.aiChatRes) {
           // aiChatRes 타입 안전성 검증
           const parsedAiChatRes = parseAiChatApiRes(message.aiChatRes);
-          
+
           if (parsedAiChatRes) {
             const assistantMessage: AiPreviousMessage = {
               role: 'assistant',
@@ -519,5 +494,89 @@ export class AiChatService {
       throw new Error(`멀티턴 메시지 로드 실패: ${safeError.message}`);
     }
   }
+
+  async loadUserAiChatHistory(chatId: string, userId: string): Promise<previousMessagesContent[] | null> {
+    try {
+      this.logger.log(`채팅 히스토리 로드 시작 - chatId: ${chatId}, userId: ${userId}`);
+
+      // 1. Chat 존재 및 권한 확인
+      const chat = await this.prisma.chat.findFirst({
+        where: {
+          id: chatId,
+          userId: userId,
+          status: 'ACTIVE'
+        }
+      });
+
+      if (!chat) {
+        this.logger.warn(`채팅을 찾을 수 없거나 권한이 없음 - chatId: ${chatId}, userId: ${userId}`);
+        return null;
+      }
+
+      // 2. 최대 50개의 메시지를 시간순으로 가져오기 (가장 최근 50개)
+      const messages = await this.prisma.message.findMany({
+        where: {
+          chatId: chatId,
+          role: {
+            in: ['USER', 'ASSISTANT']
+          }
+        },
+        orderBy: {
+          createdAt: 'desc'
+        },
+        take: 50,
+        select: {
+          role: true,
+          content: true,
+          aiChatRes: true,
+          createdAt: true
+        }
+      });
+
+      if (messages.length === 0) {
+        this.logger.log(`채팅 히스토리가 비어있음 - chatId: ${chatId}`);
+        return [];
+      }
+
+      // 3. 시간순으로 정렬 (오래된 것부터)
+      messages.reverse();
+
+      // 4. 첫 번째 메시지가 user 메시지가 되도록 조정
+      let startIndex = 0;
+      if (messages.length > 0 && messages[0].role === 'ASSISTANT') {
+        startIndex = 1;
+      }
+
+      // 5. previousMessagesContent 형태로 변환
+      const chatHistory: previousMessagesContent[] = [];
+
+      for (let i = startIndex; i < messages.length; i++) {
+        const message = messages[i];
+
+        if (message.role === 'USER') {
+          chatHistory.push({
+            role: 'user',
+            content: message.content
+          });
+        } else if (message.role === 'ASSISTANT') {
+          // aiChatRes에서 적절한 content 추출
+          chatHistory.push({
+            role: 'assistant',
+            content: message.content
+          });
+        }
+      }
+
+      this.logger.log(`채팅 히스토리 로드 완료 - ${chatHistory.length}개 메시지, 첫 메시지 role: ${chatHistory[0]?.role || 'none'}`);
+      return chatHistory;
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`채팅 히스토리 로드 실패 - chatId: ${chatId}, userId: ${userId}: ${safeError.message}`, safeError.details);
+      return null;
+    }
+  }
+
+
 }
 

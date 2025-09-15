@@ -10,11 +10,9 @@ import { Logger } from '@nestjs/common';
 
 import { AiChatService } from './ai-chat.service';
 
-import type { aiChatApiReq } from './types/aiChat.types';
-import type { aiChatApiRes } from './types/aiChat.types'; // AI 응답 저장용 타입 추가
+import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMessage } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
-import { filteredSheetReturns, PreviousChatMessage } from './ai-chat.service';
 
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
 
@@ -307,7 +305,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .catch(err => {
         this.logger.error(`AI 응답 저장 실패 - jobId: ${aiReq.jobId}, ${err instanceof Error ? err.message : err}`);
       });
-    
+
     dbOperations.push(saveAssistantMessagePromise);
 
     // 2. 새 버전 스프레드시트 데이터 저장 작업 (조건부)
@@ -324,7 +322,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         .catch(err => {
           this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
         });
-      
+
       dbOperations.push(saveSpreadsheetDataPromise);
     }
 
@@ -332,7 +330,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     void Promise.allSettled(dbOperations).then(results => {
       const successCount = results.filter(result => result.status === 'fulfilled').length;
       const failureCount = results.filter(result => result.status === 'rejected').length;
-      
+
       this.logger.log(`DB 작업 완료 - 성공: ${successCount}, 실패: ${failureCount}, 총 작업: ${results.length} (jobId: ${aiReq.jobId})`);
     });
   }
