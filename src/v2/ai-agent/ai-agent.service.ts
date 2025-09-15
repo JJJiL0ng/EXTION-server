@@ -6,7 +6,7 @@ import { routeAndRunSingleTask } from './task-run-route/routeAndRunSingleTask';
 import type { Task, TaskManagerOutput } from './types/taskManager.types';
 import type { dataEditChatRes, dataEditCommand } from './types/dataEdit.types';
 
-import { filteredSheetReturns, PreviousChatMessage } from '../ai-chat/ai-chat.service';
+import { filteredSheetReturns, PreviousChatMessage } from '../ai-chat/types/aiChat.types';
 
 import { createTaskManagerRunnable } from './runnables/task_manager/task_manager.runnable';
 

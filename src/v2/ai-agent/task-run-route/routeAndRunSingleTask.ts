@@ -10,7 +10,7 @@ import { dataEditChatRes, dataEditCommand, dataEditCommandType } from '../types/
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { Runnable } from '@langchain/core/runnables';
 
-import {PreviousChatMessage} from 'src/v2/ai-chat/ai-chat.service';
+import {PreviousChatMessage} from 'src/v2/ai-chat/types/aiChat.types';
 
 interface TaskRouterInput {
     previousMessages: PreviousChatMessage[];
