@@ -332,6 +332,53 @@ export class TableDataJsonSaveService {
     }
   }
 
+  async loadWholeTableDataJson(spreadSheetId: string, userId: string, spreadSheetVersionNumber: number): Promise<Record<string, any>> {
+    try {
+      // 1. 사용자 검증
+      await this.userService.validateUser(userId);
+
+      // 2. 스프레드시트 존재 및 권한 확인
+      const spreadSheet = await this.prisma.spreadSheet.findFirst({
+        where: {
+          id: spreadSheetId,
+          userId,
+          status: SpreadSheetStatus.ACTIVE
+        }
+      });
+
+      if (!spreadSheet) {
+        throw new NotFoundException('SpreadSheet not found or access denied');
+      }
+
+      // 3. 특정 버전의 데이터 조회
+      const versionData = await this.prisma.spreadSheetVersionData.findUnique({
+        where: {
+          spreadSheetId_spreadSheetVersionNumber: {
+            spreadSheetId,
+            spreadSheetVersionNumber
+          }
+        },
+        select: {
+          data: true
+        }
+      });
+
+      if (!versionData) {
+        throw new NotFoundException(`Version ${spreadSheetVersionNumber} not found for spreadsheet ${spreadSheetId}`);
+      }
+
+      this.logger.log(`Loaded JSON data for spreadsheet: ${spreadSheetId}, version: ${spreadSheetVersionNumber}, user: ${userId}`);
+
+      // 4. JSON 데이터 반환
+      return versionData.data as Record<string, any>;
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`Failed to load whole table data JSON: ${safeError.message}`, safeError.details);
+      throw error;
+    }
+  }
+
   // ==============================================================
   // Private Methods
   // ==============================================================
