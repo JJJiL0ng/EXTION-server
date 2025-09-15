@@ -84,7 +84,7 @@ export class TableDataJsonSaveController {
 
   @Get('check-and-load')
   async checkAndLoad(
-    @Body() dto: CheckAndLoadSpreadSheetDto,
+    @Query() dto: CheckAndLoadSpreadSheetDto,
   ): Promise<CheckAndLoadResDto> {
     const isSpreadSheetExists = await this.tableDataJsonSaveService.checkSheetDataExistence(dto.spreadSheetId, dto.userId);
 
