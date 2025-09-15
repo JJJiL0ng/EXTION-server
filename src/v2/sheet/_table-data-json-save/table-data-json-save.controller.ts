@@ -98,7 +98,7 @@ export class TableDataJsonSaveController {
     return {
       exists: true,
       latestVersion: isSpreadSheetExists.latestVersion,
-      spreadSheetData: loadspreadSheetData.spreadSheetData,
+      spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
       chatHistory: loadUserAiChatHistory,
     };
   }
