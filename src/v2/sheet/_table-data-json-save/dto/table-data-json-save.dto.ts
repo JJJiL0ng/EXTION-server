@@ -92,11 +92,14 @@ export class AddNewVersionSpreadSheetDto {
   @IsNotEmpty()
   userId: string;
 
+  @IsString()
+  @IsNotEmpty()
+  headVersionId: string; // 최신 버전의 id
+
   @IsNumber()
   @IsNotEmpty()
-  @Min(1)
-  spreadSheetVersionNumber: number; // 기존 버전 번호
-
+  @Min(1, { message: 'editLockVersion은 1 이상이어야 합니다.' })
+  editLockVersion: number; // 프론트엔드가 읽었을 때의 버전 (낙관적 잠금용)
 
   @IsNotEmpty()
   @IsObject()
@@ -124,7 +127,7 @@ export class CheckAndLoadSpreadSheetDto {
 
 export class CheckAndLoadResDto {
   exists: boolean;
-  latestVersion?: number | null;
+  headVersionId?: string | null;
   spreadSheetData?: Record<string, any>;
   chatHistory?: previousMessagesContent[] | null;
 }

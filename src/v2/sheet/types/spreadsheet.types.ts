@@ -1,7 +1,8 @@
 export interface AddNewVersionSpreadSheetData {
   spreadSheetId: string;
   userId: string;
-  spreadSheetVersionNumber: number; // 기존 버전 번호
+  headVersionId: string; // 최신 버전의 id
+  editLockVersion: number; // 프론트엔드가 읽었을 때의 버전 (낙관적 잠금용)
   jsonData: Record<string, any>; // 새 버전의 시트 데이터
 }
 
@@ -9,7 +10,7 @@ export interface AddNewVersionSpreadSheetData {
 export interface LoadSpreadSheetResponse {
   spreadSheetId: string;
   fileName: string;
-  spreadSheetVersionNumber: number;
+  headVersionId: string; // 최신 버전의 id
   lastModified: Date;
 }
 

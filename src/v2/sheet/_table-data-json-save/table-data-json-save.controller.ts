@@ -4,10 +4,7 @@ import {
   Controller,
   Post,
   Get,
-  Put,
-  Delete,
   Body,
-  Param,
   Query,
   Logger,
   HttpStatus,
@@ -71,14 +68,14 @@ export class TableDataJsonSaveController {
     data: LoadSpreadSheetResponse;
     message: string;
   }> {
-    this.logger.log(`Adding new version for spreadsheet: ${dto.spreadSheetId}, current version: ${dto.spreadSheetVersionNumber}, user: ${dto.userId}`);
+    this.logger.log(`Adding new version for spreadsheet: ${dto.spreadSheetId}, current version: ${dto.headVersionId}, user: ${dto.userId}`);
 
     const result = await this.tableDataJsonSaveService.addNewVersionSpreadSheetData(dto);
 
     return {
       success: true,
       data: result,
-      message: `New version ${result.spreadSheetVersionNumber} created successfully`
+      message: `New version ${result.headVersionId} created successfully`
     };
   }
 
@@ -93,11 +90,11 @@ export class TableDataJsonSaveController {
         exists: false,
       };
     }
-    const loadspreadSheetData = await this.tableDataJsonSaveService.loadWholeTableDataJson(dto.spreadSheetId, dto.userId, isSpreadSheetExists.latestVersion!);
+    const loadspreadSheetData = await this.tableDataJsonSaveService.loadWholeTableDataJson(dto.spreadSheetId, dto.userId, isSpreadSheetExists.headVersionId!);
     const loadUserAiChatHistory = await this.aiChatService.loadUserAiChatHistory(dto.chatId, dto.userId);
     return {
       exists: true,
-      latestVersion: isSpreadSheetExists.latestVersion,
+      headVersionId: isSpreadSheetExists.headVersionId,
       spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
       chatHistory: loadUserAiChatHistory,
     };
