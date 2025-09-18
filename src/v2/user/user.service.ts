@@ -88,47 +88,50 @@ export class UserService {
    * - chatId가 주어지면 해당 채팅이 존재 + 소유자 일치 여부 확인
    * - chatId가 없으면 서버에서 UUID를 발급해 새 채팅을 만든 뒤 반환
    */
-  public async ensureChat(
-    chatId: string | undefined,
-    userId: string,
-    title: string = 'New Chat',
-  ) {
-    if (chatId) {
-      // 기존 채팅 확인
-      const existingChat = await this.prisma.chat.findFirst({
-        where: { id: chatId, userId, status: ChatStatus.ACTIVE },
-        select: { id: true },
-      });
+  // public async ensureChat(
+  //   chatId: string | undefined,
+  //   userId: string,
+  //   spreadSheetId: string,
+  //   title: string = 'New Chat',
+  // ) {
+  //   if (chatId) {
+  //     // 기존 채팅 확인
+  //     const existingChat = await this.prisma.chat.findFirst({
+  //       where: { id: chatId, userId, status: ChatStatus.ACTIVE },
+  //       select: { id: true },
+  //     });
 
-      if (existingChat) {
-        return existingChat; // 기존 채팅 반환
-      }
+  //     if (existingChat) {
+  //       return existingChat; // 기존 채팅 반환
+  //     }
 
-      // 기존 채팅이 없으면 해당 chatId로 새 채팅 생성
-      return this.prisma.chat.create({
-        data: {
-          id: chatId,          // ← 프론트에서 제공한 UUID 사용
-          title,
-          userId,
-          status: ChatStatus.ACTIVE,
-          messageCount: 0,
-        },
-        select: { id: true },
-      });
-    }
+  //     // 기존 채팅이 없으면 해당 chatId로 새 채팅 생성
+  //     return this.prisma.chat.create({
+  //       data: {
+  //         id: chatId,          // ← 프론트에서 제공한 UUID 사용
+  //         title,
+  //         userId,
+  //         spreadSheetId,
+  //         status: ChatStatus.ACTIVE,
+  //         messageCount: 0,
+  //       },
+  //       select: { id: true },
+  //     });
+  //   }
 
-    // chatId가 없으면 서버에서 UUID 생성하여 새 채팅 생성
-    return this.prisma.chat.create({
-      data: {
-        id: randomUUID(),      // ← 서버에서 안전하게 생성
-        title,
-        userId,
-        status: ChatStatus.ACTIVE,
-        messageCount: 0,
-      },
-      select: { id: true },
-    });
-  }
+  //   // chatId가 없으면 서버에서 UUID 생성하여 새 채팅 생성
+  //   return this.prisma.chat.create({
+  //     data: {
+  //       id: randomUUID(),      // ← 서버에서 안전하게 생성
+  //       title,
+  //       userId,
+  //       spreadSheetId,
+  //       status: ChatStatus.ACTIVE,
+  //       messageCount: 0,
+  //     },
+  //     select: { id: true },
+  //   });
+  // }
 
   /**
    * (선택) 스프레드시트 ID 기반 소유·존재 확인 헬퍼

@@ -13,9 +13,9 @@ import { AiChatService } from './ai-chat.service';
 import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMessage } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
-
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
 
+import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
 @WebSocketGateway({
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
@@ -111,24 +111,42 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         websocketClientId: client.id,
         spreadsheetId: payload.spreadsheetId,
         chatId: payload.chatId,
+        chatSessionId: payload.chatSessionId,
         userId: payload.userId,
         chatMode: payload.chatMode ?? 'agent',
         userQuestionMessage: payload.userQuestionMessage,
         parsedSheetNames: payload.parsedSheetNames ?? [],
         jobId: payload.jobId,
-        spreadsheetVersionNumber: payload.spreadsheetVersionNumber,
+        spreadSheetVersionId: payload.spreadSheetVersionId,
         newVersionSpreadSheetData: payload.newVersionSpreadSheetData,
+        editLockVersion: payload.editLockVersion, // 낙관적 잠금을 위한 버전 번호
       };
+
+
 
 
       this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
 
-      const previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId);
+      // // chatsessionId가 없으면 첫번째 채팅인거라 이전 메시지 컨텍스트가 없음을 의미
+      let previousMessages;
+      if (aiReq.chatSessionId) {
+        previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId, aiReq.chatSessionId);
+      }
+      else {
+        previousMessages = '사용자의 첫번째 질문입니다. 이전 대화 내용이 없습니다';
+      }
 
+      if (aiReq.chatSessionId == null) {
+        // crypto.randomUUID()로 새로 생성
+        aiReq.chatSessionId = 'chat_session_' + crypto.randomUUID();
+      }
+
+      // // 이전 메시지 불러오기 todo: 첫번째 채팅일때는 작동하지 않도록 세팅
+      // const previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId, aiReq.chatSessionId);
 
       const dataContext = aiReq.newVersionSpreadSheetData
         ? await this.aiChatService.parseNewVersionSpreadSheetData(aiReq.parsedSheetNames, aiReq.newVersionSpreadSheetData)
-        : await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId, aiReq.spreadsheetVersionNumber);
+        : await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId, aiReq.spreadSheetVersionId);
 
 
       await this.aiChatService.saveUserMessage(aiReq);
@@ -242,33 +260,31 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}`);
 
     try {
-      // 작업 실행
+      // 1. AI 작업 실행
       this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
       const { results } = await this.aiChatService.runPlannedTasks(plan, dataContext, previousMessages);
 
       const executionTime = Date.now() - executionStartTime;
       this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
 
-      // AI 응답 객체 구성 (DB 저장 + 프론트 전달 공용)
-      const aiChatRes: aiChatApiRes = {
+      // 2. 🔥 DB에 모든 변경사항을 먼저 저장 (트랜잭션으로 원자성 보장)
+      const dbResults = await this.processSyncDbOperations(aiReq, plan, results);
+
+      // 3. ✅ DB 저장이 성공한 후에만 클라이언트에 응답 전송
+      this.server.to(clientId).emit('ai_tasks_executed', {
         jobId: aiReq.jobId,
-        taskManagerOutput: plan,
         dataEditChatRes: {
           dataEditCommands: results,
         },
-        spreadsheetVersionNumber: aiReq.spreadsheetVersionNumber + 1,
-      };
-
-      // 🚀 최우선: 클라이언트에 즉시 결과 전송 (지연 최소화)
-      this.server.to(clientId).emit('ai_tasks_executed', {
-        jobId: aiReq.jobId,
-        dataEditChatRes: aiChatRes.dataEditChatRes,
+        // 실제 DB에서 생성된 ID들 반환
+        spreadSheetVersionId: dbResults.actualSpreadSheetVersionId,
+        messageId: dbResults.messageId,
         executionTime,
         timestamp: new Date().toISOString(),
       });
 
-      // 📊 모든 DB 저장 작업을 비동기로 병렬 처리 (클라이언트 응답에 영향 없음)
-      this.processAsyncDbOperations(aiReq, aiChatRes);
+      this.logger.log(`클라이언트 응답 전송 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}`);
+
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;
       this.logger.error(`작업 실행 실패 - 소요시간: ${executionTime}ms, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -285,55 +301,97 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         executionTime,
         timestamp: new Date().toISOString(),
       });
-
     }
   }
 
   /**
-   * 모든 DB 저장 작업을 비동기로 병렬 처리합니다.
-   * 클라이언트 응답 지연에 영향을 주지 않도록 완전히 분리된 처리
+   * 🔥 DB에 모든 변경사항을 동기적으로 저장합니다 (데이터 일관성 보장)
+   * 클라이언트 응답 전에 반드시 완료되어야 하는 중요한 작업
    */
-  private processAsyncDbOperations(aiReq: aiChatApiReq, aiChatRes: aiChatApiRes): void {
-    // Promise.allSettled를 사용하여 모든 DB 작업을 병렬로 실행
-    const dbOperations: Promise<any>[] = [];
+  private async processSyncDbOperations(
+    aiReq: aiChatApiReq,
+    plan: TaskManagerOutput,
+    results: any[]
+  ): Promise<{
+    actualSpreadSheetVersionId: string | null;
+    messageId: string;
+  }> {
+    this.logger.log(`동기 DB 작업 시작 - jobId: ${aiReq.jobId}`);
 
-    // 1. AI 응답 저장 작업
-    const saveAssistantMessagePromise = this.aiChatService.saveAssistantMessage(aiReq.chatId, aiChatRes)
-      .then(() => {
-        this.logger.log(`AI 응답 저장 성공 - jobId: ${aiReq.jobId}, chatId: ${aiReq.chatId}`);
-      })
-      .catch(err => {
-        this.logger.error(`AI 응답 저장 실패 - jobId: ${aiReq.jobId}, ${err instanceof Error ? err.message : err}`);
-      });
+    try {
+      let actualSpreadSheetVersionId: string | null = null;
 
-    dbOperations.push(saveAssistantMessagePromise);
+      // 1. 새 버전 스프레드시트 데이터 저장 (조건부)
+      if (aiReq.newVersionSpreadSheetData) {
+        // 현재 스프레드시트의 headVersionId 조회
+        const existenceResult = await this.tableDataJsonSaveService.checkSheetDataExistence(
+          aiReq.spreadsheetId,
+          aiReq.userId
+        );
 
-    // 2. 새 버전 스프레드시트 데이터 저장 작업 (조건부)
-    if (aiReq.newVersionSpreadSheetData) {
-      const saveSpreadsheetDataPromise = this.tableDataJsonSaveService.addNewVersionSpreadSheetData({
-        userId: aiReq.userId,
-        spreadSheetId: aiReq.spreadsheetId,
-        spreadSheetVersionNumber: aiReq.spreadsheetVersionNumber,
-        jsonData: aiReq.newVersionSpreadSheetData,
-      })
-        .then(() => {
-          this.logger.log(`새 버전 스프레드시트 데이터 저장 성공 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, version: ${aiReq.spreadsheetVersionNumber}`);
-        })
-        .catch(err => {
-          this.logger.error(`새 버전 스프레드시트 데이터 저장 실패 - userId: ${aiReq.userId}, spreadsheetId: ${aiReq.spreadsheetId}, ${err instanceof Error ? err.message : err}`);
-        });
+        if (existenceResult.exists && existenceResult.headVersionId) {
+          // 실제 editLockVersion 사용 (프론트엔드에서 제공된 값 또는 기본값)
+          const editLockVersion = aiReq.editLockVersion || 1;
 
-      dbOperations.push(saveSpreadsheetDataPromise);
+          this.logger.log(`스프레드시트 저장 시작 - editLockVersion: ${editLockVersion}, headVersionId: ${existenceResult.headVersionId}`);
+
+          const addNewVersionSpreadSheetData: AddNewVersionSpreadSheetData = {
+            spreadSheetId: aiReq.spreadsheetId,
+            userId: aiReq.userId,
+            headVersionId: existenceResult.headVersionId,
+            editLockVersion,
+            jsonData: aiReq.newVersionSpreadSheetData,
+          };
+
+          const saveResult = await this.tableDataJsonSaveService.addNewVersionSpreadSheetData(addNewVersionSpreadSheetData);
+
+          actualSpreadSheetVersionId = saveResult.headVersionId; // 실제 DB에서 생성된 새 버전 ID
+
+          this.logger.log(`스프레드시트 저장 완료 - actualVersionId: ${actualSpreadSheetVersionId}`);
+        } else {
+          throw new Error(`SpreadSheet not found: ${aiReq.spreadsheetId}`);
+        }
+      }
+
+      // 2. AI 응답 메시지 저장 (실제 스프레드시트 버전 ID 사용)
+      const aiChatRes: aiChatApiRes = {
+        jobId: aiReq.jobId,
+        chatSessionId: aiReq.chatSessionId, // null이 아님이 보장됨
+        taskManagerOutput: plan,
+        dataEditChatRes: {
+          dataEditCommands: results,
+        },
+        spreadSheetVersionId: actualSpreadSheetVersionId || '', // 실제 DB에서 생성된 ID 사용
+        editLockVersion: aiReq.editLockVersion || 1, // 낙관적 잠금을 위한 버전 번호
+      };
+
+      if (!aiReq.chatSessionId) {
+        throw new Error('chatSessionId is required to save assistant message');
+      }
+
+      const messageId = await this.aiChatService.saveAssistantMessage(
+        aiReq.chatId,
+        aiReq.chatSessionId, // 프론트엔드에서 지정한 채팅 세션 ID
+        aiChatRes,
+        actualSpreadSheetVersionId // 실제 스프레드시트 버전 ID 연결
+      );
+
+      this.logger.log(`AI 응답 메시지 저장 완료 - messageId: ${messageId}, linkedVersionId: ${actualSpreadSheetVersionId}`);
+
+      const dbResults = {
+        actualSpreadSheetVersionId,
+        messageId,
+      };
+
+      this.logger.log(`동기 DB 작업 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}`);
+      return dbResults;
+
+    } catch (error) {
+      this.logger.error(`동기 DB 작업 실패 - jobId: ${aiReq.jobId}, ${error instanceof Error ? error.message : error}`);
+      throw error; // 상위로 전파하여 클라이언트에 에러 응답
     }
-
-    // 🔥 모든 DB 작업을 비동기로 병렬 실행 (결과 대기 안함)
-    void Promise.allSettled(dbOperations).then(results => {
-      const successCount = results.filter(result => result.status === 'fulfilled').length;
-      const failureCount = results.filter(result => result.status === 'rejected').length;
-
-      this.logger.log(`DB 작업 완료 - 성공: ${successCount}, 실패: ${failureCount}, 총 작업: ${results.length} (jobId: ${aiReq.jobId})`);
-    });
   }
+
 
   /**
    * 오래된 작업들을 정리합니다 (메모리 누수 방지)

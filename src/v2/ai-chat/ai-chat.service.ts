@@ -91,10 +91,10 @@ export class AiChatService {
     spreadsheetId: string,
     parsedSheetNames: string[],
     userId: string,
-    spreadsheetVersionNumber: number
+    spreadSheetVersionId?: string
   ): Promise<filteredSheetReturns | null> {
-    console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionNumber: ${spreadsheetVersionNumber}`);
-    this.logger.log(`loadParsedSpreadsheetData called with - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionNumber: ${spreadsheetVersionNumber}`);
+    console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionId: ${spreadSheetVersionId}`);
+    this.logger.log(`loadParsedSpreadsheetData called with - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionId: ${spreadSheetVersionId}`);
 
     if (!spreadsheetId || !userId) {
       console.log(`[DEBUG] Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
@@ -111,28 +111,33 @@ export class AiChatService {
     try {
       this.logger.log(`Loading spreadsheet data from JSONB for id: ${spreadsheetId}, sheets: ${parsedSheetNames?.join(', ') || 'ALL'}, user: ${userId}`);
 
-      // SpreadSheetData에서 JSONB 데이터 조회
-      this.logger.log(`Querying SpreadSheetData for spreadsheet: ${spreadsheetId}, user: ${userId}`);
-
-      // 특정 버전이 지정되었으면 그 버전을, 없으면 최신 버전을 가져오기
-      const whereClause: any = {
-        spreadSheet: {
+      // 1. 먼저 스프레드시트와 권한 확인
+      const spreadSheet = await this.prisma.spreadSheet.findFirst({
+        where: {
           id: spreadsheetId,
           userId: userId,
           status: 'ACTIVE'
         }
-      };
+      });
 
-      // 특정 버전 번호가 지정되었으면 해당 버전을 조회
-      if (spreadsheetVersionNumber !== undefined) {
-        whereClause.spreadSheetVersionNumber = spreadsheetVersionNumber;
+      if (!spreadSheet) {
+        this.logger.warn(`SpreadSheet not found or access denied - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
+        return null;
       }
 
-      const spreadSheetVersionData = await this.prisma.spreadSheetVersionData.findFirst({
-        where: whereClause,
-        orderBy: spreadsheetVersionNumber !== undefined
-          ? undefined
-          : { spreadSheetVersionNumber: 'desc' } // 특정 버전이 아니면 최신 버전 가져오기
+      // 2. 버전 ID 결정 (제공되지 않으면 헤드 버전 사용)
+      const targetVersionId = spreadSheetVersionId || spreadSheet.headVersionId;
+
+      if (!targetVersionId) {
+        this.logger.warn(`No version available for spreadsheet: ${spreadsheetId}`);
+        return null;
+      }
+
+      // 3. 해당 버전의 데이터 조회
+      const spreadSheetVersionData = await this.prisma.spreadSheetVersionData.findUnique({
+        where: {
+          id: targetVersionId
+        }
       });
 
       this.logger.log(`SpreadSheetVersionData query result:`, {
@@ -312,7 +317,7 @@ export class AiChatService {
   }
 
   /**
-   * 사용자 메시지를 데이터베이스에 저장합니다
+   * 사용자 메시지를 데이터베이스에 저장합니다 (새로운 3계층 구조)
    * @param aiReq - AI 채팅 요청 객체
    * @returns 저장된 메시지 ID
    */
@@ -321,46 +326,37 @@ export class AiChatService {
       this.logger.log(`사용자 메시지 저장 시작 - chatId: ${aiReq.chatId}, userId: ${aiReq.userId}`);
 
       return await this.prisma.$transaction(async (tx) => {
-        // 1. Chat 존재 확인 및 생성
-        const existingChat = await tx.chat.findUnique({
-          where: { id: aiReq.chatId }
+        // 1. 현재 활성 브랜치 가져오기 또는 생성
+        if (!aiReq.chatSessionId) {
+          throw new Error('chatSessionId is required to save user message');
+        }
+        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, tx);
+
+        // 2. 사용자 메시지를 위한 새로운 브랜치 생성 (기존 방식대로 항상 새 브랜치)
+        const newBranch = await tx.chatSessionBranch.create({
+          data: {
+            chatSessionId: session.id,
+            parentBranchId: currentBranch.id // 현재 브랜치를 부모로 설정
+          }
         });
 
-        if (!existingChat) {
-          // Chat이 없으면 새로 생성
-          await tx.chat.create({
-            data: {
-              id: aiReq.chatId,
-              title: '새 채팅', // 기본 제목
-              userId: aiReq.userId,
-              spreadSheetId: aiReq.spreadsheetId,
-              messageCount: 0
-            }
-          });
-          this.logger.log(`새 채팅 생성됨 - chatId: ${aiReq.chatId}`);
-        }
-
-        // 2. 사용자 메시지 저장 (metadata 없이)
+        // 3. 사용자 메시지 저장
         const message = await tx.message.create({
           data: {
             content: aiReq.userQuestionMessage,
             role: 'USER',
             type: 'TEXT',
-            chatId: aiReq.chatId,
-            // metadata는 사용자 메시지에서는 저장하지 않음
+            chatSessionBranchId: newBranch.id
           }
         });
 
-        // 3. Chat 메시지 카운트 업데이트
-        await tx.chat.update({
-          where: { id: aiReq.chatId },
-          data: {
-            messageCount: { increment: 1 },
-            updatedAt: new Date()
-          }
+        // 4. ChatSession의 latestBranchId 업데이트
+        await tx.chatSession.update({
+          where: { id: session.id },
+          data: { latestBranchId: newBranch.id }
         });
 
-        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}`);
+        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}, branchId: ${newBranch.id}`);
         return message.id;
       });
 
@@ -372,14 +368,19 @@ export class AiChatService {
   }
 
   /**
-   * AI(Assistant) 메시지를 데이터베이스에 저장합니다
+   * AI(Assistant) 메시지를 데이터베이스에 저장합니다 (새로운 3계층 구조)
    * @param chatId - 채팅 ID
    * @param aiChatRes - AI 채팅 응답 객체 (전체)
+   * @param spreadSheetVersionId - 프론트엔드에서 적용된 새 스프레드시트 버전 ID (선택적)
+   *                             - null/undefined: 스프레드시트 변경 없음 또는 아직 적용 전
+   *                             - string: 프론트에서 적용 완료된 새 버전 ID
    * @returns 저장된 메시지 ID
    */
   async saveAssistantMessage(
     chatId: string,
+    chatSessionId: string,
     aiChatRes: aiChatApiRes,
+    spreadSheetVersionId: string | null
   ): Promise<string> {
     try {
       this.logger.log(`AI 응답 메시지 저장 시작 - chatId: ${chatId}, jobId: ${aiChatRes.jobId}`);
@@ -390,27 +391,36 @@ export class AiChatService {
       }
 
       return await this.prisma.$transaction(async (tx) => {
-        // AI 응답 메시지 저장
+        // 1. 프론트엔드에서 지정한 세션의 활성 브랜치 가져오기
+        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(chatId, chatSessionId, tx);
+
+        // 2. AI 응답을 위한 새로운 브랜치 생성 (기존 방식대로 항상 새 브랜치)
+        const newBranch = await tx.chatSessionBranch.create({
+          data: {
+            chatSessionId: session.id,
+            parentBranchId: currentBranch.id // 현재 브랜치를 부모로 설정
+          }
+        });
+
+        // 3. AI 메시지 저장 (spreadSheetVersionId는 여러 메시지가 공유 가능)
         const message = await tx.message.create({
           data: {
             content: aiChatRes.taskManagerOutput.reason, // 사용자 친화적 설명
             role: 'ASSISTANT',
             type: 'SUGGESTION',
-            chatId,
-            aiChatRes: aiChatRes as unknown as any // 타입 안전성을 위한 unknown을 통한 변환
+            chatSessionBranchId: newBranch.id,
+            aiChatRes: aiChatRes as unknown as any, // 타입 안전성을 위한 unknown을 통한 변환
+            ...(spreadSheetVersionId && { spreadSheetVersionId }), // 🔥 AI 메시지와 스프레드시트 버전 연결 (조건부)
           }
         });
 
-        // Chat 메시지 카운트 업데이트
-        await tx.chat.update({
-          where: { id: chatId },
-          data: {
-            messageCount: { increment: 1 },
-            updatedAt: new Date()
-          }
+        // 4. ChatSession의 latestBranchId 업데이트
+        await tx.chatSession.update({
+          where: { id: session.id },
+          data: { latestBranchId: newBranch.id }
         });
 
-        this.logger.log(`AI 응답 메시지 저장 완료 - messageId: ${message.id}`);
+        this.logger.log(`AI 응답 메시지 저장 완료 - messageId: ${message.id}, branchId: ${newBranch.id}, sheetVersionId: ${spreadSheetVersionId || 'none'}`);
         return message.id;
       });
 
@@ -421,35 +431,25 @@ export class AiChatService {
     }
   }
   /**
-   * 멀티턴 AI를 위해 최근 10개의 메시지를 불러옵니다 (사용자 5개, 어시스턴트 5개)
+   * 멀티턴 AI를 위해 최근 10개의 메시지를 불러옵니다 (새로운 3계층 구조)
    * @param chatId - 채팅 ID
+   * @param chatSessionId - 채팅 세션 ID 
    * @returns 시간순으로 정렬된 ChatHistory 배열
    */
-  async loadMultiturnMessages(chatId: string): Promise<ChatHistory> {
+  async loadMultiturnMessages(chatId: string, chatSessionId: string): Promise<ChatHistory> {
     try {
       this.logger.log(`멀티턴 메시지 로드 시작 - chatId: ${chatId}`);
 
-      // 최근 10개 메시지 조회 (사용자 메시지 5개, 어시스턴트 메시지 5개를 합쳐서)
-      const messages = await this.prisma.message.findMany({
-        where: {
-          chatId: chatId
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: 10
-      });
+      // 🔥 올바른 브랜치 계보 추적으로 메시지 수집
+      const messagesInOrder = await this.getMessagesFromActiveBranchLineage(chatId, chatSessionId);
 
-      if (!messages || messages.length === 0) {
-        this.logger.log(`채팅에서 메시지를 찾을 수 없음 - chatId: ${chatId}`);
+      if (messagesInOrder.length === 0) {
+        this.logger.log(`메시지를 찾을 수 없음 - chatId: ${chatId}`);
         return [];
       }
 
-      // 메시지를 시간순으로 정렬 (오래된 것부터)
-      const sortedMessages = messages.reverse();
-
       // 타입에 맞게 변환
-      const chatHistory: ChatHistory = sortedMessages.map(message => {
+      const chatHistory: ChatHistory = messagesInOrder.map(message => {
         if (message.role === 'USER') {
           const userMessage: UserPreviousMessage = {
             role: 'user',
@@ -495,7 +495,7 @@ export class AiChatService {
     }
   }
 
-  async loadUserAiChatHistory(chatId: string, userId: string): Promise<previousMessagesContent[] | null> {
+  async loadUserAiChatHistory(chatId: string, userId: string, chatSessionId?: string): Promise<previousMessagesContent[] | null> {
     try {
       this.logger.log(`채팅 히스토리 로드 시작 - chatId: ${chatId}, userId: ${userId}`);
 
@@ -503,8 +503,7 @@ export class AiChatService {
       const chat = await this.prisma.chat.findFirst({
         where: {
           id: chatId,
-          userId: userId,
-          status: 'ACTIVE'
+          userId: userId
         }
       });
 
@@ -513,33 +512,18 @@ export class AiChatService {
         return null;
       }
 
-      // 2. 최대 50개의 메시지를 시간순으로 가져오기 (가장 최근 50개)
-      const messages = await this.prisma.message.findMany({
-        where: {
-          chatId: chatId,
-          role: {
-            in: ['USER', 'ASSISTANT']
-          }
-        },
-        orderBy: {
-          createdAt: 'desc'
-        },
-        take: 50,
-        select: {
-          role: true,
-          content: true,
-          aiChatRes: true,
-          createdAt: true
-        }
-      });
+      // 2. 🔥 올바른 브랜치 계보 추적으로 메시지 수집 (최대 50개)
+      const messagesFromLineage = await this.getMessagesFromActiveBranchLineage(chatId, chatSessionId);
 
-      if (messages.length === 0) {
+      if (messagesFromLineage.length === 0) {
         this.logger.log(`채팅 히스토리가 비어있음 - chatId: ${chatId}`);
         return [];
       }
 
-      // 3. 시간순으로 정렬 (오래된 것부터)
-      messages.reverse();
+      // USER와 ASSISTANT 메시지만 필터링하고 최대 50개로 제한
+      const messages = messagesFromLineage
+        .filter(msg => ['USER', 'ASSISTANT'].includes(msg.role))
+        .slice(-50); // 최근 50개만
 
       // 4. 첫 번째 메시지가 user 메시지가 되도록 조정
       let startIndex = 0;
@@ -575,6 +559,167 @@ export class AiChatService {
       this.logger.error(`채팅 히스토리 로드 실패 - chatId: ${chatId}, userId: ${userId}: ${safeError.message}`, safeError.details);
       return null;
     }
+  }
+
+
+  /**
+   * 🔥 올바른 브랜치 계보 추적: 지정된 세션의 활성 브랜치에서 시작하여 부모 브랜치를 따라가며 메시지 수집
+   * @param chatId - 채팅 ID
+   * @param chatSessionId - 프론트엔드에서 지정한 채팅 세션 ID (선택적)
+   * @returns 계보 순서대로 정렬된 메시지 배열
+   */
+  private async getMessagesFromActiveBranchLineage(chatId: string, chatSessionId?: string): Promise<any[]> {
+    try {
+      // 1. 세션 ID 결정: 프론트에서 지정했으면 그것을 사용, 아니면 최신 세션 사용
+      let targetSessionId = chatSessionId;
+
+      if (!targetSessionId) {
+        const basicChat = await this.prisma.chat.findUnique({
+          where: { id: chatId },
+          select: { latestChatSessionId: true }
+        });
+        // latestChatSessionId may be string | null; convert null to undefined to match targetSessionId's type
+        targetSessionId = basicChat?.latestChatSessionId ?? undefined;
+      }
+
+      if (!targetSessionId) {
+        this.logger.log(`활성 채팅 세션이 없음 - chatId: ${chatId}, chatSessionId: ${chatSessionId}`);
+        return [];
+      }
+
+      // 2. 지정된 세션과 브랜치 정보 조회
+      const session = await this.prisma.chatSession.findFirst({
+        where: {
+          id: targetSessionId,
+          chatId: chatId // 보안: 해당 chat에 속한 세션인지 확인
+        },
+        include: {
+          branches: {
+            include: {
+              messages: {
+                orderBy: { createdAt: 'asc' }
+              }
+            }
+          }
+        }
+      });
+
+      if (!session) {
+        this.logger.log(`지정된 채팅 세션을 찾을 수 없음 - chatId: ${chatId}, sessionId: ${targetSessionId}`);
+        return [];
+      }
+
+      if (!session.latestBranchId) {
+        this.logger.log(`활성 브랜치가 없음 - chatId: ${chatId}, sessionId: ${session.id}`);
+        return [];
+      }
+
+      // 3. 🔥 브랜치 계보 추적: latestBranchId부터 parentBranchId를 따라가며 수집
+      const branchLineage: string[] = [];
+      let currentBranchId: string | null = session.latestBranchId;
+
+      while (currentBranchId) {
+        branchLineage.unshift(currentBranchId); // 앞쪽에 추가하여 올바른 순서 유지
+
+        // 현재 브랜치의 부모 찾기
+        const currentBranch = session.branches.find(b => b.id === currentBranchId);
+        currentBranchId = currentBranch?.parentBranchId || null;
+      }
+
+      this.logger.log(`브랜치 계보 추적 완료 - chatId: ${chatId}, sessionId: ${targetSessionId}, 브랜치 순서: ${branchLineage.join(' -> ')}`);
+
+      // 4. 계보 순서대로 메시지 수집
+      const orderedMessages: any[] = [];
+      for (const branchId of branchLineage) {
+        const branch = session.branches.find(b => b.id === branchId);
+        if (branch) {
+          orderedMessages.push(...branch.messages);
+        }
+      }
+
+      // 4. 전체 메시지를 시간순으로 정렬하고 최근 10개만 반환
+      return orderedMessages
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .slice(-10);
+
+    } catch (error) {
+      this.logger.error(`브랜치 계보 추적 실패 - chatId: ${chatId}: ${error instanceof Error ? error.message : error}`);
+      return [];
+    }
+  }
+
+  /**
+   * 프론트엔드에서 지정한 ChatSession을 사용하여 활성 브랜치를 가져오거나 생성합니다
+   * @param chatId - 채팅 ID
+   * @param chatSessionId - 프론트엔드에서 지정한 채팅 세션 ID
+   * @returns 지정된 세션의 활성 브랜치 정보
+   */
+  private async getOrCreateActiveBranch(chatId: string, chatSessionId: string, tx: any): Promise<{
+    chat: any;
+    session: any;
+    branch: any;
+  }> {
+    // 1. Chat 확인
+    const chat = await tx.chat.findUnique({
+      where: { id: chatId }
+    });
+
+    if (!chat) {
+      throw new Error(`Chat not found: ${chatId}`);
+    }
+
+    // 2. 🔥 프론트엔드에서 지정한 ChatSession 직접 사용
+    let session: any = await tx.chatSession.findFirst({
+      where: {
+        id: chatSessionId,
+        chatId: chatId // 보안: 해당 chat에 속한 세션인지 확인
+      }
+    });
+
+    if (!session) {
+      // 지정한 세션이 없으면 새로 생성
+      session = await tx.chatSession.create({
+        data: {
+          id: chatSessionId, // 프론트엔드에서 제공한 ID 직접 사용
+          chatId: chatId,
+          name: '새 대화',
+        }
+      });
+
+      // latestChatSessionId도 업데이트
+      await tx.chat.update({
+        where: { id: chatId },
+        data: { latestChatSessionId: session.id }
+      });
+
+      this.logger.log(`새 ChatSession 생성됨 (프론트 지정 ID) - sessionId: ${session.id}`);
+    }
+
+    // 3. 현재 활성 ChatSessionBranch 확인 또는 생성
+    let branch: any = null;
+    if (session.latestBranchId) {
+      branch = await tx.chatSessionBranch.findUnique({
+        where: { id: session.latestBranchId }
+      });
+    }
+
+    if (!branch) {
+      branch = await tx.chatSessionBranch.create({
+        data: {
+          chatSessionId: session.id,
+          parentBranchId: null
+        }
+      });
+
+      await tx.chatSession.update({
+        where: { id: session.id },
+        data: { latestBranchId: branch.id }
+      });
+
+      this.logger.log(`새 ChatSessionBranch 생성됨 - branchId: ${branch.id}`);
+    }
+
+    return { chat, session, branch };
   }
 
 
