@@ -12,6 +12,7 @@ export interface LoadSpreadSheetResponse {
   fileName: string;
   headVersionId: string; // 최신 버전의 id
   lastModified: Date;
+  editLockVersion: number; // 낙관적 잠금용 버전 번호
 }
 
 export interface DeleteResponse {

@@ -133,7 +133,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         previousMessages = await this.aiChatService.loadMultiturnMessages(aiReq.chatId, aiReq.chatSessionId);
       }
       else {
-        previousMessages = '사용자의 첫번째 질문입니다. 이전 대화 내용이 없습니다';
+        previousMessages = '{ 사용자의 첫번째 질문입니다. 이전 대화 내용이 없습니다 } ';
       }
 
       if (aiReq.chatSessionId == null) {
@@ -273,11 +273,13 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 3. ✅ DB 저장이 성공한 후에만 클라이언트에 응답 전송
       this.server.to(clientId).emit('ai_tasks_executed', {
         jobId: aiReq.jobId,
+        chatSessionId: aiReq.chatSessionId, // 프론트엔드에서 다음 요청에 사용할 수 있도록 반환
         dataEditChatRes: {
           dataEditCommands: results,
         },
         // 실제 DB에서 생성된 ID들 반환
         spreadSheetVersionId: dbResults.actualSpreadSheetVersionId,
+        editLockVersion: dbResults.newEditLockVersion, // 다음 요청에서 사용할 새로운 버전
         messageId: dbResults.messageId,
         executionTime,
         timestamp: new Date().toISOString(),
@@ -315,11 +317,13 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<{
     actualSpreadSheetVersionId: string | null;
     messageId: string;
+    newEditLockVersion: number;
   }> {
     this.logger.log(`동기 DB 작업 시작 - jobId: ${aiReq.jobId}`);
 
     try {
       let actualSpreadSheetVersionId: string | null = null;
+      let newEditLockVersion: number;
 
       // 1. 새 버전 스프레드시트 데이터 저장 (조건부)
       if (aiReq.newVersionSpreadSheetData) {
@@ -346,17 +350,21 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           const saveResult = await this.tableDataJsonSaveService.addNewVersionSpreadSheetData(addNewVersionSpreadSheetData);
 
           actualSpreadSheetVersionId = saveResult.headVersionId; // 실제 DB에서 생성된 새 버전 ID
+          newEditLockVersion = editLockVersion + 1; // 다음 편집을 위한 새로운 버전
 
-          this.logger.log(`스프레드시트 저장 완료 - actualVersionId: ${actualSpreadSheetVersionId}`);
+          this.logger.log(`스프레드시트 저장 완료 - actualVersionId: ${actualSpreadSheetVersionId}, newEditLockVersion: ${newEditLockVersion}`);
         } else {
           throw new Error(`SpreadSheet not found: ${aiReq.spreadsheetId}`);
         }
+      } else {
+        // 스프레드시트 데이터 변경이 없는 경우, 현재 버전을 그대로 사용
+        newEditLockVersion = (aiReq.editLockVersion || 1) + 1;
       }
 
       // 2. AI 응답 메시지 저장 (실제 스프레드시트 버전 ID 사용)
       const aiChatRes: aiChatApiRes = {
         jobId: aiReq.jobId,
-        chatSessionId: aiReq.chatSessionId, // null이 아님이 보장됨
+        chatSessionId: aiReq.chatSessionId!, // null이 아님이 보장됨
         taskManagerOutput: plan,
         dataEditChatRes: {
           dataEditCommands: results,
@@ -381,9 +389,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const dbResults = {
         actualSpreadSheetVersionId,
         messageId,
+        newEditLockVersion,
       };
 
-      this.logger.log(`동기 DB 작업 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}`);
+      this.logger.log(`동기 DB 작업 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}, newEditLockVersion: ${dbResults.newEditLockVersion}`);
       return dbResults;
 
     } catch (error) {

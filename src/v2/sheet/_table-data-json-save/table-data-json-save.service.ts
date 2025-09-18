@@ -88,7 +88,8 @@ export class TableDataJsonSaveService {
         spreadSheetId: result.spreadSheet.id,
         fileName: result.spreadSheet.fileName,
         headVersionId: result.sheetVersionDataId,
-        lastModified: result.spreadSheet.updatedAt
+        lastModified: result.spreadSheet.updatedAt,
+        editLockVersion: result.spreadSheet.editLockVersion // 초기 버전 번호 (1) 반환
       };
 
     } catch (error) {
@@ -175,7 +176,8 @@ export class TableDataJsonSaveService {
         spreadSheetId: result.spreadSheet.id,
         fileName: result.spreadSheet.fileName,
         headVersionId: result.versionData.id,
-        lastModified: result.spreadSheet.updatedAt
+        lastModified: result.spreadSheet.updatedAt,
+        editLockVersion: result.spreadSheet.editLockVersion // 증가된 버전 번호 반환
       };
 
     } catch (error) {
