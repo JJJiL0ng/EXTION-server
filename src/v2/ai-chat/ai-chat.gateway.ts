@@ -112,6 +112,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         spreadsheetId: payload.spreadsheetId,
         chatId: payload.chatId,
         chatSessionId: payload.chatSessionId,
+        userChatSessionBranchId: payload.userChatSessionBranchId,
         userId: payload.userId,
         chatMode: payload.chatMode ?? 'agent',
         userQuestionMessage: payload.userQuestionMessage,

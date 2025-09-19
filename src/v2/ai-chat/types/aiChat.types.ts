@@ -9,6 +9,7 @@ export interface aiChatApiReq {
   spreadsheetId: string;
   chatId: string;
   chatSessionId: string | null; // 특정 채팅 세션을 구분하기 위한 ID (새로운 대화 시작시마다 변경) 처음 입력시에만 null 가능 이때는 백앤드에서 생성함
+  userChatSessionBranchId: string ; // 프론트에서 생성해서 유저 채팅 상태에 저장해두고 롤백 시에 사용될거임
   userId: string;
   chatMode: 'agent' | 'edit';
   userQuestionMessage: string;

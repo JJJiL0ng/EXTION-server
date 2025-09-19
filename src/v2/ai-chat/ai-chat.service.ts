@@ -323,22 +323,99 @@ export class AiChatService {
    */
   async saveUserMessage(aiReq: aiChatApiReq): Promise<string> {
     try {
-      this.logger.log(`사용자 메시지 저장 시작 - chatId: ${aiReq.chatId}, userId: ${aiReq.userId}`);
+      this.logger.log(`사용자 메시지 저장 시작 - chatId: ${aiReq.chatId}, userId: ${aiReq.userId}, userChatSessionBranchId: ${aiReq.userChatSessionBranchId}`);
 
       return await this.prisma.$transaction(async (tx) => {
-        // 1. 현재 활성 브랜치 가져오기 또는 생성
         if (!aiReq.chatSessionId) {
           throw new Error('chatSessionId is required to save user message');
         }
-        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, tx);
 
-        // 2. 사용자 메시지를 위한 새로운 브랜치 생성 (기존 방식대로 항상 새 브랜치)
-        const newBranch = await tx.chatSessionBranch.create({
-          data: {
-            chatSessionId: session.id,
-            parentBranchId: currentBranch.id // 현재 브랜치를 부모로 설정
+        // 1. 세션 확인 또는 생성
+        const { session } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, tx);
+
+        // 2. 첫 번째 채팅인지 확인 (세션에 메시지가 있는지 확인)
+        const existingMessages = await tx.message.findMany({
+          where: {
+            chatSessionBranch: {
+              chatSessionId: session.id
+            }
           }
         });
+
+        let targetBranchId: string;
+
+        if (existingMessages.length === 0) {
+          // 첫 번째 채팅인 경우
+          this.logger.log(`첫 번째 채팅 - 부모 노드 생성 후 자식 노드를 userChatSessionBranchId로 생성`);
+
+          // 2-1. 부모 노드(node A) 생성
+          const parentBranch = await tx.chatSessionBranch.create({
+            data: {
+              chatSessionId: session.id,
+              parentBranchId: null // 루트 노드
+            }
+          });
+
+          // 2-2. 자식 노드(node B)를 userChatSessionBranchId로 생성
+          const childBranch = await tx.chatSessionBranch.create({
+            data: {
+              id: aiReq.userChatSessionBranchId, // 프론트에서 제공한 ID 사용
+              chatSessionId: session.id,
+              parentBranchId: parentBranch.id // 부모 노드를 참조
+            }
+          });
+
+          targetBranchId = childBranch.id;
+
+          // 2-3. 세션의 latestBranchId를 자식 노드로 업데이트
+          await tx.chatSession.update({
+            where: { id: session.id },
+            data: { latestBranchId: childBranch.id }
+          });
+
+          this.logger.log(`첫 번째 채팅 브랜치 생성 완료 - parentId: ${parentBranch.id}, childId: ${childBranch.id}`);
+        } else {
+          // 첫 번째가 아닌 채팅인 경우
+          this.logger.log(`후속 채팅 - userChatSessionBranchId를 브랜치 ID로 직접 사용`);
+
+          // 기존 브랜치가 존재하는지 확인
+          const existingBranch = await tx.chatSessionBranch.findUnique({
+            where: { id: aiReq.userChatSessionBranchId }
+          });
+
+          if (!existingBranch) {
+            // 브랜치가 없으면 새로 생성 (기존 로직과 동일하지만 ID 지정)
+            const currentBranch = await tx.chatSessionBranch.findUnique({
+              where: { id: session.latestBranchId }
+            });
+
+            if (!currentBranch) {
+              throw new Error('Current branch not found');
+            }
+
+            const newBranch = await tx.chatSessionBranch.create({
+              data: {
+                id: aiReq.userChatSessionBranchId, // 프론트에서 제공한 ID 사용
+                chatSessionId: session.id,
+                parentBranchId: currentBranch.id
+              }
+            });
+
+            targetBranchId = newBranch.id;
+
+            // 세션의 latestBranchId 업데이트
+            await tx.chatSession.update({
+              where: { id: session.id },
+              data: { latestBranchId: newBranch.id }
+            });
+
+            this.logger.log(`후속 채팅 브랜치 생성 완료 - branchId: ${newBranch.id}`);
+          } else {
+            // 이미 존재하는 브랜치를 사용
+            targetBranchId = existingBranch.id;
+            this.logger.log(`기존 브랜치 사용 - branchId: ${existingBranch.id}`);
+          }
+        }
 
         // 3. 사용자 메시지 저장
         const message = await tx.message.create({
@@ -346,17 +423,11 @@ export class AiChatService {
             content: aiReq.userQuestionMessage,
             role: 'USER',
             type: 'TEXT',
-            chatSessionBranchId: newBranch.id
+            chatSessionBranchId: targetBranchId
           }
         });
 
-        // 4. ChatSession의 latestBranchId 업데이트
-        await tx.chatSession.update({
-          where: { id: session.id },
-          data: { latestBranchId: newBranch.id }
-        });
-
-        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}, branchId: ${newBranch.id}`);
+        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}, branchId: ${targetBranchId}`);
         return message.id;
       });
 
