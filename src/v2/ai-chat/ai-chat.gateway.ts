@@ -149,9 +149,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? await this.aiChatService.parseNewVersionSpreadSheetData(aiReq.parsedSheetNames, aiReq.newVersionSpreadSheetData)
         : await this.aiChatService.loadParsedSpreadsheetData(aiReq.spreadsheetId, aiReq.parsedSheetNames, aiReq.userId, aiReq.spreadSheetVersionId);
 
-
-      await this.aiChatService.saveUserMessage(aiReq);
-
       // 1) 계획 수립
       const { plan } = await this.aiChatService.planTasks(aiReq, dataContext!, previousMessages!);
 
@@ -323,10 +320,14 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.logger.log(`동기 DB 작업 시작 - jobId: ${aiReq.jobId}`);
 
     try {
+      // 🔥 1. 사용자 메시지 먼저 저장 (AI 처리 전 사용자 입력 기록)
+      await this.aiChatService.saveUserMessage(aiReq);
+      this.logger.log(`사용자 메시지 저장 완료 - jobId: ${aiReq.jobId}`);
+
       let actualSpreadSheetVersionId: string | null = null;
       let newEditLockVersion: number;
 
-      // 1. 새 버전 스프레드시트 데이터 저장 (조건부)
+      // 2. 새 버전 스프레드시트 데이터 저장 (조건부)
       if (aiReq.newVersionSpreadSheetData) {
         // 현재 스프레드시트의 headVersionId 조회
         const existenceResult = await this.tableDataJsonSaveService.checkSheetDataExistence(
@@ -362,7 +363,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         newEditLockVersion = (aiReq.editLockVersion || 1) + 1;
       }
 
-      // 2. AI 응답 메시지 저장 (실제 스프레드시트 버전 ID 사용)
+      // 3. AI 응답 메시지 저장 (실제 스프레드시트 버전 ID 사용)
       const aiChatRes: aiChatApiRes = {
         jobId: aiReq.jobId,
         chatSessionId: aiReq.chatSessionId!, // null이 아님이 보장됨

@@ -24,16 +24,16 @@ datasource db {
 }
 
 model User {
-  id               String                 @id
-  email            String?                @unique
+  id               String                   @id
+  email            String?                  @unique
   displayName      String
   photoURL         String?
-  isGuest          Boolean                @default(false)
-  createdAt        DateTime               @default(now())
-  lastActiveAt     DateTime               @updatedAt
+  isGuest          Boolean                  @default(false)
+  createdAt        DateTime                 @default(now())
+  lastActiveAt     DateTime                 @updatedAt
   preferences      Json?
   statistics       Json?
-  
+
   // 관계
   spreadSheets     SpreadSheet[]
   chats            Chat[]
@@ -45,13 +45,13 @@ model User {
 // =================================
 
 model SpreadSheet {
-  id              String                 @id @default(cuid())
+  id              String                   @id @default(cuid())
   fileName        String
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  lastOpened      DateTime               @default(now())
-  status          SpreadSheetStatus      @default(ACTIVE)
-  editLockVersion Int                    @default(1)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  lastOpened      DateTime                 @default(now())
+  status          SpreadSheetStatus        @default(ACTIVE)
+  editLockVersion Int                      @default(1)
 
   // ⭐️ 작동 방식:
   // 사용자가 이 시트를 열 때, 이 ID에 해당하는 'SpreadSheetVersionData'를 찾아서 보여줍니다.
@@ -59,9 +59,9 @@ model SpreadSheet {
   headVersionId   String?
 
   userId          String
-  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions        SpreadSheetVersionData[]
-  
+
   // ⭐️ 사용 방법:
   // 스프레드시트와 채팅은 항상 1:1 관계를 유지합니다.
   // 채팅 관련 기능을 호출할 때 `spreadSheet.chat.id`를 사용합니다.
@@ -84,14 +84,12 @@ model SpreadSheetVersionData {
   authorId      String
   author        User      @relation(fields: [authorId], references: [id], onDelete: NoAction)
 
-  // ⭐️ 변경점: 1:N 관계 추가
-  // 이 버전 데이터를 참조하는 모든 메시지 목록을 나타냅니다.
-  // 여러 메시지가 하나의 시트 버전을 참조할 수 있습니다.
-  messages      Message[]
-
   name          String?
   data          Json      @db.JsonB
   savedAt       DateTime  @default(now())
+
+  // ⭐️ 변경점: 이제 ChatSessionBranch 와의 관계를 가집니다.
+  branches      ChatSessionBranch[]
 }
 
 
@@ -101,101 +99,100 @@ model SpreadSheetVersionData {
 
 // 1단계: Chat (안정적인 1:1 컨테이너)
 model Chat {
-  id                  String       @id @default(cuid())
-  
-  // ⭐️ 추가: 'title' 필드를 추가합니다.
-  title               String?      // 이 필드를 코드에서 사용하고 있으므로 추가해야 합니다.
-  
+  id                  String        @id @default(cuid())
+  title               String?
+
   // ⭐️ 사용 방법:
   // 프론트엔드는 스프레드시트를 여는 순간 이 `chatId`를 받아두고,
   // 이후 모든 채팅 관련 API 호출에 이 ID를 계속 사용합니다.
   // 이 ID는 절대 변하지 않으므로 프론트엔드 로직이 단순해집니다.
-  spreadSheetId       String       @unique
-  spreadSheet         SpreadSheet  @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-  
+  spreadSheetId       String        @unique
+  spreadSheet         SpreadSheet   @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
+
   // ⭐️ 작동 방식:
   // 이 Chat 컨테이너에 속한 여러 대화 스트림(`ChatSession`) 중,
   // 현재 사용자가 보고 있거나 이어가고 있는 활성 세션을 가리키는 포인터입니다.
   // 사용자가 '새 대화 시작'을 하거나 다른 대화를 선택하면 이 포인터가 업데이트됩니다.
   latestChatSessionId String?
-  
+
   userId              String
-  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   sessions            ChatSession[]
 
-  // ⭐️ 추가: 'status' 필드를 추가합니다.
-  status              ChatStatus   @default(ACTIVE) // 이 필드를 코드에서 사용하고 있으므로 추가해야 합니다.
-  messageCount        Int          @default(0) // 코드에서 0으로 초기화하므로 여기에 추가합니다.
-
+  status              ChatStatus    @default(ACTIVE)
+  messageCount        Int           @default(0)
 }
 
 // 2단계: ChatSession (사용자가 인지하는 대화 스트림)
 model ChatSession {
-  id                String    @id @default(cuid())
-  
+  id                             String    @id @default(cuid())
+
   // ⭐️ 사용 방법:
   // '커서 UX'의 리스트에 표시될 대화의 이름입니다.
   // 사용자가 "새 대화 시작"을 할 때 이름을 붙이거나, 시스템이 자동으로 생성할 수 있습니다.
-  name              String?   
-  createdAt         DateTime  @default(now())
-  
-  chatId            String
-  chat              Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  
+  name                           String?
+  createdAt                      DateTime  @default(now())
+
+  chatId                         String
+  chat                           Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
   // ⭐️ 작동 방식:
   // 이 대화 스트림 내부에서, 롤백 등으로 인해 재구성된 히스토리 중
   // 가장 최신 버전(`ChatSessionBranch`)이 무엇인지를 가리키는 포인터입니다.
-  // 사용자가 '새 대화 시작'을 하거나 다른 대화를 선택하면 이 포인터가 업데이트됩니다.
-  latestBranchId    String?
+  latestBranchId                 String?
 
   // ⭐️ 사용 방법:
   // 어드민 툴 등에서 이 세션이 어떤 다른 세션에서 파생되었는지 추적하는 데 사용할 수 있습니다.
-  parentSessionId   String?
+  parentSessionId                String?
 
   // ⭐️ 작동 방식:
   // 이 세션이 어떤 시트 버전을 기준으로 시작되었는지 기록합니다.
   forkedFromSpreadSheetVersionId String?
-  
-  branches          ChatSessionBranch[]
+
+  branches                       ChatSessionBranch[]
+
+  @@index([chatId])
 }
 
 // 3단계: ChatSessionBranch (내부 버전 관리 단위)
 model ChatSessionBranch {
-  id            String      @id @default(cuid())
-  chatSessionId String
-  chatSession   ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
-  
+  id              String      @id @default(cuid())
+  chatSessionId   String
+  chatSession     ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
   // ⭐️ 작동 방식:
   // '1메시지 = 1브랜치' 원칙의 핵심.
   // 롤백이 일어나면, 새로운 브랜치가 롤백 대상의 부모 브랜치를 가리키게 됩니다.
   // 이 체인을 따라가면 사용자에게 보여줄 선형적인 히스토리가 재구성됩니다.
   parentBranchId  String?
-  
+
   messages        Message[]
+
+  // ⭐️ 변경점: spreadSheetVersionId 를 Message 에서 이곳으로 이동했습니다.
+  // 이 브랜치(상호작용)의 결과로 생성된 스프레드시트 버전을 가리킵니다.
+  // 시트 변경이 없었다면 null이 됩니다.
+  spreadSheetVersionId String?
+  spreadSheetVersion   SpreadSheetVersionData? @relation(fields: [spreadSheetVersionId], references: [id], onDelete: SetNull)
+
+  @@index([chatSessionId])
+  @@index([spreadSheetVersionId])
 }
 
 // Message는 최종적으로 가장 작은 단위인 ChatSessionBranch에 속합니다.
 model Message {
-  id                          String                  @id @default(cuid())
-  content                     String                  @db.Text
-  createdAt                   DateTime                @default(now())
-  
-  // ⭐️ 변경점: 메시지는 이제 특정 브랜치에 소속됩니다.
-  chatSessionBranchId         String
-  chatSessionBranch           ChatSessionBranch       @relation(fields: [chatSessionBranchId], references: [id], onDelete: Cascade)
-  
-  // ⭐️ 변경점 1: 필드 이름 변경 및 @unique 제거
-  // "생성된" 버전이 아닐 수 있으므로 이름을 더 일반적인 것으로 변경하고,
-  // 여러 메시지가 하나의 버전을 참조할 수 있도록 @unique 제약조건을 제거합니다.
-  spreadSheetVersionId        String?
-  
-  // ⭐️ 변경점 2: 관계 필드 이름도 함께 변경
-  // 이 메시지가 참조하는 시트 버전 데이터입니다.
-  spreadSheetVersion          SpreadSheetVersionData? @relation(fields: [spreadSheetVersionId], references: [id], onDelete: SetNull)
+  id                  String            @id @default(cuid())
+  content             String            @db.Text
+  createdAt           DateTime          @default(now())
 
-  role                        MessageRole
-  type                        MessageType             @default(TEXT)
-  aiChatRes                   Json?                   @db.JsonB
+  // ⭐️ 변경점: 메시지는 이제 특정 브랜치에 소속됩니다.
+  chatSessionBranchId String
+  chatSessionBranch   ChatSessionBranch @relation(fields: [chatSessionBranchId], references: [id], onDelete: Cascade)
+
+  // ⭐️ 변경점: spreadSheetVersionId 관련 필드들이 삭제되었습니다.
+
+  role                MessageRole
+  type                MessageType       @default(TEXT)
+  aiChatRes           Json?             @db.JsonB
 }
 
 

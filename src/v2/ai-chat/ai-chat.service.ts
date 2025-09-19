@@ -324,6 +324,7 @@ export class AiChatService {
   async saveUserMessage(aiReq: aiChatApiReq): Promise<string> {
     try {
       this.logger.log(`사용자 메시지 저장 시작 - chatId: ${aiReq.chatId}, userId: ${aiReq.userId}, userChatSessionBranchId: ${aiReq.userChatSessionBranchId}`);
+      this.logger.log(`🔍 DEBUG: aiReq.spreadSheetVersionId = ${aiReq.spreadSheetVersionId} (type: ${typeof aiReq.spreadSheetVersionId})`);
 
       return await this.prisma.$transaction(async (tx) => {
         if (!aiReq.chatSessionId) {
@@ -349,21 +350,27 @@ export class AiChatService {
           this.logger.log(`첫 번째 채팅 - 부모 노드 생성 후 자식 노드를 userChatSessionBranchId로 생성`);
 
           // 2-1. 부모 노드(node A) 생성
+          this.logger.log(`🔍 DEBUG: 부모 브랜치 생성 - spreadSheetVersionId: ${aiReq.spreadSheetVersionId}, 조건: ${!!aiReq.spreadSheetVersionId}`);
           const parentBranch = await tx.chatSessionBranch.create({
             data: {
               chatSessionId: session.id,
-              parentBranchId: null // 루트 노드
+              parentBranchId: null, // 루트 노드
+              ...(aiReq.spreadSheetVersionId && { spreadSheetVersionId: aiReq.spreadSheetVersionId }) // 현재 스프레드시트 버전 저장
             }
           });
+          this.logger.log(`🔍 DEBUG: 부모 브랜치 생성 완료 - id: ${parentBranch.id}, spreadSheetVersionId: ${(parentBranch as any).spreadSheetVersionId}`);
 
           // 2-2. 자식 노드(node B)를 userChatSessionBranchId로 생성
+          this.logger.log(`🔍 DEBUG: 자식 브랜치 생성 - spreadSheetVersionId: ${aiReq.spreadSheetVersionId}, 조건: ${!!aiReq.spreadSheetVersionId}`);
           const childBranch = await tx.chatSessionBranch.create({
             data: {
               id: aiReq.userChatSessionBranchId, // 프론트에서 제공한 ID 사용
               chatSessionId: session.id,
-              parentBranchId: parentBranch.id // 부모 노드를 참조
+              parentBranchId: parentBranch.id, // 부모 노드를 참조
+              ...(aiReq.spreadSheetVersionId && { spreadSheetVersionId: aiReq.spreadSheetVersionId }) // 현재 스프레드시트 버전 저장
             }
           });
+          this.logger.log(`🔍 DEBUG: 자식 브랜치 생성 완료 - id: ${childBranch.id}, spreadSheetVersionId: ${(childBranch as any).spreadSheetVersionId}`);
 
           targetBranchId = childBranch.id;
 
@@ -393,13 +400,16 @@ export class AiChatService {
               throw new Error('Current branch not found');
             }
 
+            this.logger.log(`🔍 DEBUG: 후속 브랜치 생성 - spreadSheetVersionId: ${aiReq.spreadSheetVersionId}, 조건: ${!!aiReq.spreadSheetVersionId}`);
             const newBranch = await tx.chatSessionBranch.create({
               data: {
                 id: aiReq.userChatSessionBranchId, // 프론트에서 제공한 ID 사용
                 chatSessionId: session.id,
-                parentBranchId: currentBranch.id
+                parentBranchId: currentBranch.id,
+                ...(aiReq.spreadSheetVersionId && { spreadSheetVersionId: aiReq.spreadSheetVersionId }) // 현재 스프레드시트 버전 저장
               }
             });
+            this.logger.log(`🔍 DEBUG: 후속 브랜치 생성 완료 - id: ${newBranch.id}, spreadSheetVersionId: ${(newBranch as any).spreadSheetVersionId}`);
 
             targetBranchId = newBranch.id;
 
@@ -427,7 +437,7 @@ export class AiChatService {
           }
         });
 
-        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}, branchId: ${targetBranchId}`);
+        this.logger.log(`사용자 메시지 저장 완료 - messageId: ${message.id}, branchId: ${targetBranchId}, beforeSheetVersionId: ${aiReq.spreadSheetVersionId || 'none'}`);
         return message.id;
       });
 
@@ -469,11 +479,12 @@ export class AiChatService {
         const newBranch = await tx.chatSessionBranch.create({
           data: {
             chatSessionId: session.id,
-            parentBranchId: currentBranch.id // 현재 브랜치를 부모로 설정
+            parentBranchId: currentBranch.id, // 현재 브랜치를 부모로 설정
+            ...(spreadSheetVersionId && { spreadSheetVersionId }) // AI 처리 결과로 생성된 새 스프레드시트 버전 ID 저장 (조건부)
           }
         });
 
-        // 3. AI 메시지 저장 (spreadSheetVersionId는 여러 메시지가 공유 가능)
+        // 3. AI 메시지 저장 (spreadSheetVersionId는 브랜치에 저장됨)
         const message = await tx.message.create({
           data: {
             content: aiChatRes.taskManagerOutput.reason, // 사용자 친화적 설명
@@ -481,7 +492,6 @@ export class AiChatService {
             type: 'SUGGESTION',
             chatSessionBranchId: newBranch.id,
             aiChatRes: aiChatRes as unknown as any, // 타입 안전성을 위한 unknown을 통한 변환
-            ...(spreadSheetVersionId && { spreadSheetVersionId }), // 🔥 AI 메시지와 스프레드시트 버전 연결 (조건부)
           }
         });
 
@@ -491,7 +501,7 @@ export class AiChatService {
           data: { latestBranchId: newBranch.id }
         });
 
-        this.logger.log(`AI 응답 메시지 저장 완료 - messageId: ${message.id}, branchId: ${newBranch.id}, sheetVersionId: ${spreadSheetVersionId || 'none'}`);
+        this.logger.log(`AI 응답 메시지 저장 완료 - messageId: ${message.id}, branchId: ${newBranch.id}, afterSheetVersionId: ${spreadSheetVersionId || 'none'}`);
         return message.id;
       });
 
@@ -779,6 +789,7 @@ export class AiChatService {
         data: {
           chatSessionId: session.id,
           parentBranchId: null
+          // 초기 브랜치는 스프레드시트 버전 정보 없음 (getOrCreateActiveBranch에서는 aiReq가 없음)
         }
       });
 

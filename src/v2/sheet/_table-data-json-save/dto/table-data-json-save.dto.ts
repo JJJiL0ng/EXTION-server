@@ -123,11 +123,15 @@ export class CheckAndLoadSpreadSheetDto {
   @IsString()
   @IsNotEmpty()
   userId: string;
+
+  @IsOptional()
+  @IsString()
+  spreadSheetVersionId?: string | null;
 }
 
 export class CheckAndLoadResDto {
   exists: boolean;
-  headVersionId?: string | null;
+  spreadSheetVersionId?: string | null;
   spreadSheetData?: Record<string, any>;
   chatHistory?: previousMessagesContent[] | null;
 }

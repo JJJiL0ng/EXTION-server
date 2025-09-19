@@ -44,15 +44,16 @@ export class TableDataJsonSaveController {
   ): Promise<{
     success: boolean;
     message: string;
+    spreadSheetVersionId: string;
   }> {
     this.logger.log(`Creating spreadsheet: ${dto.fileName} with ID: ${dto.spreadsheetId}, chatId: ${dto.chatId} for user: ${dto.userId}`);
 
-    // const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
-    await this.tableDataJsonSaveService.createSpreadSheet(dto);
+    const result = await this.tableDataJsonSaveService.createSpreadSheet(dto);
 
     return {
       success: true,
-      message: 'SpreadSheet created successfully'
+      message: 'SpreadSheet created successfully',
+      spreadSheetVersionId: result.headVersionId
     };
   }
 
@@ -94,7 +95,7 @@ export class TableDataJsonSaveController {
     const loadUserAiChatHistory = await this.aiChatService.loadUserAiChatHistory(dto.chatId, dto.userId);
     return {
       exists: true,
-      headVersionId: isSpreadSheetExists.headVersionId,
+      spreadSheetVersionId: isSpreadSheetExists.headVersionId,
       spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
       chatHistory: loadUserAiChatHistory,
     };
