@@ -10,12 +10,13 @@ import { Logger } from '@nestjs/common';
 
 import { AiChatService } from './ai-chat.service';
 
-import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMessage } from './types/aiChat.types';
+import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMessage, rollbackMessageReq, rollbackMessageRes } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
 
 import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
+import { subscribe } from 'diagnostics_channel';
 @WebSocketGateway({
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
@@ -177,6 +178,17 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  /*
+  * 롤백 로직, 클라이언트로 부터 롤백 되었음을 알림 받고 롤백 타겟 메시지를 보내기 이전으로 상태를 되돌림(데이터를 지우진 않고 포인터를 수정함), 이후 클라이언트에 롤백 타겟 메시지 보내기 전의 시트 데이터 보내줌
+  */
+ @SubscribeMessage('rollback_message')
+  async handleRollbackMessage(
+    client: Socket, 
+    payload: rollbackMessageReq
+  ): Promise<void> {
+    
+  }
+
   /**
    * 클라이언트로부터 이전 Task의 성공/실패 피드백을 받습니다.
    */
@@ -245,6 +257,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
   }
+  
 
   private async executeJobDirectly(
     aiReq: aiChatApiReq,
