@@ -5,6 +5,8 @@ import { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 import { createSafeError } from '../sheet/types/spreadsheet.types';
 import { PrismaService } from '../prisma/prisma.service';
 import { filteredSheetReturns, PreviousChatMessage, ChatHistory, UserPreviousMessage, AiPreviousMessage } from './types/aiChat.types';
+import { SpreadSheet, SpreadSheetVersionData } from '@prisma/client';
+import { ChatSession } from '@google/generative-ai';
 
 /**
  * aiChatApiRes 타입 가드 함수
@@ -642,6 +644,66 @@ export class AiChatService {
     }
   }
 
+  async rollPreviousMessage(spreadSheetId: string, chatSessionId: string, chatSessionBranchId: string): Promise< {spreadSheetVersionId: string; lastestBranchID: string; editLockVersion: number; } > {
+    return await this.prisma.$transaction(async (tx) => {
+      // 1. 현재 브랜치 조회
+      const currentBranch = await tx.chatSessionBranch.findUnique({
+        where: { id: chatSessionBranchId },
+        select: {
+          parentBranchId: true,
+          chatSessionId: true
+        }
+      });
+
+      if (!currentBranch) {
+        throw new Error(`ChatSessionBranch with id ${chatSessionBranchId} not found`);
+      }
+
+      if (!currentBranch.parentBranchId) {
+        throw new Error(`Cannot roll back: ChatSessionBranch ${chatSessionBranchId} has no parent branch`);
+      }
+
+      // 2. 부모 브랜치 조회
+      const parentBranch = await tx.chatSessionBranch.findUnique({
+        where: { id: currentBranch.parentBranchId },
+        select: {
+          id: true,
+          spreadSheetVersionId: true
+        }
+      });
+
+      if (!parentBranch) {
+        throw new Error(`Parent branch with id ${currentBranch.parentBranchId} not found`);
+      }
+
+      // 3. ChatSession의 latestBranchId를 부모 브랜치로 업데이트
+      await tx.chatSession.update({
+        where: { id: chatSessionId },
+        data: { latestBranchId: parentBranch.id }
+      });
+
+      // 4. SpreadSheet의 editLockVersion을 1 증가
+      const updatedSpreadSheet = await tx.spreadSheet.update({
+        where: { id: spreadSheetId },
+        data: { editLockVersion: { increment: 1 } },
+        select: { editLockVersion: true }
+      });
+
+      // 5. 부모 브랜치의 spreadSheetVersionId, latestBranchId, editLockVersion 반환
+      return {
+        spreadSheetVersionId: parentBranch.spreadSheetVersionId || "",
+        lastestBranchID: parentBranch.id,
+        editLockVersion: updatedSpreadSheet.editLockVersion
+      };
+    });
+  } 
+
+
+
+
+
+//=========== Private Methods ===========
+
 
   /**
    * 🔥 올바른 브랜치 계보 추적: 지정된 세션의 활성 브랜치에서 시작하여 부모 브랜치를 따라가며 메시지 수집
@@ -803,7 +865,5 @@ export class AiChatService {
 
     return { chat, session, branch };
   }
-
-
 }
 

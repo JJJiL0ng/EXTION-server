@@ -16,7 +16,6 @@ import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types'
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
 
 import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
-import { subscribe } from 'diagnostics_channel';
 @WebSocketGateway({
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
@@ -181,12 +180,27 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /*
   * 롤백 로직, 클라이언트로 부터 롤백 되었음을 알림 받고 롤백 타겟 메시지를 보내기 이전으로 상태를 되돌림(데이터를 지우진 않고 포인터를 수정함), 이후 클라이언트에 롤백 타겟 메시지 보내기 전의 시트 데이터 보내줌
   */
- @SubscribeMessage('rollback_message')
+  @SubscribeMessage('rollback_message')
   async handleRollbackMessage(
-    client: Socket, 
+    client: Socket,
     payload: rollbackMessageReq
   ): Promise<void> {
-    
+    // 롤백 서비스 코드 
+    const clientId = client.id;
+
+    const rollbackMessage = await this.aiChatService.rollPreviousMessage(payload.spreadSheetId, payload.chatSessionId, payload.chatSessionBranchId);
+    const spreadSheetData = await this.tableDataJsonSaveService.loadWholeTableDataJson(payload.spreadSheetId, payload.userId, rollbackMessage.spreadSheetVersionId);
+
+    const rollbackMessageRes: rollbackMessageRes = {
+      parentChatSessionBranchId: rollbackMessage.lastestBranchID,
+      spreadSheetVersionId: rollbackMessage.spreadSheetVersionId,
+      editLockVersion: rollbackMessage.editLockVersion,
+      spreadSheetData: spreadSheetData,
+    }
+    //rollbackMessageRes를 반환해야함
+    this.server.to(clientId).emit('rollback_message', {
+      rollbackMessageRes
+    });
   }
 
   /**
@@ -257,7 +271,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
   }
-  
+
 
   private async executeJobDirectly(
     aiReq: aiChatApiReq,
