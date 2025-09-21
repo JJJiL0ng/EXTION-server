@@ -185,22 +185,51 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client: Socket,
     payload: rollbackMessageReq
   ): Promise<void> {
-    // 롤백 서비스 코드 
     const clientId = client.id;
+    this.logger.log(`롤백 요청 수신 - 클라이언트: ${clientId}, payload:`, payload);
 
-    const rollbackMessage = await this.aiChatService.rollPreviousMessage(payload.spreadSheetId, payload.chatSessionId, payload.chatSessionBranchId);
-    const spreadSheetData = await this.tableDataJsonSaveService.loadWholeTableDataJson(payload.spreadSheetId, payload.userId, rollbackMessage.spreadSheetVersionId);
+    try {
+      // 입력 데이터 검증
+      if (!payload.spreadSheetId || !payload.chatSessionId || !payload.chatSessionBranchId || !payload.userId) {
+        this.logger.error(`롤백 필수 파라미터 누락 - 클라이언트: ${clientId}`);
+        this.server.to(clientId).emit('rollback_message_error', {
+          message: 'MISSING_REQUIRED_PARAMETERS',
+          code: 'VALIDATION_ERROR',
+        });
+        return;
+      }
 
-    const rollbackMessageRes: rollbackMessageRes = {
-      parentChatSessionBranchId: rollbackMessage.lastestBranchID,
-      spreadSheetVersionId: rollbackMessage.spreadSheetVersionId,
-      editLockVersion: rollbackMessage.editLockVersion,
-      spreadSheetData: spreadSheetData,
+      this.logger.log(`롤백 처리 시작 - spreadSheetId: ${payload.spreadSheetId}, chatSessionId: ${payload.chatSessionId}, chatSessionBranchId: ${payload.chatSessionBranchId}`);
+
+      const rollbackMessage = await this.aiChatService.rollPreviousMessage(payload.spreadSheetId, payload.chatSessionId, payload.chatSessionBranchId);
+      this.logger.log(`롤백 메시지 처리 완료:`, rollbackMessage);
+
+      const spreadSheetData = await this.tableDataJsonSaveService.loadWholeTableDataJson(payload.spreadSheetId, payload.userId, rollbackMessage.spreadSheetVersionId);
+      this.logger.log(`스프레드시트 데이터 로드 완료 - versionId: ${rollbackMessage.spreadSheetVersionId}`);
+
+      const rollbackMessageRes: rollbackMessageRes = {
+        parentChatSessionBranchId: rollbackMessage.lastestBranchID,
+        spreadSheetVersionId: rollbackMessage.spreadSheetVersionId,
+        editLockVersion: rollbackMessage.editLockVersion,
+        spreadSheetData: spreadSheetData,
+      }
+
+      this.logger.log(`롤백 응답 전송 - 클라이언트: ${clientId}`);
+      this.server.to(clientId).emit('rollback_message_response', rollbackMessageRes);
+
+    } catch (err) {
+      this.logger.error(`롤백 처리 실패 - 클라이언트: ${clientId}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
+
+      const message = process.env.NODE_ENV === 'production'
+        ? 'ROLLBACK_FAILED'
+        : (err instanceof Error ? err.message : 'Unknown error');
+
+      this.server.to(clientId).emit('rollback_message_error', {
+        message,
+        code: 'ROLLBACK_ERROR',
+        timestamp: new Date().toISOString(),
+      });
     }
-    //rollbackMessageRes를 반환해야함
-    this.server.to(clientId).emit('rollback_message', {
-      rollbackMessageRes
-    });
   }
 
   /**
