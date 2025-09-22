@@ -42,7 +42,7 @@ export const FILTER_DATA_SYSTEM_PROMPT = `
 
 commandType은 반드시 'filter_data'로 고정해야 합니다.
 
-\\\`\\\`\\\`json
+\`\`\`json
 {{
   "dataEditCommands": [
     {{
@@ -53,7 +53,7 @@ commandType은 반드시 'filter_data'로 고정해야 합니다.
     }}
   ]
 }}
-\\\`\\\`\\\`
+\`\`\`
 
 ## 범위 작성 규칙
 - 동적 배열 수식은 여러 셀에 자동으로 채워지므로, range는 시작 셀의 [row, col] 형식으로 지정합니다
@@ -66,7 +66,7 @@ commandType은 반드시 'filter_data'로 고정해야 합니다.
 데이터 컨텍스트: "A1:E50 범위에 데이터가 있습니다. 원본 시트 이름은 'SalesData'입니다."
 
 출력:
-\\\`\\\`\\\`json
+\`\`\`json
 {{
   "dataEditCommands": [
     {{
@@ -77,14 +77,14 @@ commandType은 반드시 'filter_data'로 고정해야 합니다.
     }}
   ]
 }}
-\\\`\\\`\\\`
+\`\`\`
 
 ### 예시 2: 다중 조건(AND) 필터링
 요청: "A1:E50 범위에서 B열(부서)이 '마케팅팀'이면서, C열(매출)이 5000 이상인 데이터를 H1부터 표시해줘."
 데이터 컨텍스트: "A1:E50 범위에 데이터가 있습니다. 원본 시트 이름은 'SalesData'입니다."
 
 출력:
-\\\`\\\`\\\`json
+\`\`\`json
 {{
   "dataEditCommands": [
     {{
@@ -95,14 +95,14 @@ commandType은 반드시 'filter_data'로 고정해야 합니다.
     }}
   ]
 }}
-\\\`\\\`\\\`
+\`\`\`
 
 ### 예시 3: 다중 조건(OR) 필터링
 요청: "A1부터 E50까지 상품 데이터 중, A열(카테고리)이 '전자기기'이거나 D열(재고)이 10개 미만인 상품을 G10에 보여줘."
 데이터 컨텍스트: "A1:E50 범위에 데이터가 있습니다. 원본 시트 이름은 'Inventory'입니다."
 
 출력:
-\\\`\\\`\\\`json
+\`\`\`json
 {{
   "dataEditCommands": [
     {{
@@ -113,8 +113,8 @@ commandType은 반드시 'filter_data'로 고정해야 합니다.
     }}
   ]
 }}
-\\\`\\\`\\\`
-
+  
+\`\`\`
 ## 주의사항
 - data_context에서 원본 시트 이름을 반드시 확인하여 detailedCommand에 포함시켜야 합니다
 - 필터 결과가 표시될 위치는 기존 데이터와 겹치지 않도록 주의해야 합니다
