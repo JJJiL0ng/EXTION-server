@@ -6,6 +6,7 @@ import { APPLY_STYLE_SYSTEM_PROMPT } from '../../prompts/data_edit/style/apply_s
 import { SORT_DATA_SYSTEM_PROMPT } from '../../prompts/data_edit/sort/sort_data.prompt';
 import { USE_FORMULA_SYSTEM_PROMPT } from '../../prompts/data_edit/formula/use_formula.prompt';
 import { VALUE_CHANGE_SYSTEM_PROMPT } from '../../prompts/data_edit/value/value_change.prompt';
+import { FILTER_DATA_SYSTEM_PROMPT } from '../../prompts/data_edit/filter/filter_data.prompt';
 import { ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate } from '@langchain/core/prompts';
 import { COMMON_HUMAN_PROMPT } from '../../prompts/data_edit/common_human.prompt';
 
@@ -59,6 +60,19 @@ export function createValueChangeRunnable(model: BaseChatModel): Runnable {
     humanValueChangeMessage
   ]);
 
+  const parser = new JsonOutputParser();
+
+  return prompt.pipe(model).pipe(parser);
+}
+
+export function createFilterDataRunnable(model: BaseChatModel): Runnable {
+  const systemFilterDataMessage = SystemMessagePromptTemplate.fromTemplate(FILTER_DATA_SYSTEM_PROMPT);
+  const humanFilterDataMessage = HumanMessagePromptTemplate.fromTemplate(COMMON_HUMAN_PROMPT);
+
+  const prompt = ChatPromptTemplate.fromMessages([
+    systemFilterDataMessage,
+    humanFilterDataMessage
+  ]);
   const parser = new JsonOutputParser();
 
   return prompt.pipe(model).pipe(parser);

@@ -7,7 +7,6 @@ import { AuthModule } from './v2/auth/_auth/auth.module';
 
 import { TableDataJsonSaveModule } from './v2/sheet/_table-data-json-save/table-data-json-save.module';
 import { UserModule } from './v2/user/user.module';
-import { TableDataJsonParserModule } from './v2/sheet/_table-data-json-parser/_table-data-json-parser.module';
 import { AiAgentModule } from './v2/ai-agent/ai-agent.module';
 import { AiChatModule } from './v2/ai-chat/ai-chat.module';
 import { EventsGateway } from './events/events.gateway';
@@ -22,8 +21,6 @@ import { EventsGateway } from './events/events.gateway';
     AuthModule,
     TableDataJsonSaveModule,
     UserModule,
-    // TableDataCacheModule,
-    TableDataJsonParserModule,
     AiAgentModule,
     AiChatModule,
   ],

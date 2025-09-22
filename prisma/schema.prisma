@@ -1,3 +1,19 @@
+// /prisma/schema.prisma
+
+// =================================================================================
+// 최종 아키텍처 요약
+//
+// 1. Spreadsheet Versioning:
+//    - 'SpreadSheetVersionData'는 Git의 커밋처럼 동작합니다.
+//    - 'parentId'를 통해 버전 간의 트리 구조(계보)를 형성합니다.
+//    - 'headVersionId'는 현재 활성화된 버전을 가리키는 포인터입니다.
+//
+// 2. Chat Architecture (3-Layer):
+//    - Chat (1:1 컨테이너): 스프레드시트와 1:1로 매칭되는 안정적인 ID 컨테이너입니다.
+//    - ChatSession (사용자 인지 대화): 사용자가 명시적으로 생성하는 대화 스트림입니다. (커서 UX 리스트 항목)
+//    - ChatSessionBranch (내부 버전 단위): 롤백 시 히스토리를 재구성하는, 1메시지=1브랜치의 원자적 단위입니다.
+// =================================================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,142 +24,187 @@ datasource db {
 }
 
 model User {
-  id           String   @id
-  email        String?  @unique
-  displayName  String
-  photoURL     String?
-  isGuest      Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  lastActiveAt DateTime @updatedAt
-  preferences  Json? // UI 설정, 기본값 등
-  statistics   Json? // 사용 통계
+  id               String                   @id
+  email            String?                  @unique
+  displayName      String
+  photoURL         String?
+  isGuest          Boolean                  @default(false)
+  createdAt        DateTime                 @default(now())
+  lastActiveAt     DateTime                 @updatedAt
+  preferences      Json?
+  statistics       Json?
 
   // 관계
-  spreadSheets SpreadSheet[]
-  chats        Chat[]
-
-  @@index([createdAt])
+  spreadSheets     SpreadSheet[]
+  chats            Chat[]
+  versionsAuthored SpreadSheetVersionData[] // 사용자가 생성한 모든 버전을 추적하기 위한 관계
 }
 
-// 메인 스프레드시트 모델 (메타데이터 관리)
+// =================================
+// Spreadsheet & Versioning
+// =================================
+
 model SpreadSheet {
-  id         String            @id @default(cuid())
-  fileName   String
-  fileSize   Int?              // 바이트 단위 (메타데이터로 유지, 실제 JSON 크기와 다를 수 있음)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  lastOpened DateTime          @default(now()) // 최근 열어본 시간
-  version    Int               @default(1) // 파일 버전 (낙관적 잠금을 위한 핵심 필드)
-  status     SpreadSheetStatus @default(ACTIVE)
+  id              String                   @id @default(cuid())
+  fileName        String
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  lastOpened      DateTime                 @default(now())
+  status          SpreadSheetStatus        @default(ACTIVE)
+  editLockVersion Int                      @default(1)
 
-  // 외래키
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chatId String // 스프레드시트에 연결된 기본 채팅 ID (옵션)
+  // ⭐️ 작동 방식:
+  // 사용자가 이 시트를 열 때, 이 ID에 해당하는 'SpreadSheetVersionData'를 찾아서 보여줍니다.
+  // 롤백과 분기가 일어나면 이 포인터가 새로운 최신 버전을 가리키도록 업데이트됩니다.
+  headVersionId   String?
 
-  // 관계: 스프레드시트 데이터와 1:1 관계 유지
-  data        SpreadSheetData?
-  editHistory EditHistory[] // 편집 이력 모델은 유지하지만, 델타 레코드와의 직접적인 관계는 사라짐
-  chats       Chat[]
+  userId          String
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions        SpreadSheetVersionData[]
 
-  @@unique([userId, id]) // 사용자별 스프레드시트 ID 고유
-  @@index([userId, updatedAt])
-  @@index([userId, lastOpened])
+  // ⭐️ 사용 방법:
+  // 스프레드시트와 채팅은 항상 1:1 관계를 유지합니다.
+  // 채팅 관련 기능을 호출할 때 `spreadSheet.chat.id`를 사용합니다.
+  chat            Chat?
 }
 
-// 스프레드시트 데이터 저장 (압축되지 않은 JSONB)
-// 이제 전체 스프레드시트의 JSON 데이터를 압축 없이 그대로 저장합니다.
-model SpreadSheetData {
-  id            String   @id @default(cuid())
-  spreadSheetId String   @unique
-  data          Json     @db.JsonB // 압축되지 않은 전체 스프레드시트 JSON 데이터
-  sheetCount    Int      @default(1) // 포함된 시트 수
-  savedAt       DateTime @default(now())
-
-  // 관계
-  spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
-
-  @@index([savedAt])
-}
-
-// 편집 히스토리 (단순화된 세션 관리)
-// 개별 델타 기록이 사라지므로, 세션 단위의 변경 메타데이터만 남습니다.
-model EditHistory {
-  id            String     @id @default(cuid())
+model SpreadSheetVersionData {
+  id            String    @id @default(cuid())
   spreadSheetId String
-  sessionStart  DateTime   @default(now())
-  sessionEnd    DateTime?  // null이면 진행중
-  deltaCount    Int        @default(0) // 이 세션에서 발생한 델타의 총 개수 (델타 데이터는 직접 저장하지 않음)
-  status        EditStatus @default(ACTIVE)
+  spreadSheet   SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
-  // 메타데이터
-  metadata Json? // 편집 통계, 브라우저 정보, 요약된 변경 내역 등
+  // ⭐️ 작동 방식:
+  // Git의 커밋처럼, 이 버전이 어떤 부모 버전에서 파생되었는지 가리킵니다.
+  // 이 필드를 재귀적으로 따라가면 버전의 전체 히스토리를 재구성할 수 있습니다.
+  // 최초 버전은 이 값이 null입니다.
+  parentId      String?
 
-  // 관계
-  spreadSheet SpreadSheet @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
+  // ⭐️ 사용 방법:
+  // 누가 이 버전을 만들었는지 기록하여 기여자를 추적하거나 권한을 관리하는 데 사용합니다.
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id], onDelete: NoAction)
 
-  @@index([spreadSheetId, sessionStart])
-  @@index([status])
+  name          String?
+  data          Json      @db.JsonB
+  savedAt       DateTime  @default(now())
+
+  // ⭐️ 변경점: 이제 ChatSessionBranch 와의 관계를 가집니다.
+  branches      ChatSessionBranch[]
 }
 
 
-// 채팅 (AI 대화)
+// =================================
+// Chat Architecture (3-Layer)
+// =================================
+
+// 1단계: Chat (안정적인 1:1 컨테이너)
 model Chat {
-  id           String     @id @default(cuid())
-  title        String
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  messageCount Int        @default(0)
-  status       ChatStatus @default(ACTIVE)
+  id                  String        @id @default(cuid())
+  title               String?
 
-  // 스프레드시트 연결 (옵션)
-  spreadSheetId String?
-  spreadSheet   SpreadSheet? @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
+  // ⭐️ 사용 방법:
+  // 프론트엔드는 스프레드시트를 여는 순간 이 `chatId`를 받아두고,
+  // 이후 모든 채팅 관련 API 호출에 이 ID를 계속 사용합니다.
+  // 이 ID는 절대 변하지 않으므로 프론트엔드 로직이 단순해집니다.
+  spreadSheetId       String        @unique
+  spreadSheet         SpreadSheet   @relation(fields: [spreadSheetId], references: [id], onDelete: Cascade)
 
-  // 사용자 연결
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // ⭐️ 작동 방식:
+  // 이 Chat 컨테이너에 속한 여러 대화 스트림(`ChatSession`) 중,
+  // 현재 사용자가 보고 있거나 이어가고 있는 활성 세션을 가리키는 포인터입니다.
+  // 사용자가 '새 대화 시작'을 하거나 다른 대화를 선택하면 이 포인터가 업데이트됩니다.
+  latestChatSessionId String?
 
-  // 관계
-  messages Message[]
+  userId              String
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions            ChatSession[]
 
-  @@index([userId, status, updatedAt])
-  @@index([spreadSheetId, updatedAt])
+  status              ChatStatus    @default(ACTIVE)
+  messageCount        Int           @default(0)
 }
 
-// 메시지
+// 2단계: ChatSession (사용자가 인지하는 대화 스트림)
+model ChatSession {
+  id                             String    @id @default(cuid())
+
+  // ⭐️ 사용 방법:
+  // '커서 UX'의 리스트에 표시될 대화의 이름입니다.
+  // 사용자가 "새 대화 시작"을 할 때 이름을 붙이거나, 시스템이 자동으로 생성할 수 있습니다.
+  name                           String?
+  createdAt                      DateTime  @default(now())
+
+  chatId                         String
+  chat                           Chat      @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  // ⭐️ 작동 방식:
+  // 이 대화 스트림 내부에서, 롤백 등으로 인해 재구성된 히스토리 중
+  // 가장 최신 버전(`ChatSessionBranch`)이 무엇인지를 가리키는 포인터입니다.
+  latestBranchId                 String?
+
+  // ⭐️ 사용 방법:
+  // 어드민 툴 등에서 이 세션이 어떤 다른 세션에서 파생되었는지 추적하는 데 사용할 수 있습니다.
+  parentSessionId                String?
+
+  // ⭐️ 작동 방식:
+  // 이 세션이 어떤 시트 버전을 기준으로 시작되었는지 기록합니다.
+  forkedFromSpreadSheetVersionId String?
+
+  branches                       ChatSessionBranch[]
+
+  @@index([chatId])
+}
+
+// 3단계: ChatSessionBranch (내부 버전 관리 단위)
+model ChatSessionBranch {
+  id              String      @id @default(cuid())
+  chatSessionId   String
+  chatSession     ChatSession @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+
+  // ⭐️ 작동 방식:
+  // '1메시지 = 1브랜치' 원칙의 핵심.
+  // 롤백이 일어나면, 새로운 브랜치가 롤백 대상의 부모 브랜치를 가리키게 됩니다.
+  // 이 체인을 따라가면 사용자에게 보여줄 선형적인 히스토리가 재구성됩니다.
+  parentBranchId  String?
+
+  messages        Message[]
+
+  // ⭐️ 변경점: spreadSheetVersionId 를 Message 에서 이곳으로 이동했습니다.
+  // 이 브랜치(상호작용)의 결과로 생성된 스프레드시트 버전을 가리킵니다.
+  // 시트 변경이 없었다면 null이 됩니다.
+  spreadSheetVersionId String?
+  spreadSheetVersion   SpreadSheetVersionData? @relation(fields: [spreadSheetVersionId], references: [id], onDelete: SetNull)
+
+  @@index([chatSessionId])
+  @@index([spreadSheetVersionId])
+}
+
+// Message는 최종적으로 가장 작은 단위인 ChatSessionBranch에 속합니다.
 model Message {
-  id        String      @id @default(cuid())
-  content   String      @db.Text // 긴 텍스트 지원
-  createdAt DateTime    @default(now())
-  role      MessageRole
-  type      MessageType @default(TEXT)
+  id                  String            @id @default(cuid())
+  content             String            @db.Text
+  createdAt           DateTime          @default(now())
 
-  // AI 답변 메타데이터(aiChatRes) (JSONB로 변경)
-  metadata Json? @db.JsonB // AI 응답 전체 데이터, 토큰 수, 처리 시간, 캐시 여부 등
+  // ⭐️ 변경점: 메시지는 이제 특정 브랜치에 소속됩니다.
+  chatSessionBranchId String
+  chatSessionBranch   ChatSessionBranch @relation(fields: [chatSessionBranchId], references: [id], onDelete: Cascade)
 
-  // 관계
-  chatId String
-  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  // ⭐️ 변경점: spreadSheetVersionId 관련 필드들이 삭제되었습니다.
 
-  @@index([chatId, createdAt])
-  @@index([metadata], type: Gin) // JSONB 검색을 위한 GIN 인덱스
+  role                MessageRole
+  type                MessageType       @default(TEXT)
+  aiChatRes           Json?             @db.JsonB
 }
 
 
-// Enum 정의
+// =================================
+// Enums (변경 없음)
+// =================================
+
 enum SpreadSheetStatus {
-  ACTIVE // 활성 상태
-  ARCHIVED // 보관됨
-  DELETED // 삭제됨 (소프트 삭제)
+  ACTIVE
+  ARCHIVED
+  DELETED
 }
-
-enum EditStatus {
-  ACTIVE // 편집 중
-  COMPLETED // 완료됨
-  ERROR // 오류 발생
-}
-
 
 enum ChatStatus {
   ACTIVE
@@ -158,9 +219,8 @@ enum MessageRole {
 }
 
 enum MessageType {
-  TEXT // 일반 텍스트
-  ANALYSIS // 데이터 분석 결과
-  SUGGESTION // AI 제안
-  ERROR // 오류 메시지
+  TEXT
+  ANALYSIS
+  SUGGESTION
+  ERROR
 }
-

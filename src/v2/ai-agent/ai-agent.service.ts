@@ -6,6 +6,8 @@ import { routeAndRunSingleTask } from './task-run-route/routeAndRunSingleTask';
 import type { Task, TaskManagerOutput } from './types/taskManager.types';
 import type { dataEditChatRes, dataEditCommand } from './types/dataEdit.types';
 
+import { filteredSheetReturns, PreviousChatMessage } from '../ai-chat/types/aiChat.types';
+
 import { createTaskManagerRunnable } from './runnables/task_manager/task_manager.runnable';
 
 @Injectable()
@@ -46,7 +48,8 @@ export class AiAgentService {
 
   async runTaskManager(
     question: string,
-    dataContext: string | Record<string, unknown>,
+    dataContext: filteredSheetReturns,
+    previousMessages: PreviousChatMessage[]
   ): Promise<TaskManagerOutput> {
     const dataContextString =
       typeof dataContext === 'string'
@@ -54,10 +57,10 @@ export class AiAgentService {
         : JSON.stringify(dataContext ?? {}, null, 2);
 
     const taskManager = createTaskManagerRunnable(this.geminiSmall);
-    
+
     // 디버깅을 위해 중간 결과를 확인
     try {
-      const result = await taskManager.invoke({ question, dataContext: dataContextString });
+      const result = await taskManager.invoke({ previousMessages, question, dataContext: dataContextString });
       console.log('DEBUG: TaskManager raw result:', JSON.stringify(result, null, 2));
       return result as TaskManagerOutput;
     } catch (error) {
@@ -69,6 +72,7 @@ export class AiAgentService {
   }
 
   async runSingleTask(
+    previousMessages: PreviousChatMessage[],
     task: Task,
     question: string,
     dataContext: string | Record<string, unknown>,
@@ -78,9 +82,9 @@ export class AiAgentService {
       model === 'small'
         ? this.geminiSmall
         : model === 'large'
-        ? this.geminiLarge
-        : this.geminiNormal;
+          ? this.geminiLarge
+          : this.geminiNormal;
 
-    return routeAndRunSingleTask({ task, question, dataContext, model: selected });
+    return routeAndRunSingleTask({ previousMessages, task, question, dataContext, model: selected });
   }
 }

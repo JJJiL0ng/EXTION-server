@@ -3,6 +3,7 @@ import {
     createSortDataRunnable,
     createValueChangeRunnable,
     createUseFormulaRunnable,
+    createFilterDataRunnable
 } from '../runnables/data_edit/data_edit.runnable';
 
 import { Task, TaskType } from '../types/taskManager.types';
@@ -10,7 +11,10 @@ import { dataEditChatRes, dataEditCommand, dataEditCommandType } from '../types/
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { Runnable } from '@langchain/core/runnables';
 
+import {PreviousChatMessage} from 'src/v2/ai-chat/types/aiChat.types';
+
 interface TaskRouterInput {
+    previousMessages: PreviousChatMessage[];
     /** 실행할 단일 Task */
     task: Task;
     /** LLM 모델 인스턴스 (예: AiAgentService에서 주입) */
@@ -31,7 +35,7 @@ type TaskRouterOutput = dataEditCommand;
 export async function routeAndRunSingleTask(
     input: TaskRouterInput,
 ): Promise<TaskRouterOutput> {
-    const { task, model, question } = input;
+    const { previousMessages,task, model, question } = input;
     const dataContext =
         typeof input.dataContext === 'string'
             ? input.dataContext
@@ -64,6 +68,10 @@ export async function routeAndRunSingleTask(
         case 'APPLY_STYLE': // AI가 대문자로 전달하는 경우 처리
             runnable = createApplyStyleRunnable(model);
             break;
+        case dataEditCommandType.FILTER_DATA:
+        case 'FILTER_DATA': // AI가 대문자로 전달하는 경우 처리
+            runnable = createFilterDataRunnable(model);
+            break;
 
         // 아직 미지원/미구현 타입들 명시적 처리
         case dataEditCommandType.CONTROL_SHEET:
@@ -87,7 +95,12 @@ export async function routeAndRunSingleTask(
     }
 
     // 선택된 러너블 실행
-    const result = await runnable!.invoke({ question, dataContext });
+    console.log('DEBUG: Invoking runnable with:', {
+        previousMessages: previousMessages?.length ? `${previousMessages.length} messages` : 'no messages',
+        question: question?.substring(0, 100) + '...',
+        dataContextLength: dataContext?.length || 0
+    });
+    const result = await runnable!.invoke({ previousMessages, question, dataContext });
     // 결과는 dataEditChatRes 형태를 기대함({ dataEditCommands: [...] })
     return result as TaskRouterOutput;
 }
