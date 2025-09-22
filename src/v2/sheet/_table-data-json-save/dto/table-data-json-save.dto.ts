@@ -131,6 +131,7 @@ export class CheckAndLoadSpreadSheetDto {
 
 export class CheckAndLoadResDto {
   exists: boolean;
+  fileName?: string;
   spreadSheetVersionId?: string | null;
   spreadSheetData?: Record<string, any>;
   chatHistory?: previousMessagesContent[] | null;

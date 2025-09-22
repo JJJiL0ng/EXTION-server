@@ -95,6 +95,7 @@ export class TableDataJsonSaveController {
     const loadUserAiChatHistory = await this.aiChatService.loadUserAiChatHistory(dto.chatId, dto.userId);
     return {
       exists: true,
+      fileName: isSpreadSheetExists.fileName,
       spreadSheetVersionId: isSpreadSheetExists.headVersionId,
       spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
       chatHistory: loadUserAiChatHistory,

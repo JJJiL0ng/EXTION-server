@@ -193,7 +193,7 @@ export class TableDataJsonSaveService {
   // Check is data existing and Load Whole Table Data JSON
   //=============================================================
 
-  async checkSheetDataExistence(spreadSheetId: string, userId: string): Promise<{ exists: boolean; headVersionId: string | null }> {
+  async checkSheetDataExistence(spreadSheetId: string, userId: string): Promise<{ exists: boolean; headVersionId: string | null; fileName?: string }> {
     try {
       this.logger.log(`시트 데이터 존재 여부 확인 시작 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
 
@@ -209,7 +209,8 @@ export class TableDataJsonSaveService {
         },
         select: {
           id: true,
-          headVersionId: true
+          headVersionId: true,
+          fileName: true
         }
       });
 
@@ -221,7 +222,8 @@ export class TableDataJsonSaveService {
       this.logger.log(`시트 데이터 존재 확인 완료 - exists: true, headVersionId: ${spreadSheet.headVersionId}`);
       return {
         exists: true,
-        headVersionId: spreadSheet.headVersionId
+        headVersionId: spreadSheet.headVersionId,
+        fileName: spreadSheet.fileName
       };
 
     } catch (error) {
