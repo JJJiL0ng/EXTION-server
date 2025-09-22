@@ -343,4 +343,48 @@ export class TableDataJsonSaveService {
     }
   }
 
+  //=============================================================
+  // Rename SpreadSheet FileName
+  //=============================================================
+  async renameFileName(spreadSheetId: string, userId: string, newFileName: string): Promise<void> {
+    try {
+      this.logger.log(`파일 이름 변경 시작 - spreadSheetId: ${spreadSheetId}, userId: ${userId}, newFileName: ${newFileName}`);
+
+      // 1. 사용자 검증
+      await this.userService.validateUser(userId);
+
+      // 2. 스프레드시트 존재 및 권한 확인
+      const spreadSheet = await this.prisma.spreadSheet.findFirst({
+        where: {
+          id: spreadSheetId,
+          userId: userId,
+          status: 'ACTIVE'
+        }
+      });
+
+      if (!spreadSheet) {
+        this.logger.warn(`스프레드시트를 찾을 수 없거나 권한이 없음 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
+        throw new NotFoundException('스프레드시트를 찾을 수 없거나 접근 권한이 없습니다.');
+      }
+
+      // 3. 파일 이름 업데이트
+      await this.prisma.spreadSheet.update({
+        where: {
+          id: spreadSheetId
+        },
+        data: {
+          fileName: newFileName,
+          updatedAt: new Date()
+        }
+      });
+
+      this.logger.log(`파일 이름 변경 완료 - spreadSheetId: ${spreadSheetId}, oldFileName: ${spreadSheet.fileName}, newFileName: ${newFileName}`);
+
+    } catch (error) {
+      const safeError = createSafeError(error);
+      this.logger.error(`파일 이름 변경 실패 - spreadSheetId: ${spreadSheetId}, userId: ${userId}: ${safeError.message}`, safeError.details);
+      throw error;
+    }
+  }
+
 }

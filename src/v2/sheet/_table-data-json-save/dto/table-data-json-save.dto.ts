@@ -107,6 +107,28 @@ export class AddNewVersionSpreadSheetDto {
 }
 
 // ===============================
+// 스프레드시트 파일 이름 변경 dto
+// ===============================
+export class RenameSpreadSheetReqDto {
+  @IsString()
+  @IsNotEmpty()
+  @IsUUID('4', { message: '올바른 스프레드시트 ID 형식이 아닙니다.' })
+  spreadSheetId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Length(1, 255)
+  newFileName: string;
+}
+
+export interface RenameSpreadSheetResDto {
+  success: boolean;
+}
+// ===============================
 // 스프레드시트 로드 DTO
 // ===============================
 export class CheckAndLoadSpreadSheetDto {

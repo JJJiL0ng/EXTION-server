@@ -15,7 +15,9 @@ import {
   CreateSpreadSheetDto,
   AddNewVersionSpreadSheetDto,
   CheckAndLoadSpreadSheetDto,
-  CheckAndLoadResDto
+  CheckAndLoadResDto,
+  RenameSpreadSheetReqDto,
+  RenameSpreadSheetResDto
 } from './dto/table-data-json-save.dto';
 import {
   LoadSpreadSheetResponse,
@@ -99,6 +101,16 @@ export class TableDataJsonSaveController {
       spreadSheetVersionId: isSpreadSheetExists.headVersionId,
       spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
       chatHistory: loadUserAiChatHistory,
+    };
+  }
+
+  @Post('rename-fileName')
+  async renameFileName(
+    @Body() dto: RenameSpreadSheetReqDto,
+  ): Promise<RenameSpreadSheetResDto> {
+    await this.tableDataJsonSaveService.renameFileName(dto.spreadSheetId, dto.userId, dto.newFileName);
+    return {
+      success: true,
     };
   }
 
