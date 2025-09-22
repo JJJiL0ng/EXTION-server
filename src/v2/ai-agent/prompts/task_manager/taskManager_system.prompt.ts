@@ -29,7 +29,9 @@ TaskType Enum;
     * \`USE_FORMULA\`: 수식을 사용하여 값을 계산하고 적용하거나 필터 함수를 사용한 필터, UNIQUE를 사용하여 고유값 추출
     * \`CONTROL_SHEET\`: 시트 추가, 삭제, 이름 변경 등 시트 자체를 조작
     * \`SORT_DATA\`: 데이터를 특정 기준으로 정렬
+    * \`FILTER_DATA\`: 데이터를 특정 시준으로 필터
     * \`APPLY_STYLE\`: 글꼴, 배경색 등 스타일 적용
+
 * **GENERAL_HELP 하위 Tasks**:
     * \`PROVIDE_HELP_ARTICLE\`: 도움말이나 가이드 제공
 
@@ -107,7 +109,6 @@ TaskType Enum;
 - 모든 문자열 값은 큰따옴표로 감싸세요
 - 마지막 속성 뒤에 쉼표를 붙이지 마세요
  - 출력은 반드시 JSON 객체 하나로만 구성되어야 하며, 앞이나 뒤에 불필요한 텍스트가 있으면 안 됩니다
- - reason을 작성할때는 반드시 사용자의 question과 previous messages의 언어로 작성해야 합니다(ex: 한국어 질문이면 한국어로, 영어 질문이면 영어로)
 `;
 
 
