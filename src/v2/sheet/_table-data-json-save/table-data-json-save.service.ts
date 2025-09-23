@@ -197,9 +197,6 @@ export class TableDataJsonSaveService {
     try {
       this.logger.log(`시트 데이터 존재 여부 확인 시작 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
 
-      // 1. 사용자 검증
-      await this.userService.validateUser(userId);
-
       // 2. SpreadSheet 존재 및 권한 확인
       const spreadSheet = await this.prisma.spreadSheet.findFirst({
         where: {
