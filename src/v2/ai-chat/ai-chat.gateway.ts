@@ -316,7 +316,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       // 1. AI 작업 실행
       this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
-      const { results } = await this.aiChatService.runPlannedTasks(plan, dataContext, previousMessages);
+      const { results } = await this.aiChatService.runPlannedTasks(aiReq, plan, dataContext, previousMessages);
 
       const executionTime = Date.now() - executionStartTime;
       this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);

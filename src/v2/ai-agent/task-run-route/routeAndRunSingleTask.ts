@@ -93,6 +93,7 @@ export async function routeAndRunSingleTask(
             // 런타임에서 string 리터럴이 들어올 수 있으니 안전 가드
             throw new Error(`Unknown taskType: ${String(task.taskType)}`);
     }
+    const whatToDo = task.description;
 
     // 선택된 러너블 실행
     console.log('DEBUG: Invoking runnable with:', {
@@ -100,7 +101,7 @@ export async function routeAndRunSingleTask(
         question: question?.substring(0, 100) + '...',
         dataContextLength: dataContext?.length || 0
     });
-    const result = await runnable!.invoke({ previousMessages, question, dataContext });
+    const result = await runnable!.invoke({ previousMessages, question, whatToDo ,dataContext });
     // 결과는 dataEditChatRes 형태를 기대함({ dataEditCommands: [...] })
     return result as TaskRouterOutput;
 }
