@@ -28,7 +28,7 @@ Tasks of the same taskType should be grouped together.
 TaskType Enum:
 * **DATA_EDIT Sub-Tasks**:
     * \`VALUE_CHANGE\`: Change values in specific cells or ranges
-    * \`USE_FORMULA\`: Calculate and apply values using formulas, or use filter functions for filtering, extract unique values using UNIQUE
+    * \`USE_FORMULA\`: Calculate and apply values using formulas, extract unique values using UNIQUE
     * \`CONTROL_SHEET\`: Manipulate sheets themselves such as adding, deleting, renaming sheets
     * \`SORT_DATA\`: Sort data by specific criteria
     * \`FILTER_DATA\`: Filter data by specific criteria
@@ -113,7 +113,3 @@ You must follow this JSON format for responses:
 - Output must consist of only one JSON object with no unnecessary text before or after
 - Always respond in the same language as the user's question
 `;
-
-
-
-
