@@ -95,18 +95,18 @@ export class AiChatService {
     userId: string,
     spreadSheetVersionId?: string
   ): Promise<filteredSheetReturns | null> {
-    console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionId: ${spreadSheetVersionId}`);
+    // console.log(`[DEBUG] loadParsedSpreadsheetData START - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionId: ${spreadSheetVersionId}`);
     this.logger.log(`loadParsedSpreadsheetData called with - spreadsheetId: ${spreadsheetId}, parsedSheetNames: ${JSON.stringify(parsedSheetNames)}, userId: ${userId}, versionId: ${spreadSheetVersionId}`);
 
     if (!spreadsheetId || !userId) {
-      console.log(`[DEBUG] Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
+      // console.log(`[DEBUG] Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
       this.logger.warn(`Missing required parameters - spreadsheetId: ${spreadsheetId}, userId: ${userId}`);
       return null;
     }
 
     // parsedSheetNames가 비어있는 경우 경고만 하고 계속 진행
     if (!parsedSheetNames || parsedSheetNames.length === 0) {
-      console.log(`[DEBUG] parsedSheetNames is empty, continuing anyway`);
+      // console.log(`[DEBUG] parsedSheetNames is empty, continuing anyway`);
       this.logger.warn(`parsedSheetNames is empty or null - will load all available sheets. parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
     }
 
@@ -159,7 +159,7 @@ export class AiChatService {
       let fullData: Record<string, any>;
       let sheets: any;
 
-      console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));
+      // console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));
 
       if (rawData.spreadsheetData?.sheets) {
         // 데이터가 spreadsheetData.sheets 구조인 경우
@@ -185,7 +185,7 @@ export class AiChatService {
 
       if (parsedSheetNames && parsedSheetNames.length > 0) {
         // 특정 시트들만 요청된 경우 - 해당 시트들만 필터링
-        console.log(`[DEBUG] Filtering sheets - requested: ${JSON.stringify(parsedSheetNames)}, available: ${JSON.stringify(availableSheets)}`);
+        // console.log(`[DEBUG] Filtering sheets - requested: ${JSON.stringify(parsedSheetNames)}, available: ${JSON.stringify(availableSheets)}`);
 
         for (const sheetName of parsedSheetNames) {
           if (sheets[sheetName]) {
@@ -229,18 +229,18 @@ export class AiChatService {
     parsedSheetNames: string[],
     newVersionSpreadSheetData: Record<string, any>,
   ): Promise<filteredSheetReturns | null> {
-    console.log(`[DEBUG] parseNewVersionSpreadSheetData START - parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
+    // console.log(`[DEBUG] parseNewVersionSpreadSheetData START - parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
     this.logger.log(`parseNewVersionSpreadSheetData called with - parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
 
     if (!newVersionSpreadSheetData) {
-      console.log(`[DEBUG] newVersionSpreadSheetData is null or undefined`);
+      // console.log(`[DEBUG] newVersionSpreadSheetData is null or undefined`);
       this.logger.warn(`newVersionSpreadSheetData is null or undefined`);
       return null;
     }
 
     // parsedSheetNames가 비어있는 경우 경고만 하고 계속 진행
     if (!parsedSheetNames || parsedSheetNames.length === 0) {
-      console.log(`[DEBUG] parsedSheetNames is empty, continuing anyway`);
+      // console.log(`[DEBUG] parsedSheetNames is empty, continuing anyway`);
       this.logger.warn(`parsedSheetNames is empty or null - will load all available sheets. parsedSheetNames: ${JSON.stringify(parsedSheetNames)}`);
     }
 
@@ -253,7 +253,7 @@ export class AiChatService {
       let fullData: Record<string, any>;
       let sheets: any;
 
-      console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));
+      // console.log(`[DEBUG] rawData keys after parsing:`, Object.keys(rawData));
 
       if (rawData.spreadsheetData?.sheets) {
         // 데이터가 spreadsheetData.sheets 구조인 경우
@@ -279,7 +279,7 @@ export class AiChatService {
 
       if (parsedSheetNames && parsedSheetNames.length > 0) {
         // 특정 시트들만 요청된 경우 - 해당 시트들만 필터링
-        console.log(`[DEBUG] Filtering sheets - requested: ${JSON.stringify(parsedSheetNames)}, available: ${JSON.stringify(availableSheets)}`);
+        // console.log(`[DEBUG] Filtering sheets - requested: ${JSON.stringify(parsedSheetNames)}, available: ${JSON.stringify(availableSheets)}`);
 
         for (const sheetName of parsedSheetNames) {
           if (sheets[sheetName]) {
