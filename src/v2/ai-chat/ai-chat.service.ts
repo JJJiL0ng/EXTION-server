@@ -79,7 +79,7 @@ export class AiChatService {
     // 1. 계획된 모든 Task를 순차적으로 실행합니다.
     const results = await Promise.all(
       TaskManagerOutput.tasks.map((task) => {
-        return this.aiAgentService.runSingleTask(previousMessages, task, aiChatApiReq.userQuestionMessage, dataContext, 'small');
+        return this.aiAgentService.runSingleTask(previousMessages, task, aiChatApiReq.userQuestionMessage, dataContext, aiChatApiReq.aiModel);
         // return this.aiAgentService.runSingleTask(previousMessages, task, task.description, dataContext, 'small');
       })
     );

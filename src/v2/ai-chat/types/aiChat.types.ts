@@ -18,6 +18,7 @@ export interface aiChatApiReq {
   spreadSheetVersionId: string; // Optional: 특정 버전 ID (없을 시 최신 버전 사용)
   newVersionSpreadSheetData?: Record<string, any>; // Optional: 새 버전의 데이터(변경사항이 있을시에만 프론트에서 보내줄 예정)
   editLockVersion?: number; // Optional: 낙관적 잠금을 위한 버전 번호
+  aiModel: aiModelType; // 사용할 AI 모델 이름
 }
 
 export interface aiChatApiRes {
@@ -89,3 +90,9 @@ export interface rollbackMessageRes {
   editLockVersion: number; // 낙관적 잠금을 위한 버전 번호
   spreadSheetData: Record<string, any>; // 롤백 대상 메시지를 보내기전으로 스프레드시트 데이터 롤백
 }
+
+
+//=========================================================
+// ai 모델 타입
+//=========================================================
+export type aiModelType = 'Extion small' | 'Extion medium' | 'Extion large';
