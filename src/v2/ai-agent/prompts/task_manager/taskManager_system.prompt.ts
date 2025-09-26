@@ -81,7 +81,7 @@ TaskType Enum;
       "taskId": "task_1",
       "taskType": "APPLY_STYLE",
       "description": "상위 5개 행(A2:E6)에 노란색 배경 적용"
-  }}
+    }}
   ]
 }}
 \`\`\`
@@ -98,7 +98,7 @@ TaskType Enum;
       "taskId": "task_0",
       "taskType": "PROVIDE_HELP_ARTICLE",
       "description": "피벗 테이블 생성 방법에 대한 일반적인 가이드를 제공합니다."
-  }}
+    }}
   ]
 }}
 \`\`\`
