@@ -102,7 +102,7 @@ export class AiAgentService {
 
     // 디버깅을 위해 중간 결과를 확인
     try {
-      const result = await taskManager.invoke({ previousMessages, question, dataContext: dataContextString });
+      const result = await taskManager.invoke({ question, previousMessages, dataContext: dataContextString });
       console.log('DEBUG: TaskManager raw result:', JSON.stringify(result, null, 2));
       return result as TaskManagerOutput;
     } catch (error) {

@@ -101,7 +101,7 @@ export async function routeAndRunSingleTask(
         question: question?.substring(0, 100) + '...',
         dataContextLength: dataContext?.length || 0
     });
-    const result = await runnable!.invoke({ previousMessages, question, whatToDo ,dataContext });
+    const result = await runnable!.invoke({ whatToDo, question, previousMessages, dataContext });
     // 결과는 dataEditChatRes 형태를 기대함({ dataEditCommands: [...] })
     return result as TaskRouterOutput;
 }
