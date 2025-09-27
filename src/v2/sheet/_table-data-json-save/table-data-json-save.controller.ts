@@ -100,6 +100,7 @@ export class TableDataJsonSaveController {
       fileName: isSpreadSheetExists.fileName,
       spreadSheetVersionId: isSpreadSheetExists.headVersionId,
       spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
+      chatSessionId: dto.chatId,
       chatHistory: loadUserAiChatHistory,
     };
   }

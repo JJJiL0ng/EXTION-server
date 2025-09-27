@@ -156,6 +156,7 @@ export class CheckAndLoadResDto {
   fileName?: string;
   spreadSheetVersionId?: string | null;
   spreadSheetData?: Record<string, any>;
+  chatSessionId?: string | null;
   chatHistory?: previousMessagesContent[] | null;
 }
 
