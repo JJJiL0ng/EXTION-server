@@ -122,10 +122,12 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         newVersionSpreadSheetData: payload.newVersionSpreadSheetData,
         editLockVersion: payload.editLockVersion, // 낙관적 잠금을 위한 버전 번호
         aiModel: payload.aiModel, // 사용할 AI 모델 이름
+        isEmtpySheet: payload.isEmtpySheet // 시트가 비어있는지 여부
       };
 
+      if ( aiReq.isEmtpySheet == true ) {
 
-
+      }
 
       this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
 

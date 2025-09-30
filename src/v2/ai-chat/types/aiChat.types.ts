@@ -19,6 +19,7 @@ export interface aiChatApiReq {
   newVersionSpreadSheetData?: Record<string, any>; // Optional: 새 버전의 데이터(변경사항이 있을시에만 프론트에서 보내줄 예정)
   editLockVersion?: number; // Optional: 낙관적 잠금을 위한 버전 번호
   aiModel: aiModelType; // 사용할 AI 모델 이름
+  isEmtpySheet: boolean; // 시트가 비어있는지 여부
 }
 
 export interface aiChatApiRes {
