@@ -9,6 +9,7 @@ import type { dataEditChatRes, dataEditCommand } from './types/dataEdit.types';
 import { filteredSheetReturns, PreviousChatMessage } from '../ai-chat/types/aiChat.types';
 
 import { createTaskManagerRunnable } from './runnables/task_manager/task_manager.runnable';
+import { createFileNameMakerRunnable } from './runnables/fileNameMaker/fileNameMaker.runnable';
 
 import { aiModelType } from 'src/v2/ai-chat/types/aiChat.types';
 
@@ -127,5 +128,32 @@ export class AiAgentService {
       this.geminiSmall; // 기본값
 
     return routeAndRunSingleTask({ previousMessages, task, question, dataContext, model: selected });
+  }
+
+  async fileNameMaker(dataContext: string | Record<string, unknown>): Promise<string> {
+    // dataContext를 문자열로 변환
+    const dataContextString =
+      typeof dataContext === 'string'
+        ? dataContext
+        : JSON.stringify(dataContext ?? {}, null, 2);
+
+    // fileNameMaker 러너블 생성
+    const fileNameMaker = createFileNameMakerRunnable(this.ExtionSmall);
+
+    try {
+      // 러너블 실행하여 파일명 생성
+      const result = await fileNameMaker.invoke({ dataContext: dataContextString });
+      console.log('DEBUG: FileNameMaker raw result:', result);
+      
+      // 결과가 문자열인지 확인하고 반환
+      const fileName = typeof result === 'string' ? result : String(result);
+      return fileName.trim();
+    } catch (error) {
+      console.error('DEBUG: FileNameMaker error:', error);
+      console.error('DEBUG: DataContext length:', dataContextString.length);
+      
+      // 에러 발생 시 기본 파일명 반환
+      return 'Extion-Sheet';
+    }
   }
 }
