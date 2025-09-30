@@ -14,8 +14,9 @@ import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMess
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
 
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
-
+import { AiAgentService } from 'src/v2/ai-agent/ai-agent.service';
 import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
+import { emptySheetData } from './emptySheet.json';
 @WebSocketGateway({
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
@@ -32,6 +33,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly aiChatService: AiChatService,
     private readonly tableDataJsonSaveService: TableDataJsonSaveService,
+    private readonly aiAgentService: AiAgentService,
   ) { }
 
   // 간단한 메모리 상태 저장 (jobId -> 상태)
@@ -122,11 +124,30 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         newVersionSpreadSheetData: payload.newVersionSpreadSheetData,
         editLockVersion: payload.editLockVersion, // 낙관적 잠금을 위한 버전 번호
         aiModel: payload.aiModel, // 사용할 AI 모델 이름
-        isEmtpySheet: payload.isEmtpySheet // 시트가 비어있는지 여부
+        isEmptySheet: payload.isEmptySheet // 시트가 비어있는지 여부
       };
 
-      if ( aiReq.isEmtpySheet == true ) {
+      let fileName: string | undefined;
 
+      if (aiReq.isEmptySheet === true) {
+        // 빈 시트인 경우 newVersionSpreadSheetData가 없으면 emptySheetData 사용
+        const spreadSheetData = aiReq.newVersionSpreadSheetData ?? emptySheetData;
+        
+        // 파일명 생성
+        fileName = await this.aiAgentService.fileNameMaker(spreadSheetData);
+        
+        // 빈 시트일 때는 Chat 생성이 별도로 필요하지 않음 (saveUserMessage에서 자동 생성 예정)
+        
+        // 스프레드시트 생성
+        await this.tableDataJsonSaveService.createSpreadSheet({
+          fileName: fileName,
+          spreadsheetId: aiReq.spreadsheetId,
+          chatId: aiReq.chatId,
+          userId: aiReq.userId,
+          jsonData: spreadSheetData
+        });
+        
+        this.logger.log(`빈 스프레드시트 및 Chat 생성 완료 - fileName: ${fileName}, chatId: ${aiReq.chatId}`);
       }
 
       this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
@@ -162,7 +183,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         plan,
       });
 
-      await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id);
+      await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id, fileName);
 
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -310,7 +331,8 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     plan: TaskManagerOutput,
     dataContext: filteredSheetReturns,
     previousMessages: PreviousChatMessage[],
-    clientId: string
+    clientId: string,
+    fileName?: string
   ) {
     const executionStartTime = Date.now();
 
@@ -334,6 +356,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         dataEditChatRes: {
           dataEditCommands: results,
         },
+        fileName: fileName,
         // 실제 DB에서 생성된 ID들 반환
         spreadSheetVersionId: dbResults.actualSpreadSheetVersionId,
         editLockVersion: dbResults.newEditLockVersion, // 다음 요청에서 사용할 새로운 버전

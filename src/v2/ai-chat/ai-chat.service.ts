@@ -334,7 +334,7 @@ export class AiChatService {
         }
 
         // 1. 세션 확인 또는 생성
-        const { session } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, tx);
+        const { session } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, aiReq.spreadsheetId, aiReq.userId, tx);
 
         // 2. 첫 번째 채팅인지 확인 (세션에 메시지가 있는지 확인)
         const existingMessages = await tx.message.findMany({
@@ -474,8 +474,17 @@ export class AiChatService {
       }
 
       return await this.prisma.$transaction(async (tx) => {
+        // 0. Chat을 먼저 조회하여 spreadSheetId를 얻기
+        const existingChat = await tx.chat.findUnique({
+          where: { id: chatId }
+        });
+        
+        if (!existingChat) {
+          throw new Error(`Chat not found for saveAssistantMessage: ${chatId}`);
+        }
+        
         // 1. 프론트엔드에서 지정한 세션의 활성 브랜치 가져오기
-        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(chatId, chatSessionId, tx);
+        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(chatId, chatSessionId, existingChat.spreadSheetId, existingChat.userId, tx);
 
         // 2. AI 응답을 위한 새로운 브랜치 생성 (기존 방식대로 항상 새 브랜치)
         const newBranch = await tx.chatSessionBranch.create({
@@ -797,18 +806,32 @@ export class AiChatService {
    * @param chatSessionId - 프론트엔드에서 지정한 채팅 세션 ID
    * @returns 지정된 세션의 활성 브랜치 정보
    */
-  private async getOrCreateActiveBranch(chatId: string, chatSessionId: string, tx: any): Promise<{
+  private async getOrCreateActiveBranch(chatId: string, chatSessionId: string, spreadSheetId: string, userId: string, tx: any): Promise<{
     chat: any;
     session: any;
     branch: any;
   }> {
-    // 1. Chat 확인
-    const chat = await tx.chat.findUnique({
+    // 1. Chat 확인 또는 생성
+    let chat = await tx.chat.findUnique({
       where: { id: chatId }
     });
 
     if (!chat) {
-      throw new Error(`Chat not found: ${chatId}`);
+      // Chat이 없으면 자동으로 생성 (빈 시트 시나리오 대응)
+      this.logger.log(`Chat not found, creating new chat: ${chatId}`);
+      
+      chat = await tx.chat.create({
+        data: {
+          id: chatId,
+          title: '새 채팅', // 기본 제목
+          status: 'ACTIVE',
+          messageCount: 0,
+          spreadSheetId: spreadSheetId, // 필수 필드 연결
+          userId: userId // 전달받은 userId 사용
+        }
+      });
+      
+      this.logger.log(`새 Chat 생성 완료: ${chatId}, spreadSheetId: ${spreadSheetId}`);
     }
 
     // 2. 🔥 프론트엔드에서 지정한 ChatSession 직접 사용
