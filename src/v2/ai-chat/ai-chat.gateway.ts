@@ -46,6 +46,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdAt: number;
       dataContext: Record<string, any>;
       previousMessages: PreviousChatMessage[];
+      fileName?: string;
     }
   >();
 
@@ -135,9 +136,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         
         // 파일명 생성
         fileName = await this.aiAgentService.fileNameMaker(spreadSheetData);
-        
-        // 빈 시트일 때는 Chat 생성이 별도로 필요하지 않음 (saveUserMessage에서 자동 생성 예정)
-        
+                
         // 스프레드시트 생성
         await this.tableDataJsonSaveService.createSpreadSheet({
           fileName: fileName,
@@ -300,7 +299,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (feedback === 'SUCCESS') {
         this.logger.log(`작업 실행 계속 - ID: ${jobId}`);
-        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.previousMessages, job.clientId);
+        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.previousMessages, job.clientId, job.fileName);
       } else {
         // 실행 취소
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
@@ -336,7 +335,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) {
     const executionStartTime = Date.now();
 
-    this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}`);
+    this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}, fileName: ${fileName}`);
 
     try {
       // 1. AI 작업 실행
@@ -350,6 +349,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const dbResults = await this.processSyncDbOperations(aiReq, plan, results);
 
       // 3. ✅ DB 저장이 성공한 후에만 클라이언트에 응답 전송
+      this.logger.log(`클라이언트 응답 전송 준비 - fileName: ${fileName}`);
       this.server.to(clientId).emit('ai_tasks_executed', {
         jobId: aiReq.jobId,
         chatSessionId: aiReq.chatSessionId, // 프론트엔드에서 다음 요청에 사용할 수 있도록 반환
@@ -365,7 +365,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         timestamp: new Date().toISOString(),
       });
 
-      this.logger.log(`클라이언트 응답 전송 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}`);
+      this.logger.log(`클라이언트 응답 전송 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}, fileName: ${fileName}`);
 
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;

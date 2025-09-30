@@ -834,32 +834,29 @@ export class AiChatService {
       this.logger.log(`새 Chat 생성 완료: ${chatId}, spreadSheetId: ${spreadSheetId}`);
     }
 
-    // 2. 🔥 프론트엔드에서 지정한 ChatSession 직접 사용
-    let session: any = await tx.chatSession.findFirst({
+    // 2. 🔥 프론트엔드에서 지정한 ChatSession 직접 사용 (upsert로 race condition 방지)
+    const session: any = await tx.chatSession.upsert({
       where: {
-        id: chatSessionId,
+        id: chatSessionId
+      },
+      update: {
+        // 이미 존재하는 경우 업데이트할 필드 (여기서는 chatId 확인만)
         chatId: chatId // 보안: 해당 chat에 속한 세션인지 확인
+      },
+      create: {
+        id: chatSessionId, // 프론트엔드에서 제공한 ID 직접 사용
+        chatId: chatId,
+        name: '새 대화',
       }
     });
 
-    if (!session) {
-      // 지정한 세션이 없으면 새로 생성
-      session = await tx.chatSession.create({
-        data: {
-          id: chatSessionId, // 프론트엔드에서 제공한 ID 직접 사용
-          chatId: chatId,
-          name: '새 대화',
-        }
-      });
+    // latestChatSessionId 업데이트 (새로 생성되었거나 기존 세션을 사용하는 경우 모두)
+    await tx.chat.update({
+      where: { id: chatId },
+      data: { latestChatSessionId: session.id }
+    });
 
-      // latestChatSessionId도 업데이트
-      await tx.chat.update({
-        where: { id: chatId },
-        data: { latestChatSessionId: session.id }
-      });
-
-      this.logger.log(`새 ChatSession 생성됨 (프론트 지정 ID) - sessionId: ${session.id}`);
-    }
+    this.logger.log(`ChatSession 준비됨 - sessionId: ${session.id}`);
 
     // 3. 현재 활성 ChatSessionBranch 확인 또는 생성
     let branch: any = null;
