@@ -3,7 +3,8 @@ import {
     createSortDataRunnable,
     createValueChangeRunnable,
     createUseFormulaRunnable,
-    createFilterDataRunnable
+    createFilterDataRunnable,
+    createValueConverterRunnable
 } from '../runnables/data_edit/data_edit.runnable';
 
 import { Task, TaskType } from '../types/taskManager.types';
@@ -55,6 +56,9 @@ export async function routeAndRunSingleTask(
         case dataEditCommandType.VALUE_CHANGE:
         case 'VALUE_CHANGE': // AI가 대문자로 전달하는 경우 처리
             runnable = createValueChangeRunnable(model);
+            break;
+        case 'VALUE_CONVERTER':
+            runnable = createValueConverterRunnable(model);
             break;
         case dataEditCommandType.USE_FORMULA:
         case 'USE_FORMULA': // AI가 대문자로 전달하는 경우 처리

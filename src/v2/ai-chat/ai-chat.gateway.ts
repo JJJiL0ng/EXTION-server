@@ -339,11 +339,34 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       // 1. AI 작업 실행
-      this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
-      const { results } = await this.aiChatService.runPlannedTasks(aiReq, plan, dataContext, previousMessages);
-
+      this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}, intent: ${plan.intent}`);
+      
+      let results: any[] = [];
+      
+      if (plan.intent === 'data_edit') {
+        const aiResults = await this.aiChatService.runPlannedTasks(aiReq, plan, dataContext, previousMessages);
+        results = aiResults.results;
+      } else if (plan.intent === 'general_help') {
+        // general_help의 경우 기본 dataEditCommands 설정
+        results = [{
+          type: 'general_response',
+          message: '일반적인 도움말 응답',
+          timestamp: new Date().toISOString(),
+          success: true
+        }];
+        this.logger.log(`일반 도움말 처리 완료 - intent: ${plan.intent}`);
+      } else {
+        this.logger.warn(`알 수 없는 intent: ${plan.intent}, 기본 처리 적용`);
+        results = [{
+          type: 'unknown_intent',
+          message: '알 수 없는 요청 유형',
+          timestamp: new Date().toISOString(),
+          success: false
+        }];
+      }
+      
       const executionTime = Date.now() - executionStartTime;
-      this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
+      this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}, intent: ${plan.intent}`);
 
       // 2. 🔥 DB에 모든 변경사항을 먼저 저장 (트랜잭션으로 원자성 보장)
       const dbResults = await this.processSyncDbOperations(aiReq, plan, results);
