@@ -12,6 +12,7 @@ import { AiChatService } from './ai-chat.service';
 
 import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMessage, rollbackMessageReq, rollbackMessageRes } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
+import { Intent } from 'src/v2/ai-agent/types/taskManager.types';
 
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
 import { AiAgentService } from 'src/v2/ai-agent/ai-agent.service';
@@ -340,13 +341,18 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       // 1. AI 작업 실행
       this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}, intent: ${plan.intent}`);
-      
+
+      // intent 값 정규화 (대소문자 통일)
+      const normalizedIntent = typeof plan.intent === 'string'
+        ? plan.intent.toLowerCase()
+        : plan.intent;
+
       let results: any[] = [];
-      
-      if (plan.intent === 'data_edit') {
+
+      if (normalizedIntent === Intent.DATA_EDIT || normalizedIntent === 'data_edit') {
         const aiResults = await this.aiChatService.runPlannedTasks(aiReq, plan, dataContext, previousMessages);
         results = aiResults.results;
-      } else if (plan.intent === 'general_help') {
+      } else if (normalizedIntent === Intent.GENERAL_HELP || normalizedIntent === 'general_help') {
         // general_help의 경우 기본 dataEditCommands 설정
         results = [{
           type: 'general_response',
