@@ -3,7 +3,8 @@ import {
     createSortDataRunnable,
     createValueChangeRunnable,
     createUseFormulaRunnable,
-    createFilterDataRunnable
+    createFilterDataRunnable,
+    createValueConverterRunnable
 } from '../runnables/data_edit/data_edit.runnable';
 
 import { Task, TaskType } from '../types/taskManager.types';
@@ -56,6 +57,9 @@ export async function routeAndRunSingleTask(
         case 'VALUE_CHANGE': // AI가 대문자로 전달하는 경우 처리
             runnable = createValueChangeRunnable(model);
             break;
+        case 'VALUE_CONVERTER':
+            runnable = createValueConverterRunnable(model);
+            break;
         case dataEditCommandType.USE_FORMULA:
         case 'USE_FORMULA': // AI가 대문자로 전달하는 경우 처리
             runnable = createUseFormulaRunnable(model);
@@ -93,6 +97,7 @@ export async function routeAndRunSingleTask(
             // 런타임에서 string 리터럴이 들어올 수 있으니 안전 가드
             throw new Error(`Unknown taskType: ${String(task.taskType)}`);
     }
+    const whatToDo = task.description;
 
     // 선택된 러너블 실행
     console.log('DEBUG: Invoking runnable with:', {
@@ -100,7 +105,7 @@ export async function routeAndRunSingleTask(
         question: question?.substring(0, 100) + '...',
         dataContextLength: dataContext?.length || 0
     });
-    const result = await runnable!.invoke({ previousMessages, question, dataContext });
+    const result = await runnable!.invoke({ whatToDo, question, previousMessages, dataContext });
     // 결과는 dataEditChatRes 형태를 기대함({ dataEditCommands: [...] })
     return result as TaskRouterOutput;
 }

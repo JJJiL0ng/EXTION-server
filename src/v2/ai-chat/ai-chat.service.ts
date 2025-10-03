@@ -60,6 +60,42 @@ export class AiChatService {
   ) { }
 
   /**
+   * userId가 DB에 존재하는지 확인하고 없으면 자동으로 생성
+   */
+  private async ensureUserExists(userId: string, tx?: any): Promise<void> {
+    const prismaClient = tx || this.prisma;
+
+    const existingUser = await prismaClient.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!existingUser) {
+      this.logger.log(`User not found, creating new user - userId: ${userId}`);
+
+      try {
+        await prismaClient.user.create({
+          data: {
+            id: userId,
+            displayName: userId.startsWith('guest_')
+              ? `Guest User ${Date.now()}`
+              : `User ${userId}`,
+            isGuest: userId.startsWith('guest_'),
+          }
+        });
+        this.logger.log(`User created successfully - userId: ${userId}`);
+      } catch (error) {
+        // 동시 요청으로 이미 생성된 경우 무시
+        if (error.code === 'P2002') {
+          this.logger.log(`User already exists (concurrent creation) - userId: ${userId}`);
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  /**
   * 계획을 수립합니다
   */
   async planTasks(aiChatApiReq: aiChatApiReq, dataContext: filteredSheetReturns, previousMessages: PreviousChatMessage[]) {
@@ -75,12 +111,12 @@ export class AiChatService {
     };
   }
 
-  async runPlannedTasks(TaskManagerOutput: TaskManagerOutput, dataContext: filteredSheetReturns, previousMessages: PreviousChatMessage[]) {
+  async runPlannedTasks(aiChatApiReq: aiChatApiReq, TaskManagerOutput: TaskManagerOutput, dataContext: filteredSheetReturns, previousMessages: PreviousChatMessage[]) {
     // 1. 계획된 모든 Task를 순차적으로 실행합니다.
     const results = await Promise.all(
       TaskManagerOutput.tasks.map((task) => {
-        // return this.aiAgentService.runSingleTask(task, aiChatApiReq.userQuestionMessage, dataContext, 'small');
-        return this.aiAgentService.runSingleTask(previousMessages, task, task.description, dataContext, 'small');
+        return this.aiAgentService.runSingleTask(previousMessages, task, aiChatApiReq.userQuestionMessage, dataContext, aiChatApiReq.aiModel);
+        // return this.aiAgentService.runSingleTask(previousMessages, task, task.description, dataContext, 'small');
       })
     );
 
@@ -333,8 +369,11 @@ export class AiChatService {
           throw new Error('chatSessionId is required to save user message');
         }
 
+        // 0. userId가 DB에 존재하는지 확인하고 없으면 생성
+        await this.ensureUserExists(aiReq.userId, tx);
+
         // 1. 세션 확인 또는 생성
-        const { session } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, tx);
+        const { session } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, aiReq.spreadsheetId, aiReq.userId, tx);
 
         // 2. 첫 번째 채팅인지 확인 (세션에 메시지가 있는지 확인)
         const existingMessages = await tx.message.findMany({
@@ -474,8 +513,20 @@ export class AiChatService {
       }
 
       return await this.prisma.$transaction(async (tx) => {
+        // 0. Chat을 먼저 조회하여 spreadSheetId를 얻기
+        const existingChat = await tx.chat.findUnique({
+          where: { id: chatId }
+        });
+
+        if (!existingChat) {
+          throw new Error(`Chat not found for saveAssistantMessage: ${chatId}`);
+        }
+
+        // 0-1. userId가 DB에 존재하는지 확인하고 없으면 생성
+        await this.ensureUserExists(existingChat.userId, tx);
+
         // 1. 프론트엔드에서 지정한 세션의 활성 브랜치 가져오기
-        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(chatId, chatSessionId, tx);
+        const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(chatId, chatSessionId, existingChat.spreadSheetId, existingChat.userId, tx);
 
         // 2. AI 응답을 위한 새로운 브랜치 생성 (기존 방식대로 항상 새 브랜치)
         const newBranch = await tx.chatSessionBranch.create({
@@ -797,46 +848,57 @@ export class AiChatService {
    * @param chatSessionId - 프론트엔드에서 지정한 채팅 세션 ID
    * @returns 지정된 세션의 활성 브랜치 정보
    */
-  private async getOrCreateActiveBranch(chatId: string, chatSessionId: string, tx: any): Promise<{
+  private async getOrCreateActiveBranch(chatId: string, chatSessionId: string, spreadSheetId: string, userId: string, tx: any): Promise<{
     chat: any;
     session: any;
     branch: any;
   }> {
-    // 1. Chat 확인
-    const chat = await tx.chat.findUnique({
+    // 1. Chat 확인 또는 생성
+    let chat = await tx.chat.findUnique({
       where: { id: chatId }
     });
 
     if (!chat) {
-      throw new Error(`Chat not found: ${chatId}`);
+      // Chat이 없으면 자동으로 생성 (빈 시트 시나리오 대응)
+      this.logger.log(`Chat not found, creating new chat: ${chatId}`);
+      
+      chat = await tx.chat.create({
+        data: {
+          id: chatId,
+          title: '새 채팅', // 기본 제목
+          status: 'ACTIVE',
+          messageCount: 0,
+          spreadSheetId: spreadSheetId, // 필수 필드 연결
+          userId: userId // 전달받은 userId 사용
+        }
+      });
+      
+      this.logger.log(`새 Chat 생성 완료: ${chatId}, spreadSheetId: ${spreadSheetId}`);
     }
 
-    // 2. 🔥 프론트엔드에서 지정한 ChatSession 직접 사용
-    let session: any = await tx.chatSession.findFirst({
+    // 2. 🔥 프론트엔드에서 지정한 ChatSession 직접 사용 (upsert로 race condition 방지)
+    const session: any = await tx.chatSession.upsert({
       where: {
-        id: chatSessionId,
+        id: chatSessionId
+      },
+      update: {
+        // 이미 존재하는 경우 업데이트할 필드 (여기서는 chatId 확인만)
         chatId: chatId // 보안: 해당 chat에 속한 세션인지 확인
+      },
+      create: {
+        id: chatSessionId, // 프론트엔드에서 제공한 ID 직접 사용
+        chatId: chatId,
+        name: '새 대화',
       }
     });
 
-    if (!session) {
-      // 지정한 세션이 없으면 새로 생성
-      session = await tx.chatSession.create({
-        data: {
-          id: chatSessionId, // 프론트엔드에서 제공한 ID 직접 사용
-          chatId: chatId,
-          name: '새 대화',
-        }
-      });
+    // latestChatSessionId 업데이트 (새로 생성되었거나 기존 세션을 사용하는 경우 모두)
+    await tx.chat.update({
+      where: { id: chatId },
+      data: { latestChatSessionId: session.id }
+    });
 
-      // latestChatSessionId도 업데이트
-      await tx.chat.update({
-        where: { id: chatId },
-        data: { latestChatSessionId: session.id }
-      });
-
-      this.logger.log(`새 ChatSession 생성됨 (프론트 지정 ID) - sessionId: ${session.id}`);
-    }
+    this.logger.log(`ChatSession 준비됨 - sessionId: ${session.id}`);
 
     // 3. 현재 활성 ChatSessionBranch 확인 또는 생성
     let branch: any = null;

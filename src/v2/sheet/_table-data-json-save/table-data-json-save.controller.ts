@@ -9,6 +9,7 @@ import {
   Logger,
   HttpStatus,
   HttpCode,
+  UseGuards,
 } from '@nestjs/common';
 import { TableDataJsonSaveService } from './table-data-json-save.service';
 import {
@@ -26,8 +27,11 @@ import {
 } from '../types/spreadsheet.types';
 
 import { AiChatService } from 'src/v2/ai-chat/ai-chat.service'; // AiChatService 임포트
+import { RateLimitGuard } from './guards/rate-limit.guard';
+import { RateLimit, RateLimitPresets } from './decorators/rate-limit.decorator';
 
 @Controller('v2/table-data-json-save')
+@UseGuards(RateLimitGuard) // 컨트롤러 전체에 Rate Limiting 적용
 export class TableDataJsonSaveController {
   private readonly logger = new Logger(TableDataJsonSaveController.name);
 
@@ -38,9 +42,11 @@ export class TableDataJsonSaveController {
 
   /**
    * 새 스프레드시트 생성
+   * Rate Limit: 1분당 20개 요청 (쓰기 작업)
    */
   @Post('create')
   @HttpCode(HttpStatus.CREATED)
+  @RateLimit(RateLimitPresets.WRITE_OPERATION)
   async createSpreadSheet(
     @Body() dto: CreateSpreadSheetDto,
   ): Promise<{
@@ -61,9 +67,11 @@ export class TableDataJsonSaveController {
 
   /**
    * 새 버전 스프레드시트 데이터 추가
+   * Rate Limit: 5분당 5개 요청 (대용량 쓰기 작업)
    */
   @Post('add-version')
   @HttpCode(HttpStatus.CREATED)
+  @RateLimit(RateLimitPresets.HEAVY_OPERATION)
   async addNewVersionSpreadSheetData(
     @Body() dto: AddNewVersionSpreadSheetDto,
   ): Promise<{
@@ -82,7 +90,12 @@ export class TableDataJsonSaveController {
     };
   }
 
+  /**
+   * 스프레드시트 존재 확인 및 로드
+   * Rate Limit: 1분당 60개 요청 (읽기 작업)
+   */
   @Get('check-and-load')
+  @RateLimit(RateLimitPresets.READ_OPERATION)
   async checkAndLoad(
     @Query() dto: CheckAndLoadSpreadSheetDto,
   ): Promise<CheckAndLoadResDto> {
@@ -100,11 +113,17 @@ export class TableDataJsonSaveController {
       fileName: isSpreadSheetExists.fileName,
       spreadSheetVersionId: isSpreadSheetExists.headVersionId,
       spreadSheetData: loadspreadSheetData,  // .spreadSheetData 제거
+      chatSessionId: dto.chatId,
       chatHistory: loadUserAiChatHistory,
     };
   }
 
+  /**
+   * 스프레드시트 파일명 변경
+   * Rate Limit: 1분당 20개 요청 (쓰기 작업)
+   */
   @Post('rename-fileName')
+  @RateLimit(RateLimitPresets.WRITE_OPERATION)
   async renameFileName(
     @Body() dto: RenameSpreadSheetReqDto,
   ): Promise<RenameSpreadSheetResDto> {

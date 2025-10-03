@@ -7,15 +7,18 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { AiChatService } from './ai-chat.service';
 
 import type { aiChatApiReq, aiChatApiRes, filteredSheetReturns, PreviousChatMessage, rollbackMessageReq, rollbackMessageRes } from './types/aiChat.types';
 import type { TaskManagerOutput } from 'src/v2/ai-agent/types/taskManager.types';
+import { Intent } from 'src/v2/ai-agent/types/taskManager.types';
 
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
-
+import { AiAgentService } from 'src/v2/ai-agent/ai-agent.service';
 import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
+import { emptySheetData } from './emptySheet.json';
 @WebSocketGateway({
   cors: {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
@@ -32,9 +35,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly aiChatService: AiChatService,
     private readonly tableDataJsonSaveService: TableDataJsonSaveService,
+    private readonly aiAgentService: AiAgentService,
   ) { }
 
   // 간단한 메모리 상태 저장 (jobId -> 상태)
+  // dataContext는 메모리 절약을 위해 저장하지 않고 필요시 재조회
   private jobs = new Map<
     string,
     {
@@ -42,10 +47,40 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       plan: TaskManagerOutput;
       clientId: string;
       createdAt: number;
-      dataContext: Record<string, any>;
       previousMessages: PreviousChatMessage[];
+      fileName?: string;
     }
   >();
+
+  // Rate Limiting을 위한 사용자별 요청 추적
+  private userRequestTracking = new Map<
+    string, // userId
+    {
+      requestTimestamps: number[]; // 요청 시간 배열
+      blockedUntil?: number; // 차단 종료 시간 (밀리초)
+    }
+  >();
+
+  // IP별 요청 추적 (게스트 사용자 및 추가 보안)
+  private ipRequestTracking = new Map<
+    string, // IP address
+    {
+      requestTimestamps: number[];
+      blockedUntil?: number;
+    }
+  >();
+
+  // Rate Limiting 설정
+  private readonly RATE_LIMIT_CONFIG = {
+    // 일반 사용자: 1분당 최대 10개 요청
+    USER_REQUESTS_PER_MINUTE: 10,
+    // IP당: 1분당 최대 20개 요청 (여러 사용자가 같은 IP 사용 가능)
+    IP_REQUESTS_PER_MINUTE: 20,
+    // 차단 시간: 5분
+    BLOCK_DURATION_MS: 5 * 60 * 1000,
+    // 추적 윈도우: 1분
+    TRACKING_WINDOW_MS: 60 * 1000,
+  };
 
 
   //====================
@@ -65,6 +100,96 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // ===================
+
+  /**
+   * Rate Limiting 검증: 사용자 및 IP 기반
+   * @returns true면 차단됨, false면 정상
+   */
+  private checkRateLimit(userId: string, clientIp: string): { blocked: boolean; reason?: string; retryAfter?: number } {
+    const now = Date.now();
+
+    // 1. 사용자별 Rate Limiting 검증
+    const userTracking = this.userRequestTracking.get(userId);
+
+    if (userTracking) {
+      // 차단 기간 확인
+      if (userTracking.blockedUntil && now < userTracking.blockedUntil) {
+        const retryAfter = Math.ceil((userTracking.blockedUntil - now) / 1000);
+        this.logger.warn(`Rate Limit 차단 중 - 사용자: ${userId}, 남은 시간: ${retryAfter}초`);
+        return {
+          blocked: true,
+          reason: 'USER_RATE_LIMIT_EXCEEDED',
+          retryAfter,
+        };
+      }
+
+      // 추적 윈도우 내 요청 필터링 (1분 이내)
+      const recentRequests = userTracking.requestTimestamps.filter(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS
+      );
+
+      // 제한 초과 확인
+      if (recentRequests.length >= this.RATE_LIMIT_CONFIG.USER_REQUESTS_PER_MINUTE) {
+        userTracking.blockedUntil = now + this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS;
+        this.logger.warn(`Rate Limit 초과 - 사용자: ${userId}, 요청 수: ${recentRequests.length}, 5분간 차단`);
+        return {
+          blocked: true,
+          reason: 'USER_RATE_LIMIT_EXCEEDED',
+          retryAfter: Math.ceil(this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS / 1000),
+        };
+      }
+
+      // 오래된 타임스탬프 제거 후 새 요청 추가
+      userTracking.requestTimestamps = [...recentRequests, now];
+    } else {
+      // 첫 요청
+      this.userRequestTracking.set(userId, {
+        requestTimestamps: [now],
+      });
+    }
+
+    // 2. IP별 Rate Limiting 검증
+    const ipTracking = this.ipRequestTracking.get(clientIp);
+
+    if (ipTracking) {
+      // 차단 기간 확인
+      if (ipTracking.blockedUntil && now < ipTracking.blockedUntil) {
+        const retryAfter = Math.ceil((ipTracking.blockedUntil - now) / 1000);
+        this.logger.warn(`Rate Limit 차단 중 - IP: ${clientIp}, 남은 시간: ${retryAfter}초`);
+        return {
+          blocked: true,
+          reason: 'IP_RATE_LIMIT_EXCEEDED',
+          retryAfter,
+        };
+      }
+
+      // 추적 윈도우 내 요청 필터링
+      const recentRequests = ipTracking.requestTimestamps.filter(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS
+      );
+
+      // 제한 초과 확인
+      if (recentRequests.length >= this.RATE_LIMIT_CONFIG.IP_REQUESTS_PER_MINUTE) {
+        ipTracking.blockedUntil = now + this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS;
+        this.logger.warn(`Rate Limit 초과 - IP: ${clientIp}, 요청 수: ${recentRequests.length}, 5분간 차단`);
+        return {
+          blocked: true,
+          reason: 'IP_RATE_LIMIT_EXCEEDED',
+          retryAfter: Math.ceil(this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS / 1000),
+        };
+      }
+
+      // 오래된 타임스탬프 제거 후 새 요청 추가
+      ipTracking.requestTimestamps = [...recentRequests, now];
+    } else {
+      // 첫 요청
+      this.ipRequestTracking.set(clientIp, {
+        requestTimestamps: [now],
+      });
+    }
+
+    return { blocked: false };
+  }
 
   /**
    * 클라이언트의 진행 중인 작업들을 정리합니다.
@@ -107,6 +232,23 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
         return;
       }
+
+      // Rate Limiting 검증
+      const clientIp = (client.handshake.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+        || client.handshake.address
+        || 'unknown';
+
+      const rateLimitCheck = this.checkRateLimit(payload.userId, clientIp);
+      if (rateLimitCheck.blocked) {
+        this.logger.warn(`Rate Limit 차단 - 사용자: ${payload.userId}, IP: ${clientIp}, 이유: ${rateLimitCheck.reason}`);
+        this.server.to(client.id).emit('ai_job_error', {
+          message: rateLimitCheck.reason,
+          code: 'RATE_LIMIT_EXCEEDED',
+          retryAfter: rateLimitCheck.retryAfter,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
       const aiReq: aiChatApiReq = {
         websocketClientId: client.id,
         spreadsheetId: payload.spreadsheetId,
@@ -121,10 +263,30 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         spreadSheetVersionId: payload.spreadSheetVersionId,
         newVersionSpreadSheetData: payload.newVersionSpreadSheetData,
         editLockVersion: payload.editLockVersion, // 낙관적 잠금을 위한 버전 번호
+        aiModel: payload.aiModel, // 사용할 AI 모델 이름
+        isEmptySheet: payload.isEmptySheet // 시트가 비어있는지 여부
       };
 
+      let fileName: string | undefined;
 
-
+      if (aiReq.isEmptySheet === true) {
+        // 빈 시트인 경우 newVersionSpreadSheetData가 없으면 emptySheetData 사용
+        const spreadSheetData = aiReq.newVersionSpreadSheetData ?? emptySheetData;
+        
+        // 파일명 생성
+        fileName = await this.aiAgentService.fileNameMaker(spreadSheetData);
+                
+        // 스프레드시트 생성
+        await this.tableDataJsonSaveService.createSpreadSheet({
+          fileName: fileName,
+          spreadsheetId: aiReq.spreadsheetId,
+          chatId: aiReq.chatId,
+          userId: aiReq.userId,
+          jsonData: spreadSheetData
+        });
+        
+        this.logger.log(`빈 스프레드시트 및 Chat 생성 완료 - fileName: ${fileName}, chatId: ${aiReq.chatId}`);
+      }
 
       this.logger.log(`aiReq created - parsedSheetNames: ${JSON.stringify(aiReq.parsedSheetNames)}, length: ${aiReq.parsedSheetNames.length}`);
 
@@ -159,7 +321,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         plan,
       });
 
-      await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id);
+      await this.executeJobDirectly(aiReq, plan, dataContext!, previousMessages!, client.id, fileName);
 
     } catch (err) {
       this.logger.error(`AI 작업 시작 실패 - 클라이언트: ${client.id}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -276,7 +438,13 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (feedback === 'SUCCESS') {
         this.logger.log(`작업 실행 계속 - ID: ${jobId}`);
-        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.previousMessages, job.clientId);
+
+        // dataContext 재조회 (메모리 절약)
+        const dataContext = job.aiReq.newVersionSpreadSheetData
+          ? await this.aiChatService.parseNewVersionSpreadSheetData(job.aiReq.parsedSheetNames, job.aiReq.newVersionSpreadSheetData)
+          : await this.aiChatService.loadParsedSpreadsheetData(job.aiReq.spreadsheetId, job.aiReq.parsedSheetNames, job.aiReq.userId, job.aiReq.spreadSheetVersionId);
+
+        await this.executeJobDirectly(job.aiReq, job.plan, dataContext!, job.previousMessages, job.clientId, job.fileName);
       } else {
         // 실행 취소
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
@@ -307,30 +475,61 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     plan: TaskManagerOutput,
     dataContext: filteredSheetReturns,
     previousMessages: PreviousChatMessage[],
-    clientId: string
+    clientId: string,
+    fileName?: string
   ) {
     const executionStartTime = Date.now();
 
-    this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}`);
+    this.logger.log(`작업 실행 시작 - 클라이언트: ${clientId}, fileName: ${fileName}`);
 
     try {
       // 1. AI 작업 실행
-      this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}`);
-      const { results } = await this.aiChatService.runPlannedTasks(plan, dataContext, previousMessages);
+      this.logger.log(`AI 작업 처리 시작 - 태스크 수: ${plan.tasks?.length || 0}, intent: ${plan.intent}`);
 
+      // intent 값 정규화 (대소문자 통일)
+      const normalizedIntent = typeof plan.intent === 'string'
+        ? plan.intent.toLowerCase()
+        : plan.intent;
+
+      let results: any[] = [];
+
+      if (normalizedIntent === Intent.DATA_EDIT || normalizedIntent === 'data_edit') {
+        const aiResults = await this.aiChatService.runPlannedTasks(aiReq, plan, dataContext, previousMessages);
+        results = aiResults.results;
+      } else if (normalizedIntent === Intent.GENERAL_HELP || normalizedIntent === 'general_help') {
+        // general_help의 경우 기본 dataEditCommands 설정
+        results = [{
+          type: 'general_response',
+          message: '일반적인 도움말 응답',
+          timestamp: new Date().toISOString(),
+          success: true
+        }];
+        this.logger.log(`일반 도움말 처리 완료 - intent: ${plan.intent}`);
+      } else {
+        this.logger.warn(`알 수 없는 intent: ${plan.intent}, 기본 처리 적용`);
+        results = [{
+          type: 'unknown_intent',
+          message: '알 수 없는 요청 유형',
+          timestamp: new Date().toISOString(),
+          success: false
+        }];
+      }
+      
       const executionTime = Date.now() - executionStartTime;
-      this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}`);
+      this.logger.log(`작업 실행 완료 - 소요시간: ${executionTime}ms, 결과 수: ${results?.length || 0}, intent: ${plan.intent}`);
 
       // 2. 🔥 DB에 모든 변경사항을 먼저 저장 (트랜잭션으로 원자성 보장)
       const dbResults = await this.processSyncDbOperations(aiReq, plan, results);
 
       // 3. ✅ DB 저장이 성공한 후에만 클라이언트에 응답 전송
+      this.logger.log(`클라이언트 응답 전송 준비 - fileName: ${fileName}`);
       this.server.to(clientId).emit('ai_tasks_executed', {
         jobId: aiReq.jobId,
         chatSessionId: aiReq.chatSessionId, // 프론트엔드에서 다음 요청에 사용할 수 있도록 반환
         dataEditChatRes: {
           dataEditCommands: results,
         },
+        fileName: fileName,
         // 실제 DB에서 생성된 ID들 반환
         spreadSheetVersionId: dbResults.actualSpreadSheetVersionId,
         editLockVersion: dbResults.newEditLockVersion, // 다음 요청에서 사용할 새로운 버전
@@ -339,7 +538,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         timestamp: new Date().toISOString(),
       });
 
-      this.logger.log(`클라이언트 응답 전송 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}`);
+      this.logger.log(`클라이언트 응답 전송 완료 - jobId: ${aiReq.jobId}, actualVersionId: ${dbResults.actualSpreadSheetVersionId}, fileName: ${fileName}`);
 
     } catch (err) {
       const executionTime = Date.now() - executionStartTime;
@@ -462,9 +661,9 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /**
    * 오래된 작업들을 정리합니다 (메모리 누수 방지)
-   * 실제 운영 환경에서는 cron job이나 스케줄러를 통해 정기적으로 호출해야 합니다.
-   * TODO: 스케줄러(@nestjs/schedule)를 사용해서 정기적으로 실행하도록 구현 필요
+   * 5분마다 자동 실행되어 30분 이상 된 작업을 정리합니다.
    */
+  @Cron(CronExpression.EVERY_5_MINUTES)
   private cleanupOldJobs() {
     const now = Date.now();
     const maxJobAge = 30 * 60 * 1000; // 30분
@@ -486,6 +685,55 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (cleanedCount > 0) {
       this.logger.log(`${cleanedCount}개의 오래된 작업이 정리되었습니다.`);
+    }
+  }
+
+  /**
+   * Rate Limiting 추적 데이터를 정리합니다 (메모리 누수 방지)
+   * 10분마다 자동 실행되어 오래된 추적 데이터와 차단 기록을 정리합니다.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  private cleanupRateLimitTracking() {
+    const now = Date.now();
+    let userCleanedCount = 0;
+    let ipCleanedCount = 0;
+
+    // 사용자별 추적 정리
+    for (const [userId, tracking] of this.userRequestTracking.entries()) {
+      // 차단이 해제되었고, 최근 요청이 없는 경우 삭제
+      const hasRecentActivity = tracking.requestTimestamps.some(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS * 2 // 2분 버퍼
+      );
+
+      const isBlockExpired = !tracking.blockedUntil || now > tracking.blockedUntil;
+
+      if (isBlockExpired && !hasRecentActivity) {
+        this.userRequestTracking.delete(userId);
+        userCleanedCount++;
+      } else if (tracking.blockedUntil && now > tracking.blockedUntil) {
+        // 차단만 해제하고 추적은 유지
+        delete tracking.blockedUntil;
+      }
+    }
+
+    // IP별 추적 정리
+    for (const [ip, tracking] of this.ipRequestTracking.entries()) {
+      const hasRecentActivity = tracking.requestTimestamps.some(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS * 2
+      );
+
+      const isBlockExpired = !tracking.blockedUntil || now > tracking.blockedUntil;
+
+      if (isBlockExpired && !hasRecentActivity) {
+        this.ipRequestTracking.delete(ip);
+        ipCleanedCount++;
+      } else if (tracking.blockedUntil && now > tracking.blockedUntil) {
+        delete tracking.blockedUntil;
+      }
+    }
+
+    if (userCleanedCount > 0 || ipCleanedCount > 0) {
+      this.logger.log(`Rate Limit 추적 데이터 정리 완료 - 사용자: ${userCleanedCount}개, IP: ${ipCleanedCount}개`);
     }
   }
 }
