@@ -52,6 +52,36 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   >();
 
+  // Rate Limiting을 위한 사용자별 요청 추적
+  private userRequestTracking = new Map<
+    string, // userId
+    {
+      requestTimestamps: number[]; // 요청 시간 배열
+      blockedUntil?: number; // 차단 종료 시간 (밀리초)
+    }
+  >();
+
+  // IP별 요청 추적 (게스트 사용자 및 추가 보안)
+  private ipRequestTracking = new Map<
+    string, // IP address
+    {
+      requestTimestamps: number[];
+      blockedUntil?: number;
+    }
+  >();
+
+  // Rate Limiting 설정
+  private readonly RATE_LIMIT_CONFIG = {
+    // 일반 사용자: 1분당 최대 10개 요청
+    USER_REQUESTS_PER_MINUTE: 10,
+    // IP당: 1분당 최대 20개 요청 (여러 사용자가 같은 IP 사용 가능)
+    IP_REQUESTS_PER_MINUTE: 20,
+    // 차단 시간: 5분
+    BLOCK_DURATION_MS: 5 * 60 * 1000,
+    // 추적 윈도우: 1분
+    TRACKING_WINDOW_MS: 60 * 1000,
+  };
+
 
   //====================
   // 프로덕션에서는 지울 예정
@@ -70,6 +100,96 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   // ===================
+
+  /**
+   * Rate Limiting 검증: 사용자 및 IP 기반
+   * @returns true면 차단됨, false면 정상
+   */
+  private checkRateLimit(userId: string, clientIp: string): { blocked: boolean; reason?: string; retryAfter?: number } {
+    const now = Date.now();
+
+    // 1. 사용자별 Rate Limiting 검증
+    const userTracking = this.userRequestTracking.get(userId);
+
+    if (userTracking) {
+      // 차단 기간 확인
+      if (userTracking.blockedUntil && now < userTracking.blockedUntil) {
+        const retryAfter = Math.ceil((userTracking.blockedUntil - now) / 1000);
+        this.logger.warn(`Rate Limit 차단 중 - 사용자: ${userId}, 남은 시간: ${retryAfter}초`);
+        return {
+          blocked: true,
+          reason: 'USER_RATE_LIMIT_EXCEEDED',
+          retryAfter,
+        };
+      }
+
+      // 추적 윈도우 내 요청 필터링 (1분 이내)
+      const recentRequests = userTracking.requestTimestamps.filter(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS
+      );
+
+      // 제한 초과 확인
+      if (recentRequests.length >= this.RATE_LIMIT_CONFIG.USER_REQUESTS_PER_MINUTE) {
+        userTracking.blockedUntil = now + this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS;
+        this.logger.warn(`Rate Limit 초과 - 사용자: ${userId}, 요청 수: ${recentRequests.length}, 5분간 차단`);
+        return {
+          blocked: true,
+          reason: 'USER_RATE_LIMIT_EXCEEDED',
+          retryAfter: Math.ceil(this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS / 1000),
+        };
+      }
+
+      // 오래된 타임스탬프 제거 후 새 요청 추가
+      userTracking.requestTimestamps = [...recentRequests, now];
+    } else {
+      // 첫 요청
+      this.userRequestTracking.set(userId, {
+        requestTimestamps: [now],
+      });
+    }
+
+    // 2. IP별 Rate Limiting 검증
+    const ipTracking = this.ipRequestTracking.get(clientIp);
+
+    if (ipTracking) {
+      // 차단 기간 확인
+      if (ipTracking.blockedUntil && now < ipTracking.blockedUntil) {
+        const retryAfter = Math.ceil((ipTracking.blockedUntil - now) / 1000);
+        this.logger.warn(`Rate Limit 차단 중 - IP: ${clientIp}, 남은 시간: ${retryAfter}초`);
+        return {
+          blocked: true,
+          reason: 'IP_RATE_LIMIT_EXCEEDED',
+          retryAfter,
+        };
+      }
+
+      // 추적 윈도우 내 요청 필터링
+      const recentRequests = ipTracking.requestTimestamps.filter(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS
+      );
+
+      // 제한 초과 확인
+      if (recentRequests.length >= this.RATE_LIMIT_CONFIG.IP_REQUESTS_PER_MINUTE) {
+        ipTracking.blockedUntil = now + this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS;
+        this.logger.warn(`Rate Limit 초과 - IP: ${clientIp}, 요청 수: ${recentRequests.length}, 5분간 차단`);
+        return {
+          blocked: true,
+          reason: 'IP_RATE_LIMIT_EXCEEDED',
+          retryAfter: Math.ceil(this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS / 1000),
+        };
+      }
+
+      // 오래된 타임스탬프 제거 후 새 요청 추가
+      ipTracking.requestTimestamps = [...recentRequests, now];
+    } else {
+      // 첫 요청
+      this.ipRequestTracking.set(clientIp, {
+        requestTimestamps: [now],
+      });
+    }
+
+    return { blocked: false };
+  }
 
   /**
    * 클라이언트의 진행 중인 작업들을 정리합니다.
@@ -109,6 +229,23 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         this.server.to(client.id).emit('ai_job_error', {
           message: 'MISSING_REQUIRED_PARAMETERS',
           code: 'VALIDATION_ERROR',
+        });
+        return;
+      }
+
+      // Rate Limiting 검증
+      const clientIp = (client.handshake.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+        || client.handshake.address
+        || 'unknown';
+
+      const rateLimitCheck = this.checkRateLimit(payload.userId, clientIp);
+      if (rateLimitCheck.blocked) {
+        this.logger.warn(`Rate Limit 차단 - 사용자: ${payload.userId}, IP: ${clientIp}, 이유: ${rateLimitCheck.reason}`);
+        this.server.to(client.id).emit('ai_job_error', {
+          message: rateLimitCheck.reason,
+          code: 'RATE_LIMIT_EXCEEDED',
+          retryAfter: rateLimitCheck.retryAfter,
+          timestamp: new Date().toISOString(),
         });
         return;
       }
@@ -548,6 +685,55 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (cleanedCount > 0) {
       this.logger.log(`${cleanedCount}개의 오래된 작업이 정리되었습니다.`);
+    }
+  }
+
+  /**
+   * Rate Limiting 추적 데이터를 정리합니다 (메모리 누수 방지)
+   * 10분마다 자동 실행되어 오래된 추적 데이터와 차단 기록을 정리합니다.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  private cleanupRateLimitTracking() {
+    const now = Date.now();
+    let userCleanedCount = 0;
+    let ipCleanedCount = 0;
+
+    // 사용자별 추적 정리
+    for (const [userId, tracking] of this.userRequestTracking.entries()) {
+      // 차단이 해제되었고, 최근 요청이 없는 경우 삭제
+      const hasRecentActivity = tracking.requestTimestamps.some(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS * 2 // 2분 버퍼
+      );
+
+      const isBlockExpired = !tracking.blockedUntil || now > tracking.blockedUntil;
+
+      if (isBlockExpired && !hasRecentActivity) {
+        this.userRequestTracking.delete(userId);
+        userCleanedCount++;
+      } else if (tracking.blockedUntil && now > tracking.blockedUntil) {
+        // 차단만 해제하고 추적은 유지
+        delete tracking.blockedUntil;
+      }
+    }
+
+    // IP별 추적 정리
+    for (const [ip, tracking] of this.ipRequestTracking.entries()) {
+      const hasRecentActivity = tracking.requestTimestamps.some(
+        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS * 2
+      );
+
+      const isBlockExpired = !tracking.blockedUntil || now > tracking.blockedUntil;
+
+      if (isBlockExpired && !hasRecentActivity) {
+        this.ipRequestTracking.delete(ip);
+        ipCleanedCount++;
+      } else if (tracking.blockedUntil && now > tracking.blockedUntil) {
+        delete tracking.blockedUntil;
+      }
+    }
+
+    if (userCleanedCount > 0 || ipCleanedCount > 0) {
+      this.logger.log(`Rate Limit 추적 데이터 정리 완료 - 사용자: ${userCleanedCount}개, IP: ${ipCleanedCount}개`);
     }
   }
 }
