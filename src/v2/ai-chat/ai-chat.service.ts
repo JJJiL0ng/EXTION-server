@@ -60,6 +60,42 @@ export class AiChatService {
   ) { }
 
   /**
+   * userId가 DB에 존재하는지 확인하고 없으면 자동으로 생성
+   */
+  private async ensureUserExists(userId: string, tx?: any): Promise<void> {
+    const prismaClient = tx || this.prisma;
+
+    const existingUser = await prismaClient.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!existingUser) {
+      this.logger.log(`User not found, creating new user - userId: ${userId}`);
+
+      try {
+        await prismaClient.user.create({
+          data: {
+            id: userId,
+            displayName: userId.startsWith('guest_')
+              ? `Guest User ${Date.now()}`
+              : `User ${userId}`,
+            isGuest: userId.startsWith('guest_'),
+          }
+        });
+        this.logger.log(`User created successfully - userId: ${userId}`);
+      } catch (error) {
+        // 동시 요청으로 이미 생성된 경우 무시
+        if (error.code === 'P2002') {
+          this.logger.log(`User already exists (concurrent creation) - userId: ${userId}`);
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+
+  /**
   * 계획을 수립합니다
   */
   async planTasks(aiChatApiReq: aiChatApiReq, dataContext: filteredSheetReturns, previousMessages: PreviousChatMessage[]) {
@@ -333,6 +369,9 @@ export class AiChatService {
           throw new Error('chatSessionId is required to save user message');
         }
 
+        // 0. userId가 DB에 존재하는지 확인하고 없으면 생성
+        await this.ensureUserExists(aiReq.userId, tx);
+
         // 1. 세션 확인 또는 생성
         const { session } = await this.getOrCreateActiveBranch(aiReq.chatId, aiReq.chatSessionId, aiReq.spreadsheetId, aiReq.userId, tx);
 
@@ -478,11 +517,14 @@ export class AiChatService {
         const existingChat = await tx.chat.findUnique({
           where: { id: chatId }
         });
-        
+
         if (!existingChat) {
           throw new Error(`Chat not found for saveAssistantMessage: ${chatId}`);
         }
-        
+
+        // 0-1. userId가 DB에 존재하는지 확인하고 없으면 생성
+        await this.ensureUserExists(existingChat.userId, tx);
+
         // 1. 프론트엔드에서 지정한 세션의 활성 브랜치 가져오기
         const { session, branch: currentBranch } = await this.getOrCreateActiveBranch(chatId, chatSessionId, existingChat.spreadSheetId, existingChat.userId, tx);
 
