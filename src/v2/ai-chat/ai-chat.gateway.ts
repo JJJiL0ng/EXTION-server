@@ -7,6 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 import { AiChatService } from './ai-chat.service';
 
@@ -38,6 +39,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) { }
 
   // 간단한 메모리 상태 저장 (jobId -> 상태)
+  // dataContext는 메모리 절약을 위해 저장하지 않고 필요시 재조회
   private jobs = new Map<
     string,
     {
@@ -45,7 +47,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       plan: TaskManagerOutput;
       clientId: string;
       createdAt: number;
-      dataContext: Record<string, any>;
       previousMessages: PreviousChatMessage[];
       fileName?: string;
     }
@@ -300,7 +301,13 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (feedback === 'SUCCESS') {
         this.logger.log(`작업 실행 계속 - ID: ${jobId}`);
-        await this.executeJobDirectly(job.aiReq, job.plan, job.dataContext, job.previousMessages, job.clientId, job.fileName);
+
+        // dataContext 재조회 (메모리 절약)
+        const dataContext = job.aiReq.newVersionSpreadSheetData
+          ? await this.aiChatService.parseNewVersionSpreadSheetData(job.aiReq.parsedSheetNames, job.aiReq.newVersionSpreadSheetData)
+          : await this.aiChatService.loadParsedSpreadsheetData(job.aiReq.spreadsheetId, job.aiReq.parsedSheetNames, job.aiReq.userId, job.aiReq.spreadSheetVersionId);
+
+        await this.executeJobDirectly(job.aiReq, job.plan, dataContext!, job.previousMessages, job.clientId, job.fileName);
       } else {
         // 실행 취소
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
@@ -517,9 +524,9 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   /**
    * 오래된 작업들을 정리합니다 (메모리 누수 방지)
-   * 실제 운영 환경에서는 cron job이나 스케줄러를 통해 정기적으로 호출해야 합니다.
-   * TODO: 스케줄러(@nestjs/schedule)를 사용해서 정기적으로 실행하도록 구현 필요
+   * 5분마다 자동 실행되어 30분 이상 된 작업을 정리합니다.
    */
+  @Cron(CronExpression.EVERY_5_MINUTES)
   private cleanupOldJobs() {
     const now = Date.now();
     const maxJobAge = 30 * 60 * 1000; // 30분
