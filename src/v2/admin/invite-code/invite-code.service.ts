@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from 'src/v2/prisma/prisma.service';
 import { createInviteCodeReqDto } from './dto/invite-code.dto';
-import { randomBytes } from 'crypto';
 
 @Injectable()
 export class InviteCodeService {
@@ -9,7 +8,7 @@ export class InviteCodeService {
 
   async createInviteCode(dto: createInviteCodeReqDto) {
     // 커스텀 코드가 제공되면 사용, 없으면 자동 생성
-    const code = dto.code || this.generateCode();
+    const code = dto.code || (await this.generateCode());
 
     // 중복 체크
     const existing = await this.prisma.inviteCode.findUnique({
@@ -35,9 +34,31 @@ export class InviteCodeService {
     };
   }
 
-  private generateCode(): string {
-    // 8바이트 랜덤 값을 16진수로 변환 (16자 길이)
-    const uuid = randomBytes(8).toString('hex');
-    return `EXTION-early-user-${uuid}`;
+  private async generateCode(): Promise<string> {
+    // 가장 최근 생성된 초대 코드의 번호를 조회
+    const lastCode = await this.prisma.inviteCode.findFirst({
+      where: {
+        code: {
+          startsWith: 'EXTION-early-user-',
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    let nextNumber = 1;
+
+    if (lastCode) {
+      // "EXTION-early-user-XXX"에서 번호 추출
+      const match = lastCode.code.match(/EXTION-early-user-(\d+)/);
+      if (match) {
+        nextNumber = parseInt(match[1], 10) + 1;
+      }
+    }
+
+    // 3자리 숫자로 포맷 (001, 002, ...)
+    const paddedNumber = nextNumber.toString().padStart(3, '0');
+    return `EXTION-early-user-${paddedNumber}`;
   }
 }
