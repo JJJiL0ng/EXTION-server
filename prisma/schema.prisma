@@ -12,6 +12,11 @@
 //    - Chat (1:1 컨테이너): 스프레드시트와 1:1로 매칭되는 안정적인 ID 컨테이너입니다.
 //    - ChatSession (사용자 인지 대화): 사용자가 명시적으로 생성하는 대화 스트림입니다. (커서 UX 리스트 항목)
 //    - ChatSessionBranch (내부 버전 단위): 롤백 시 히스토리를 재구성하는, 1메시지=1브랜치의 원자적 단위입니다.
+//
+// 3. Invite Code System (Closed Beta):
+//    - InviteCode: 어드민이 생성하는 초대 코드
+//    - User.inviteCodeId: 유저가 사용한 초대 코드 추적
+//    - 1 초대 코드 = 1 유저 (일대일 매핑)
 // =================================================================================
 
 generator client {
@@ -21,6 +26,30 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// =================================
+// Invite Code (Closed Beta)
+// =================================
+
+model InviteCode {
+  id           String    @id @default(cuid())
+  code         String    @unique // "EXTION-USER-001" 형식 또는 자유 형식
+  createdAt    DateTime  @default(now())
+  createdBy    String?   // 어드민 유저 ID (선택)
+  
+  // ⭐️ 사용 여부 추적
+  isUsed       Boolean   @default(false)
+  usedAt       DateTime?
+  
+  // ⭐️ 메모 (어드민용)
+  note         String?   // "김철수 - 쿠팡 셀러" 같은 메모
+  
+  // ⭐️ 관계: 1 초대 코드 = 1 유저
+  user         User?     @relation("InviteCodeToUser")
+  
+  @@index([code])
+  @@index([isUsed])
 }
 
 model User {
@@ -34,10 +63,16 @@ model User {
   preferences      Json?
   statistics       Json?
 
+  // ⭐️ 초대 코드 관계 추가
+  inviteCodeId     String?                  @unique // 1:1 관계를 위한 unique
+  inviteCode       InviteCode?              @relation("InviteCodeToUser", fields: [inviteCodeId], references: [id], onDelete: SetNull)
+
   // 관계
   spreadSheets     SpreadSheet[]
   chats            Chat[]
   versionsAuthored SpreadSheetVersionData[] // 사용자가 생성한 모든 버전을 추적하기 위한 관계
+  
+  @@index([inviteCodeId])
 }
 
 // =================================
