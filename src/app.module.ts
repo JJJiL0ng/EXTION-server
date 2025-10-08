@@ -9,7 +9,6 @@ import { TableDataJsonSaveModule } from './v2/sheet/_table-data-json-save/table-
 import { UserModule } from './v2/user/user.module';
 import { AiAgentModule } from './v2/ai-agent/ai-agent.module';
 import { AiChatModule } from './v2/ai-chat/ai-chat.module';
-import { EventsGateway } from './events/events.gateway';
 
 @Module({
   imports: [
@@ -25,6 +24,6 @@ import { EventsGateway } from './events/events.gateway';
     AiChatModule,
   ],
   controllers: [AppController],
-  providers: [AppService, EventsGateway],
+  providers: [AppService],
 })
 export class AppModule {}
