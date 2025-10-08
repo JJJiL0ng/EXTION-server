@@ -9,8 +9,8 @@ import { TableDataJsonSaveModule } from './v2/sheet/_table-data-json-save/table-
 import { UserModule } from './v2/user/user.module';
 import { AiAgentModule } from './v2/ai-agent/ai-agent.module';
 import { AiChatModule } from './v2/ai-chat/ai-chat.module';
-import { ClosedBetaModule } from './v2/admin/closed-beta-user/closed-beta.module';
 import { VerifyInviteModule } from './v2/auth/verify-invite/verify-invite.module';
+import { InviteCodeModule } from './v2/admin/invite-code/invite-code.module';
 
 @Module({
   imports: [
@@ -24,8 +24,8 @@ import { VerifyInviteModule } from './v2/auth/verify-invite/verify-invite.module
     UserModule,
     AiAgentModule,
     AiChatModule,
-    ClosedBetaModule,
     VerifyInviteModule,
+    InviteCodeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
