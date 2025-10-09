@@ -582,12 +582,13 @@ export class AiChatService {
         return [];
       }
 
-      // 타입에 맞게 변환
+      // 타입에 맞게 변환 - chatSessionBranchId 포함
       const chatHistory: ChatHistory = messagesInOrder.map(message => {
         if (message.role === 'USER') {
           const userMessage: UserPreviousMessage = {
             role: 'user',
-            userQuestionMessage: message.content
+            userQuestionMessage: message.content,
+            chatSessionBranchId: message.chatSessionBranchId || message.id // chatSessionBranchId가 없으면 messageId 사용
           };
           return userMessage;
         } else if (message.role === 'ASSISTANT' && message.aiChatRes) {
@@ -597,7 +598,8 @@ export class AiChatService {
           if (parsedAiChatRes) {
             const assistantMessage: AiPreviousMessage = {
               role: 'assistant',
-              aiChatRes: parsedAiChatRes
+              aiChatRes: parsedAiChatRes,
+              chatSessionBranchId: message.chatSessionBranchId // assistant는 optional
             };
             return assistantMessage;
           } else {
@@ -605,7 +607,8 @@ export class AiChatService {
             this.logger.warn(`aiChatRes 파싱 실패 - messageId: ${message.id}, chatId: ${chatId}`);
             const userMessage: UserPreviousMessage = {
               role: 'user',
-              userQuestionMessage: message.content
+              userQuestionMessage: message.content,
+              chatSessionBranchId: message.chatSessionBranchId || message.id
             };
             return userMessage;
           }
@@ -613,7 +616,8 @@ export class AiChatService {
           // SYSTEM 메시지나 aiChatRes가 없는 ASSISTANT 메시지는 사용자 메시지로 처리
           const userMessage: UserPreviousMessage = {
             role: 'user',
-            userQuestionMessage: message.content
+            userQuestionMessage: message.content,
+            chatSessionBranchId: message.chatSessionBranchId || message.id
           };
           return userMessage;
         }
@@ -665,7 +669,7 @@ export class AiChatService {
         startIndex = 1;
       }
 
-      // 5. previousMessagesContent 형태로 변환
+      // 5. previousMessagesContent 형태로 변환 - chatSessionBranchId 포함
       const chatHistory: previousMessagesContent[] = [];
 
       for (let i = startIndex; i < messages.length; i++) {
@@ -674,13 +678,15 @@ export class AiChatService {
         if (message.role === 'USER') {
           chatHistory.push({
             role: 'user',
-            content: message.content
+            content: message.content,
+            chatSessionBranchId: message.chatSessionBranchId || message.id // chatSessionBranchId가 없으면 messageId 사용
           });
         } else if (message.role === 'ASSISTANT') {
           // aiChatRes에서 적절한 content 추출
           chatHistory.push({
             role: 'assistant',
-            content: message.content
+            content: message.content,
+            chatSessionBranchId: message.chatSessionBranchId // assistant는 optional
           });
         }
       }
