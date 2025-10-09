@@ -47,11 +47,13 @@ export interface PreviousMessages {
 export interface UserPreviousMessage {
   role: 'user';
   userQuestionMessage: string;
+  chatSessionBranchId: string; // 롤백 및 추적을 위한 브랜치 ID
 }
 
 export interface AiPreviousMessage {
   role: 'assistant';
   aiChatRes: aiChatApiRes;
+  chatSessionBranchId?: string; // assistant 메시지는 optional
 }
 export type PreviousChatMessage = UserPreviousMessage | AiPreviousMessage;
 
@@ -73,6 +75,7 @@ export interface loadChatHistoryRes {
 export interface previousMessagesContent {
   role: 'user' | 'assistant';
   content: string;
+  chatSessionBranchId?: string; // 롤백을 위한 브랜치 ID (user 메시지는 필수, assistant는 optional)
 }
 
 //=========================================================
