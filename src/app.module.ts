@@ -11,6 +11,7 @@ import { AiAgentModule } from './v2/ai-agent/ai-agent.module';
 import { AiChatModule } from './v2/ai-chat/ai-chat.module';
 import { VerifyInviteModule } from './v2/auth/verify-invite/verify-invite.module';
 import { InviteCodeModule } from './v2/admin/invite-code/invite-code.module';
+import { SchemaConverterModule } from './v2/schema-converter/schema-converter.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { InviteCodeModule } from './v2/admin/invite-code/invite-code.module';
     AiChatModule,
     VerifyInviteModule,
     InviteCodeModule,
+    SchemaConverterModule,
   ],
   controllers: [AppController],
   providers: [AppService],
