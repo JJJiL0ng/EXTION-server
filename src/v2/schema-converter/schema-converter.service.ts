@@ -39,6 +39,32 @@ export class SchemaConverterService {
 
     // Case 1: 새로운 워크플로우 생성
     if (isFirstWorkFlowGenerated) {
+      // 매핑 제안 실행 (선택적) - 워크플로우 생성 전에 먼저 실행
+      let mappingSuggestions: string | undefined;
+      if (isExcuteMappingSuggestion !== false) {
+        // 기본값이 true이므로 명시적으로 false가 아니면 실행
+        this.logger.log(`Executing mapping suggestion... (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
+        try {
+          mappingSuggestions = await this.mappingService.generateMappingSuggestion({
+            sourceSheetName,
+            sourceSheet: sourceSheetData,
+            sourceSheetRange,
+            selectedSourceSheetName,
+            targetSheetName,
+            targetSheet: targetSheetData,
+            targetSheetRange,
+            selectedTargetSheetName,
+          }, 'small'); // 'small' 모델 사용 | small, large, normal 선택해서 사용
+          this.logger.log(`Mapping suggestion completed. Result length: ${mappingSuggestions?.length || 0}`);
+        } catch (error) {
+          this.logger.error(`Mapping suggestion failed - Error: ${error.message}`, error.stack);
+          // 매핑 제안 실패해도 워크플로우 생성은 성공으로 처리
+        }
+      } else {
+        this.logger.log(`Skipping mapping suggestion (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
+      }
+
+      // 매핑 제안 후 워크플로우 생성
       const workflow = await this.prisma.schemaConverterWorkflow.create({
         data: {
           userId,
@@ -62,31 +88,6 @@ export class SchemaConverterService {
           targetSheetVersions: true,
         },
       });
-
-      // 매핑 제안 실행 (선택적)
-      let mappingSuggestions: string | undefined;
-      if (isExcuteMappingSuggestion !== false) {
-        // 기본값이 true이므로 명시적으로 false가 아니면 실행
-        this.logger.log(`Executing mapping suggestion... (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
-        try {
-          mappingSuggestions = await this.mappingService.generateMappingSuggestion({
-            sourceSheetName,
-            sourceSheet: sourceSheetData,
-            sourceSheetRange,
-            selectedSourceSheetName,
-            targetSheetName,
-            targetSheet: targetSheetData,
-            targetSheetRange,
-            selectedTargetSheetName,
-          }, true); // true = use large model (gemini-2.5-pro)
-          this.logger.log(`Mapping suggestion completed. Result length: ${mappingSuggestions?.length || 0}`);
-        } catch (error) {
-          this.logger.error(`Mapping suggestion failed - Error: ${error.message}`, error.stack);
-          // 매핑 제안 실패해도 워크플로우 생성은 성공으로 처리
-        }
-      } else {
-        this.logger.log(`Skipping mapping suggestion (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
-      }
 
       return {
         workflowId: workflow.id,
@@ -120,6 +121,26 @@ export class SchemaConverterService {
       throw new Error(`워크플로우를 찾을 수 없습니다: ${workFlowId}`);
     }
 
+    // 매핑 제안 실행 (선택적) - 새 버전 생성 전에 먼저 실행
+    let mappingSuggestions: string | undefined;
+    if (isExcuteMappingSuggestion == true) {
+      this.logger.log('Executing mapping suggestion for existing workflow...');
+      try {
+        mappingSuggestions = await this.mappingService.generateMappingSuggestion({
+          sourceSheetName,
+          sourceSheet: sourceSheetData,
+          sourceSheetRange,
+          selectedSourceSheetName,
+          targetSheetName,
+          targetSheet: targetSheetData,
+          targetSheetRange,
+          selectedTargetSheetName,
+        }, 'small'); // 'small' 모델 사용 | small, large, normal 선택해서 사용
+      } catch (error) {
+        this.logger.error('Mapping suggestion failed, continuing without it:', error);
+      }
+    }
+
     // 최신 버전을 부모로 하는 새 버전 생성
     const latestSourceVersion = existingWorkflow.sourceSheetVersions[0];
     const latestTargetVersion = existingWorkflow.targetSheetVersions[0];
@@ -142,26 +163,6 @@ export class SchemaConverterService {
         },
       }),
     ]);
-
-    // 매핑 제안 실행 (선택적)
-    let mappingSuggestions: string | undefined;
-    if (isExcuteMappingSuggestion == true) {
-      this.logger.log('Executing mapping suggestion for existing workflow...');
-      try {
-        mappingSuggestions = await this.mappingService.generateMappingSuggestion({
-          sourceSheetName,
-          sourceSheet: sourceSheetData,
-          sourceSheetRange,
-          selectedSourceSheetName,
-          targetSheetName,
-          targetSheet: targetSheetData,
-          targetSheetRange,
-          selectedTargetSheetName,
-        }, true); // true = use large model (gemini-2.5-pro)
-      } catch (error) {
-        this.logger.error('Mapping suggestion failed, continuing without it:', error);
-      }
-    }
 
     return {
       workflowId: workFlowId,
