@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { UploadSheetsDto, UploadSheetsResDto } from './dto/uploadSheets.dto';
+import { UploadSheetsReqDto, UploadSheetsResDto } from './dto/uploadSheets.dto';
 import { MappingService } from './mapping/mapping.service';
 
 @Injectable()
@@ -21,7 +21,7 @@ export class SchemaConverterService {
    */
   async uploadSheets(
     userId: string,
-    dto: UploadSheetsDto,
+    dto: UploadSheetsReqDto,
   ): Promise<Omit<UploadSheetsResDto, 'success'>> {
     const {
       sourceSheetData,
@@ -67,7 +67,7 @@ export class SchemaConverterService {
       let mappingSuggestions: string | undefined;
       if (isExcuteMappingSuggestion !== false) {
         // 기본값이 true이므로 명시적으로 false가 아니면 실행
-        this.logger.log('Executing mapping suggestion...');
+        this.logger.log(`Executing mapping suggestion... (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
         try {
           mappingSuggestions = await this.mappingService.generateMappingSuggestion({
             sourceSheetName,
@@ -78,11 +78,14 @@ export class SchemaConverterService {
             targetSheet: targetSheetData,
             targetSheetRange,
             selectedTargetSheetName,
-          });
+          }, true); // true = use large model (gemini-2.5-pro)
+          this.logger.log(`Mapping suggestion completed. Result length: ${mappingSuggestions?.length || 0}`);
         } catch (error) {
-          this.logger.error('Mapping suggestion failed, continuing without it:', error);
+          this.logger.error(`Mapping suggestion failed - Error: ${error.message}`, error.stack);
           // 매핑 제안 실패해도 워크플로우 생성은 성공으로 처리
         }
+      } else {
+        this.logger.log(`Skipping mapping suggestion (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
       }
 
       return {
@@ -154,7 +157,7 @@ export class SchemaConverterService {
           targetSheet: targetSheetData,
           targetSheetRange,
           selectedTargetSheetName,
-        });
+        }, true); // true = use large model (gemini-2.5-pro)
       } catch (error) {
         this.logger.error('Mapping suggestion failed, continuing without it:', error);
       }

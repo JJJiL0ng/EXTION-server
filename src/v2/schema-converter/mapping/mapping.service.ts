@@ -47,12 +47,14 @@ export class MappingService {
      * @param input - 소스/타겟 시트 정보 및 범위
      * @returns 매핑 제안 결과 (JSON string)
      */
-    async generateMappingSuggestion(input: MappingSuggestionInput): Promise<string> {
-        this.logger.log('Generating mapping suggestion...');
+    async generateMappingSuggestion(input: MappingSuggestionInput, useLargeModel: boolean = false): Promise<string> {
+        const modelType = useLargeModel ? 'gemini-2.5-pro (Large)' : 'gemini-2.5-flash (Normal)';
+        this.logger.log(`Generating mapping suggestion - source: ${input.sourceSheetName}, target: ${input.targetSheetName}, model: ${modelType}`);
 
         try {
-            // mappingSuggestion.runnable 생성 (geminiNormal 사용)
-            const mappingSuggestionRunnable = createMappingSuggestionRunnable(this.geminiNormal);
+            // mappingSuggestion.runnable 생성 (모델 선택)
+            const selectedModel = useLargeModel ? this.geminiLarge : this.geminiNormal;
+            const mappingSuggestionRunnable = createMappingSuggestionRunnable(selectedModel);
 
             // 입력 데이터 준비
             const runnableInput = {
@@ -66,15 +68,15 @@ export class MappingService {
                 selectedTargetSheetName: input.selectedTargetSheetName || input.targetSheetName,
             };
 
-            this.logger.debug('Runnable input prepared:', runnableInput);
+            this.logger.log(`Invoking LangChain runnable with ${modelType}...`);
 
             // Runnable 실행
             const result = await mappingSuggestionRunnable.invoke(runnableInput);
 
-            this.logger.log('Mapping suggestion generated successfully');
+            this.logger.log(`Mapping suggestion generated successfully. Result length: ${result?.length || 0}`);
             return result;
         } catch (error) {
-            this.logger.error('Failed to generate mapping suggestion:', error);
+            this.logger.error(`Failed to generate mapping suggestion - Error: ${error.message}`, error.stack);
             throw new Error(`매핑 제안 생성 실패: ${error.message}`);
         }
     }

@@ -2,7 +2,11 @@
 
 import { IsNotEmpty, IsObject, IsOptional, IsString, IsBoolean, IsArray } from 'class-validator';
 
-export class UploadSheetsDto {
+export class UploadSheetsReqDto {
+    @IsNotEmpty()
+    @IsString()
+    userId: string;
+
     @IsNotEmpty()
     @IsObject()
     sourceSheetData: Record<string, any>;

@@ -23,23 +23,18 @@ export function createMappingSuggestionRunnable(model: BaseChatModel): Runnable 
     .pipe(model)
     .pipe(parser)
     .pipe((output: string) => {
-      console.log('DEBUG: Raw LLM output:', output);
+      console.log('DEBUG: Raw LLM output (length:', output.length, ')');
+      console.log('DEBUG: First 300 chars:', output.substring(0, 300));
 
-      // 문자열 정리 (불필요한 공백, 따옴표 등 제거)
-      try {
-        let cleanedOutput = output.trim();
-        
-        // 따옴표로 감싸진 경우 제거
-        if ((cleanedOutput.startsWith('"') && cleanedOutput.endsWith('"')) ||
-            (cleanedOutput.startsWith("'") && cleanedOutput.endsWith("'"))) {
-          cleanedOutput = cleanedOutput.slice(1, -1);
-        }
-        
-        console.log('DEBUG: Cleaned output:', cleanedOutput);
-        return cleanedOutput;
-      } catch (error) {
-        console.warn('DEBUG: Failed to clean output, using original:', error);
-        return output.trim();
+      // 문자열 정리 (자연어 응답이므로 단순 trim만)
+      const cleanedOutput = output.trim();
+
+      if (cleanedOutput) {
+        console.log('DEBUG: Mapping suggestion text generated (length:', cleanedOutput.length, ')');
+      } else {
+        console.warn('DEBUG: Empty output from LLM');
       }
+
+      return cleanedOutput;
     });
 }
