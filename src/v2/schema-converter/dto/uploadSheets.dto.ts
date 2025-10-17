@@ -56,4 +56,5 @@ export class UploadSheetsResDto {
     sourceSheetVersionId: string;
     targetSheetVersionId: string;
     mappingSuggestions?: string; // 매핑 제안 결과 (선택적)
+    WorkflowCodeId?: string; // 생성된 WorkflowCodeId (선택적)
 }

@@ -27,7 +27,7 @@ export class SchemaConverterController {
       const result = await this.schemaConverterService.uploadSheets(dto.userId, dto);
 
       this.logger.log(
-        `[${requestId}] Successfully uploaded sheets - workflowId: ${result.workflowId}, sourceSheetVersionId: ${result.sourceSheetVersionId}, targetSheetVersionId: ${result.targetSheetVersionId}, hasMappingSuggestions: ${!!result.mappingSuggestions}`,
+        `[${requestId}] Successfully uploaded sheets - workflowId: ${result.workflowId}, sourceSheetVersionId: ${result.sourceSheetVersionId}, targetSheetVersionId: ${result.targetSheetVersionId}, hasMappingSuggestions: ${!!result.mappingSuggestions}, WorkflowCodeId: ${result.WorkflowCodeId || 'N/A'}`,
       );
 
       return {
@@ -36,6 +36,7 @@ export class SchemaConverterController {
         sourceSheetVersionId: result.sourceSheetVersionId,
         targetSheetVersionId: result.targetSheetVersionId,
         ...(result.mappingSuggestions && { mappingSuggestions: result.mappingSuggestions }),
+        ...(result.WorkflowCodeId && { WorkflowCodeId: result.WorkflowCodeId }),
       };
     } catch (error) {
       this.logger.error(

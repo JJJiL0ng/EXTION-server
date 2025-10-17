@@ -41,8 +41,11 @@ export class SchemaConverterService {
     if (isFirstWorkFlowGenerated) {
       // 매핑 제안 실행 (선택적) - 워크플로우 생성 전에 먼저 실행
       let mappingSuggestions: string | undefined;
+      let shouldCreateWorkflowCode = false;
+
       if (isExcuteMappingSuggestion !== false) {
         // 기본값이 true이므로 명시적으로 false가 아니면 실행
+        shouldCreateWorkflowCode = true; // 매핑 제안 실행 시도 시 무조건 WorkflowCode 생성
         this.logger.log(`Executing mapping suggestion... (isExcuteMappingSuggestion: ${isExcuteMappingSuggestion})`);
         try {
           mappingSuggestions = await this.mappingService.generateMappingSuggestion({
@@ -89,11 +92,33 @@ export class SchemaConverterService {
         },
       });
 
+      // 매핑 제안 실행을 시도했으면 무조건 WorkflowCode 생성 (mappingSuggestion이 없어도)
+      let WorkflowCodeId: string | undefined;
+      if (shouldCreateWorkflowCode) {
+        try {
+          const workflowCode = await this.prisma.workflowCode.create({
+            data: {
+              workflowId: workflow.id,
+              name: `매핑 제안 - ${new Date().toISOString()}`,
+              code: '', // 코드는 나중에 생성될 수 있으므로 빈 문자열
+              mappingSuggestion: mappingSuggestions || '', // mappingSuggestions가 없어도 빈 문자열로 생성
+              mappingScript: {}, // 빈 객체로 초기화
+            },
+          });
+          WorkflowCodeId = workflowCode.id;
+          this.logger.log(`WorkflowCode created with ID: ${WorkflowCodeId}`);
+        } catch (error) {
+          this.logger.error(`Failed to create WorkflowCode: ${error.message}`, error.stack);
+          // WorkflowCode 생성 실패해도 워크플로우 생성은 성공으로 처리
+        }
+      }
+
       return {
         workflowId: workflow.id,
         sourceSheetVersionId: workflow.sourceSheetVersions[0].id,
         targetSheetVersionId: workflow.targetSheetVersions[0].id,
         mappingSuggestions,
+        WorkflowCodeId,
       };
     }
 
@@ -123,7 +148,10 @@ export class SchemaConverterService {
 
     // 매핑 제안 실행 (선택적) - 새 버전 생성 전에 먼저 실행
     let mappingSuggestions: string | undefined;
+    let shouldCreateWorkflowCode = false;
+
     if (isExcuteMappingSuggestion == true) {
+      shouldCreateWorkflowCode = true; // 매핑 제안 실행 시도 시 무조건 WorkflowCode 생성
       this.logger.log('Executing mapping suggestion for existing workflow...');
       try {
         mappingSuggestions = await this.mappingService.generateMappingSuggestion({
@@ -164,11 +192,33 @@ export class SchemaConverterService {
       }),
     ]);
 
+    // 매핑 제안 실행을 시도했으면 무조건 WorkflowCode 생성 (mappingSuggestion이 없어도)
+    let WorkflowCodeId: string | undefined;
+    if (shouldCreateWorkflowCode) {
+      try {
+        const workflowCode = await this.prisma.workflowCode.create({
+          data: {
+            workflowId: workFlowId,
+            name: `매핑 제안 - ${new Date().toISOString()}`,
+            code: '', // 코드는 나중에 생성될 수 있으므로 빈 문자열
+            mappingSuggestion: mappingSuggestions || '', // mappingSuggestions가 없어도 빈 문자열로 생성
+            mappingScript: {}, // 빈 객체로 초기화
+          },
+        });
+        WorkflowCodeId = workflowCode.id;
+        this.logger.log(`WorkflowCode created with ID: ${WorkflowCodeId}`);
+      } catch (error) {
+        this.logger.error(`Failed to create WorkflowCode: ${error.message}`, error.stack);
+        // WorkflowCode 생성 실패해도 버전 추가는 성공으로 처리
+      }
+    }
+
     return {
       workflowId: workFlowId,
       sourceSheetVersionId: newSourceVersion.id,
       targetSheetVersionId: newTargetVersion.id,
       mappingSuggestions,
+      WorkflowCodeId,
     };
   }
 }

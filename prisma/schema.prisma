@@ -303,7 +303,8 @@ model WorkflowCode {
   id          String   @id @default(cuid())
   name        String? // 코드 버전 이름
   code        String   @db.Text // JavaScript 코드
-  description String? // 코드 설명
+  mappingSuggestion String // 매핑 제안
+  mappingScript Json  @db.JsonB
   createdAt   DateTime @default(now())
 
   workflowId String
