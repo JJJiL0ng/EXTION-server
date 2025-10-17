@@ -10,11 +10,9 @@ export interface MappingSuggestionInput {
     sourceSheetName: string;
     sourceSheet: Record<string, any>;
     sourceSheetRange?: number[];
-    selectedSourceSheetName?: string;
     targetSheetName: string;
     targetSheet: Record<string, any>;
     targetSheetRange?: number[];
-    selectedTargetSheetName?: string;
 }
 
 @Injectable()
@@ -94,13 +92,13 @@ export class MappingService {
             // Step 1: Parse sheets
             const parseStartTime = Date.now();
             const parsedSourceSheet = await sheetNameParser(
-                input.selectedSourceSheetName ? [input.selectedSourceSheetName] : [],
+                input.sourceSheetName ? [input.sourceSheetName] : [],
                 input.sourceSheet,
                 { logger: this.logger },
             );
 
             const parsedTargetSheet = await sheetNameParser(
-                input.selectedTargetSheetName ? [input.selectedTargetSheetName] : [],
+                input.targetSheetName ? [input.targetSheetName] : [],
                 input.targetSheet,
                 { logger: this.logger },
             );

@@ -31,9 +31,7 @@ export class SchemaConverterService {
       isFirstWorkFlowGenerated,
       isExcuteMappingSuggestion,
       sourceSheetRange,
-      selectedSourceSheetName,
       targetSheetRange,
-      selectedTargetSheetName,
       workFlowId,
     } = dto;
 
@@ -52,11 +50,9 @@ export class SchemaConverterService {
             sourceSheetName,
             sourceSheet: sourceSheetData,
             sourceSheetRange,
-            selectedSourceSheetName,
             targetSheetName,
             targetSheet: targetSheetData,
             targetSheetRange,
-            selectedTargetSheetName,
           }, 'small'); // 'small' 모델 사용 | small, large, normal 선택해서 사용
           this.logger.log(`Mapping suggestion completed. Result length: ${mappingSuggestions?.length || 0}`);
         } catch (error) {
@@ -158,11 +154,9 @@ export class SchemaConverterService {
           sourceSheetName,
           sourceSheet: sourceSheetData,
           sourceSheetRange,
-          selectedSourceSheetName,
           targetSheetName,
           targetSheet: targetSheetData,
           targetSheetRange,
-          selectedTargetSheetName,
         }, 'small'); // 'small' 모델 사용 | small, large, normal 선택해서 사용
       } catch (error) {
         this.logger.error('Mapping suggestion failed, continuing without it:', error);

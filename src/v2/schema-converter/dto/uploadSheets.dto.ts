@@ -34,16 +34,8 @@ export class UploadSheetsReqDto {
     sourceSheetRange?: number[]; // [시작행, 종료행] - 선택사항
 
     @IsOptional()
-    @IsString()
-    selectedSourceSheetName?: string; // 선택된 시트 이름 - 선택사항
-
-    @IsOptional()
     @IsArray()
     targetSheetRange?: number[]; // [시작행, 종료행] - 선택사항
-
-    @IsOptional()
-    @IsString()
-    selectedTargetSheetName?: string; // 선택된 시트 이름 - 선택사항
 
     @IsOptional()
     @IsString()
