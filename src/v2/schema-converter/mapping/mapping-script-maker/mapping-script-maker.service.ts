@@ -115,14 +115,61 @@ export class MappingScriptMakerService {
 
         this.logger.log(`Using AI model: ${modelName}`);
 
-        // 4. Create runnable and invoke
+        // 4. Prepare sheet data - use parsedData if available, otherwise use raw data
+        let sourceSheetData: Record<string, any>;
+        let targetSheetData: Record<string, any>;
+        let parseTime = 0;
+
+        if (sourceSheetVersion.parsedData && targetSheetVersion.parsedData) {
+            // Use pre-parsed data
+            this.logger.log('[PERF] Using pre-parsed data from database');
+            sourceSheetData = sourceSheetVersion.parsedData as Record<string, any>;
+            targetSheetData = targetSheetVersion.parsedData as Record<string, any>;
+        } else {
+            // Parse raw data
+            this.logger.log('[PERF] Parsing raw sheet data...');
+            const parseStartTime = Date.now();
+
+            const parsedSourceSheet = await sheetNameParser(
+                sourceSheetVersion.mappingSheetName ? [sourceSheetVersion.mappingSheetName] : [],
+                sourceSheetVersion.data as Record<string, any>,
+                { logger: this.logger },
+            );
+
+            const parsedTargetSheet = await sheetNameParser(
+                targetSheetVersion.mappingSheetName ? [targetSheetVersion.mappingSheetName] : [],
+                targetSheetVersion.data as Record<string, any>,
+                { logger: this.logger },
+            );
+
+            sourceSheetData = parsedSourceSheet || (sourceSheetVersion.data as Record<string, any>);
+            targetSheetData = parsedTargetSheet || (targetSheetVersion.data as Record<string, any>);
+
+            parseTime = Date.now() - parseStartTime;
+            this.logger.log(`[PERF] Sheet parsing took: ${parseTime}ms`);
+        }
+
+        // 5. Create runnable and invoke
         const mappingScriptMakerRunnable = createMappingScriptMakerRunnable(selectedModel);
 
         // Prepare input for the runnable
+        // Format range info: "rowStart-rowEnd-colStart-colEnd"
+        const sourceRange = sourceSheetVersion.sourceSheetRange as number[] | null;
+        const sourceSheetRange = sourceRange
+            ? `${sourceRange[0]}-${sourceRange[1]}-0-end`
+            : 'all';
+
+        const targetRange = targetSheetVersion.targetSheetRange as number[] | null;
+        const targetSheetRange = targetRange
+            ? `${targetRange[0]}-${targetRange[1]}-0-end`
+            : 'all';
+
         const runnableInput = {
-            sourceSheet: JSON.stringify(sourceSheetVersion.data, null, 2),
-            targetSheet: JSON.stringify(targetSheetVersion.data, null, 2),
-            mappingSuggestion: workflowCode.mappingSuggestion,
+            sourceSheetRange,
+            sourceSheet: JSON.stringify(sourceSheetData, null, 2),
+            targetSheetRange,
+            targetSheet: JSON.stringify(targetSheetData, null, 2),
+            mappingRequest: workflowCode.mappingSuggestion,
         };
 
         this.logger.log('Invoking AI to generate mapping script...');
@@ -131,9 +178,9 @@ export class MappingScriptMakerService {
         const mappingScriptString = await mappingScriptMakerRunnable.invoke(runnableInput);
 
         const elapsedTime = Date.now() - startTime;
-        this.logger.log(`AI generation completed in ${elapsedTime}ms`);
+        this.logger.log(`[PERF] AI generation completed in ${elapsedTime}ms (parse: ${parseTime}ms, AI: ${elapsedTime}ms)`);
 
-        // 5. Parse the result
+        // 6. Parse the result
         let mappingScript: Record<string, any>;
         try {
             mappingScript = JSON.parse(mappingScriptString);
@@ -141,7 +188,7 @@ export class MappingScriptMakerService {
             throw new BadRequestException(`Failed to parse AI-generated mapping script: ${error.message}`);
         }
 
-        // 6. Update WorkflowCode with generated mappingScript
+        // 7. Update WorkflowCode with generated mappingScript
         await this.prisma.workflowCode.update({
             where: { id: workFlowCodeId },
             data: {

@@ -259,6 +259,9 @@ model SourceSheetVersion {
   id        String   @id @default(cuid())
   name      String? // 버전 이름 (예: "소스 v1", "2025-01-15 업로드")
   data      Json     @db.JsonB
+  parsedData Json?     @db.JsonB
+  mappingSheetName String? // 시트이름 (판매내역)
+  sourceSheetRange Json? // [시작행, 종료행] - 선택사항
   createdAt DateTime @default(now())
 
   workflowId String
@@ -281,6 +284,9 @@ model TargetSheetVersion {
   id        String   @id @default(cuid())
   name      String? // 버전 이름
   data      Json     @db.JsonB
+  parsedData Json?     @db.JsonB
+  mappingSheetName String? // 시트이름 (판매내역)
+  targetSheetRange Json? // [시작행, 종료행] - 선택사항
   createdAt DateTime @default(now())
 
   workflowId String

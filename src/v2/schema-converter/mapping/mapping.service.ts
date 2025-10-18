@@ -8,10 +8,12 @@ export type ModelType = 'small' | 'normal' | 'large';
 
 export interface MappingSuggestionInput {
     sourceSheetName: string;
-    sourceSheet: Record<string, any>;
+    sourceSheet: Record<string, any>; // 원본 시트 데이터 (호환성 유지)
+    parsedSourceSheet?: Record<string, any> | null; // 파싱된 시트 데이터 (선호)
     sourceSheetRange?: number[];
     targetSheetName: string;
-    targetSheet: Record<string, any>;
+    targetSheet: Record<string, any>; // 원본 시트 데이터 (호환성 유지)
+    parsedTargetSheet?: Record<string, any> | null; // 파싱된 시트 데이터 (선호)
     targetSheetRange?: number[];
 }
 
@@ -89,21 +91,34 @@ export class MappingService {
             // mappingSuggestion.runnable 생성 (모델 선택)
             const mappingSuggestionRunnable = createMappingSuggestionRunnable(selectedModel);
 
-            // Step 1: Parse sheets
-            const parseStartTime = Date.now();
-            const parsedSourceSheet = await sheetNameParser(
-                input.sourceSheetName ? [input.sourceSheetName] : [],
-                input.sourceSheet,
-                { logger: this.logger },
-            );
+            // Step 1: Use parsed sheets if available, otherwise parse
+            let parsedSourceSheet: Record<string, any> | null;
+            let parsedTargetSheet: Record<string, any> | null;
+            let parseTime = 0;
 
-            const parsedTargetSheet = await sheetNameParser(
-                input.targetSheetName ? [input.targetSheetName] : [],
-                input.targetSheet,
-                { logger: this.logger },
-            );
-            const parseTime = Date.now() - parseStartTime;
-            this.logger.log(`[PERF] Sheet parsing took: ${parseTime}ms`);
+            if (input.parsedSourceSheet && input.parsedTargetSheet) {
+                // 이미 파싱된 데이터가 있으면 사용
+                this.logger.log(`[PERF] Using pre-parsed sheets (skipping parsing step)`);
+                parsedSourceSheet = input.parsedSourceSheet;
+                parsedTargetSheet = input.parsedTargetSheet;
+            } else {
+                // 파싱된 데이터가 없으면 파싱 수행 (호환성)
+                this.logger.log(`[PERF] Parsing sheets...`);
+                const parseStartTime = Date.now();
+                parsedSourceSheet = await sheetNameParser(
+                    input.sourceSheetName ? [input.sourceSheetName] : [],
+                    input.sourceSheet,
+                    { logger: this.logger },
+                );
+
+                parsedTargetSheet = await sheetNameParser(
+                    input.targetSheetName ? [input.targetSheetName] : [],
+                    input.targetSheet,
+                    { logger: this.logger },
+                );
+                parseTime = Date.now() - parseStartTime;
+                this.logger.log(`[PERF] Sheet parsing took: ${parseTime}ms`);
+            }
 
             // Step 2: Stringify sheets (미리 직렬화하여 LangChain의 암묵적 직렬화 방지)
             const stringifyStartTime = Date.now();

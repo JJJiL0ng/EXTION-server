@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UploadSheetsReqDto, UploadSheetsResDto } from './dto/uploadSheets.dto';
 import { MappingService } from './mapping/mapping.service';
+import { sheetNameParser } from './mapping/mapping-agent/sheetParser/sheetNameParser';
 
 @Injectable()
 export class SchemaConverterService {
@@ -35,6 +36,21 @@ export class SchemaConverterService {
       workFlowId,
     } = dto;
 
+    // Step 0: Parse sheets before saving
+    this.logger.log(`Parsing source and target sheets...`);
+    const parsedSourceSheet = await sheetNameParser(
+      sourceSheetName ? [sourceSheetName] : [],
+      sourceSheetData,
+      { logger: this.logger },
+    );
+
+    const parsedTargetSheet = await sheetNameParser(
+      targetSheetName ? [targetSheetName] : [],
+      targetSheetData,
+      { logger: this.logger },
+    );
+    this.logger.log(`Sheet parsing completed.`);
+
     // Case 1: 새로운 워크플로우 생성
     if (isFirstWorkFlowGenerated) {
       // 매핑 제안 실행 (선택적) - 워크플로우 생성 전에 먼저 실행
@@ -49,9 +65,11 @@ export class SchemaConverterService {
           mappingSuggestions = await this.mappingService.generateMappingSuggestion({
             sourceSheetName,
             sourceSheet: sourceSheetData,
+            parsedSourceSheet: parsedSourceSheet,
             sourceSheetRange,
             targetSheetName,
             targetSheet: targetSheetData,
+            parsedTargetSheet: parsedTargetSheet,
             targetSheetRange,
           }, 'small'); // 'small' 모델 사용 | small, large, normal 선택해서 사용
           this.logger.log(`Mapping suggestion completed. Result length: ${mappingSuggestions?.length || 0}`);
@@ -64,45 +82,62 @@ export class SchemaConverterService {
       }
 
       // 매핑 제안 후 워크플로우 생성
-      const workflow = await this.prisma.schemaConverterWorkflow.create({
-        data: {
-          userId,
-          name: `워크플로우 - ${new Date().toISOString()}`,
-          description: '새로운 스키마 변환 워크플로우',
-          sourceSheetVersions: {
-            create: {
-              name: sourceSheetName,
-              data: sourceSheetData,
-            },
+      const workflow = await this.prisma.$transaction(async (tx) => {
+        // 워크플로우 생성
+        const createdWorkflow = await tx.schemaConverterWorkflow.create({
+          data: {
+            userId,
+            name: `워크플로우 - ${new Date().toISOString()}`,
+            description: '새로운 스키마 변환 워크플로우',
           },
-          targetSheetVersions: {
-            create: {
-              name: targetSheetName,
-              data: targetSheetData,
-            },
+        });
+
+        // 소스 시트 버전 생성
+        const sourceVersion = await tx.sourceSheetVersion.create({
+          data: {
+            workflowId: createdWorkflow.id,
+            name: sourceSheetName,
+            data: sourceSheetData,
+            parsedData: parsedSourceSheet ?? undefined,
+            mappingSheetName: sourceSheetName,
+            sourceSheetRange: sourceSheetRange ?? undefined,
           },
-        },
-        include: {
-          sourceSheetVersions: true,
-          targetSheetVersions: true,
-        },
+        });
+
+        // 타겟 시트 버전 생성
+        const targetVersion = await tx.targetSheetVersion.create({
+          data: {
+            workflowId: createdWorkflow.id,
+            name: targetSheetName,
+            data: targetSheetData,
+            parsedData: parsedTargetSheet ?? undefined,
+            mappingSheetName: targetSheetName,
+            targetSheetRange: targetSheetRange ?? undefined,
+          },
+        });
+
+        return {
+          workflow: createdWorkflow,
+          sourceVersion,
+          targetVersion,
+        };
       });
 
       // 매핑 제안 실행을 시도했으면 무조건 WorkflowCode 생성 (mappingSuggestion이 없어도)
-      let WorkflowCodeId: string | undefined;
+      let workFlowCodeId: string | undefined;
       if (shouldCreateWorkflowCode) {
         try {
           const workflowCode = await this.prisma.workflowCode.create({
             data: {
-              workflowId: workflow.id,
+              workflowId: workflow.workflow.id,
               name: `매핑 제안 - ${new Date().toISOString()}`,
               code: '', // 코드는 나중에 생성될 수 있으므로 빈 문자열
               mappingSuggestion: mappingSuggestions || '', // mappingSuggestions가 없어도 빈 문자열로 생성
               mappingScript: {}, // 빈 객체로 초기화
             },
           });
-          WorkflowCodeId = workflowCode.id;
-          this.logger.log(`WorkflowCode created with ID: ${WorkflowCodeId}`);
+          workFlowCodeId = workflowCode.id;
+          this.logger.log(`WorkflowCode created with ID: ${workFlowCodeId}`);
         } catch (error) {
           this.logger.error(`Failed to create WorkflowCode: ${error.message}`, error.stack);
           // WorkflowCode 생성 실패해도 워크플로우 생성은 성공으로 처리
@@ -110,11 +145,11 @@ export class SchemaConverterService {
       }
 
       return {
-        workflowId: workflow.id,
-        sourceSheetVersionId: workflow.sourceSheetVersions[0].id,
-        targetSheetVersionId: workflow.targetSheetVersions[0].id,
+        workFlowId: workflow.workflow.id,
+        sourceSheetVersionId: workflow.sourceVersion.id,
+        targetSheetVersionId: workflow.targetVersion.id,
         mappingSuggestions,
-        WorkflowCodeId,
+        workFlowCodeId: workFlowCodeId,
       };
     }
 
@@ -153,9 +188,11 @@ export class SchemaConverterService {
         mappingSuggestions = await this.mappingService.generateMappingSuggestion({
           sourceSheetName,
           sourceSheet: sourceSheetData,
+          parsedSourceSheet: parsedSourceSheet,
           sourceSheetRange,
           targetSheetName,
           targetSheet: targetSheetData,
+          parsedTargetSheet: parsedTargetSheet,
           targetSheetRange,
         }, 'small'); // 'small' 모델 사용 | small, large, normal 선택해서 사용
       } catch (error) {
@@ -173,6 +210,8 @@ export class SchemaConverterService {
           workflowId: workFlowId,
           name: sourceSheetName,
           data: sourceSheetData,
+          parsedData: parsedSourceSheet ?? undefined,
+          mappingSheetName: sourceSheetName,
           parentId: latestSourceVersion?.id,
         },
       }),
@@ -181,13 +220,15 @@ export class SchemaConverterService {
           workflowId: workFlowId,
           name: targetSheetName,
           data: targetSheetData,
+          parsedData: parsedTargetSheet ?? undefined,
+          mappingSheetName: targetSheetName,
           parentId: latestTargetVersion?.id,
         },
       }),
     ]);
 
     // 매핑 제안 실행을 시도했으면 무조건 WorkflowCode 생성 (mappingSuggestion이 없어도)
-    let WorkflowCodeId: string | undefined;
+    let workFlowCodeId: string | undefined;
     if (shouldCreateWorkflowCode) {
       try {
         const workflowCode = await this.prisma.workflowCode.create({
@@ -199,8 +240,8 @@ export class SchemaConverterService {
             mappingScript: {}, // 빈 객체로 초기화
           },
         });
-        WorkflowCodeId = workflowCode.id;
-        this.logger.log(`WorkflowCode created with ID: ${WorkflowCodeId}`);
+        workFlowCodeId = workflowCode.id;
+        this.logger.log(`WorkflowCode created with ID: ${workFlowCodeId}`);
       } catch (error) {
         this.logger.error(`Failed to create WorkflowCode: ${error.message}`, error.stack);
         // WorkflowCode 생성 실패해도 버전 추가는 성공으로 처리
@@ -208,11 +249,11 @@ export class SchemaConverterService {
     }
 
     return {
-      workflowId: workFlowId,
+      workFlowId: workFlowId,
       sourceSheetVersionId: newSourceVersion.id,
       targetSheetVersionId: newTargetVersion.id,
       mappingSuggestions,
-      WorkflowCodeId,
+      workFlowCodeId: workFlowCodeId,
     };
   }
 }
