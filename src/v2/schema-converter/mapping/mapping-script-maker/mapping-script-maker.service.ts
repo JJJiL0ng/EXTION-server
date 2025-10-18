@@ -25,7 +25,7 @@ export class MappingScriptMakerService {
             apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
             model: 'gemini-2.5-flash',
             temperature: 0.0,
-            maxOutputTokens: 6000,
+            maxOutputTokens: 16384, // 증가: 큰 매핑 스크립트 지원
             streaming: false,
             maxRetries: 2,
         });
@@ -34,7 +34,7 @@ export class MappingScriptMakerService {
             apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
             model: 'gemini-2.5-pro',
             temperature: 0.0,
-            maxOutputTokens: 8000,
+            maxOutputTokens: 16384, // 증가: 큰 매핑 스크립트 지원
             streaming: false,
             maxRetries: 2,
         });
@@ -43,7 +43,7 @@ export class MappingScriptMakerService {
             apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
             model: 'gemini-2.5-flash-lite',
             temperature: 0.0,
-            maxOutputTokens: 8000,
+            maxOutputTokens: 16384, // 증가: 큰 매핑 스크립트 지원
             streaming: false,
             maxRetries: 2,
         });
@@ -56,7 +56,7 @@ export class MappingScriptMakerService {
      * - 생성된 mappingScript를 WorkflowCode에 업데이트
      */
     async createMappingScript(dto: CreateMappingScriptReqDto): Promise<CreateMappingScriptResDto> {
-        const { sourceSheetVersionId, targetSheetVersionId, workFlowCodeId, modelType = 'small' } = dto;
+        const { sourceSheetVersionId, targetSheetVersionId, workFlowCodeId, modelType = 'normal' } = dto;
 
         this.logger.log(
             `Creating mapping script - sourceSheetVersionId: ${sourceSheetVersionId}, targetSheetVersionId: ${targetSheetVersionId}, workFlowCodeId: ${workFlowCodeId}, model: ${modelType}`,
