@@ -5,9 +5,10 @@ import { SchemaConverterController } from './schema-converter.controller';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MappingService } from './mapping/mapping.service';
 import { MappingScriptMakerModule } from './mapping/mapping-script-maker/mapping-script-maker.module';
+import { MultiturnChattingModule } from './mapping/multiturn-chatting/multiturn-chatting.module';
 
 @Module({
-  imports: [PrismaModule, ConfigModule, MappingScriptMakerModule],
+  imports: [PrismaModule, ConfigModule, MappingScriptMakerModule, MultiturnChattingModule],
   controllers: [SchemaConverterController],
   providers: [SchemaConverterService, MappingService],
 })
