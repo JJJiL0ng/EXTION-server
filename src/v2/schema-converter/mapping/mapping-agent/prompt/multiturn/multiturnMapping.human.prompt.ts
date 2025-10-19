@@ -10,6 +10,9 @@ export const MULTITURN_MAPPING_HUMAN_PROMPT = `
 - 시트 데이터:
 {targetSheet}
 
+**이전 매핑 제안서:**
+{previousMappingSuggestion}
+
 **작업요청사항**
 - 다음 방식대로 매핑 스크립트 작성: {mappingRequest}
 `;

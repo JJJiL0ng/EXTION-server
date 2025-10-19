@@ -4,7 +4,6 @@ import { StringOutputParser } from '@langchain/core/output_parsers';
 import { Runnable } from '@langchain/core/runnables';
 import { MULTITURN_MAPPING_PROMPT } from '../prompt/multiturn/multiturnMapping.prompt';
 import { MULTITURN_MAPPING_HUMAN_PROMPT } from '../prompt/multiturn/multiturnMapping.human.prompt';
-import { MAPPING_SCRIPT_MAKER_HUMAN } from '../prompt/mappingScript/mappingScriptMaker.human.prompt';
 
 export function createMultiturnMappingRunnable(model: BaseChatModel): Runnable {
   // 1) 시스템/휴먼 프롬프트를 각각 정의 후 결합 (LCEL 규칙)

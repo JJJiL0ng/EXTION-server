@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { createMappingSuggestionRunnable } from '../mapping-agent/runnable/mappingSuggestion.runnable';
+import { createMultiturnMappingRunnable } from '../mapping-agent/runnable/multiturnMapping.runnable';
 import { editScriptReqDto, editScriptResDto } from './dto/editScript.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -187,44 +187,28 @@ export class MultiturnChattingService {
         const targetRange = targetSheetVersion.targetSheetRange as number[] | null;
 
         // 8. mappingSuggestion 생성
-        this.logger.log('Generating mapping suggestion...');
-        const mappingSuggestionRunnable = createMappingSuggestionRunnable(selectedModel);
+        this.logger.log('Generating mapping suggestion with previous context...');
+        const multiturnMappingRunnable = createMultiturnMappingRunnable(selectedModel);
 
-        // 현재 매핑 제안을 기반으로 수정 요청 생성
-        const currentMappingSuggestion = currentCode.mappingSuggestion || '';
-        const currentMappingScript = currentCode.mappingScript as Record<string, any> | null;
-        const currentMappingScriptStr = currentMappingScript ? JSON.stringify(currentMappingScript, null, 2) : '';
+        // 이전 매핑 제안 (currentCode에서 가져옴)
+        const previousMappingSuggestion = currentCode.mappingSuggestion || '';
 
-        const suggestionInput = {
-            sourceSheet: JSON.stringify(sourceSheetData, null, 2),
-            sourceSheetRange: sourceRange || undefined,
-            targetSheet: JSON.stringify(targetSheetData, null, 2),
-            targetSheetRange: targetRange || undefined,
-        };
-
-        // mappingSuggestion runnable에 추가 context를 직접 주입
-        const mappingSuggestionPrompt = `
-# 현재 매핑 제안
-${currentMappingSuggestion || '(아직 매핑 제안이 없습니다)'}
-
-${currentMappingScriptStr ? `# 현재 매핑 스크립트\n${currentMappingScriptStr}\n` : ''}
-# 사용자 수정 요청
-${message}
-
-# 대화 히스토리
-${chatHistory.map((msg) => `[${msg.role.toUpperCase()}]: ${msg.content}`).join('\n')}
-
-위 내용을 바탕으로 수정된 매핑 제안을 작성해주세요.
-사용자의 수정 요청과 대화 맥락을 반영하여 어떤 데이터를 어디로 매핑할지 자연어로 설명해주세요.
-`;
+        // 대화 히스토리를 문자열로 변환
+        const chatHistoryStr = chatHistory.length > 0
+            ? chatHistory.map((msg) => `[${msg.role.toUpperCase()}]: ${msg.content}`).join('\n')
+            : '(아직 대화 기록이 없습니다)';
 
         const suggestionStartTime = Date.now();
 
-        // mappingSuggestion은 자연어 응답이므로 직접 prompt를 전달
-        const modifiedMappingSuggestion = await mappingSuggestionRunnable.invoke({
-            ...suggestionInput,
-            // 추가 context는 sourceSheet에 prepend
-            sourceSheet: `${mappingSuggestionPrompt}\n\n${suggestionInput.sourceSheet}`,
+        // multiturn mapping runnable 호출
+        // MULTITURN_MAPPING_HUMAN_PROMPT 파라미터 구조에 맞춰 전달
+        const modifiedMappingSuggestion = await multiturnMappingRunnable.invoke({
+            sourceSheet: JSON.stringify(sourceSheetData, null, 2),
+            sourceSheetRange: sourceRange ? `${sourceRange[0]}-${sourceRange[1]}-0-end` : 'all',
+            targetSheet: JSON.stringify(targetSheetData, null, 2),
+            targetSheetRange: targetRange ? `${targetRange[0]}-${targetRange[1]}-0-end` : 'all',
+            previousMappingSuggestion: previousMappingSuggestion,
+            mappingRequest: `${message}\n\n# 대화 히스토리\n${chatHistoryStr}`,
         });
 
         const suggestionElapsedTime = Date.now() - suggestionStartTime;
