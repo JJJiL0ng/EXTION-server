@@ -56,7 +56,7 @@ export class MappingScriptMakerService {
      * - 생성된 mappingScript를 WorkflowCode에 업데이트
      */
     async createMappingScript(dto: CreateMappingScriptReqDto): Promise<CreateMappingScriptResDto> {
-        const { sourceSheetVersionId, targetSheetVersionId, workFlowCodeId, modelType = 'normal' } = dto;
+        const { sourceSheetVersionId, targetSheetVersionId, workFlowCodeId, modelType = 'small' } = dto;
 
         this.logger.log(
             `Creating mapping script - sourceSheetVersionId: ${sourceSheetVersionId}, targetSheetVersionId: ${targetSheetVersionId}, workFlowCodeId: ${workFlowCodeId}, model: ${modelType}`,
