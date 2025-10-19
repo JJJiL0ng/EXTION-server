@@ -251,6 +251,8 @@ model SchemaConverterWorkflow {
   workflowCodes       WorkflowCode[]
   appliedSheets       AppliedConvertingSheet[]
 
+  chat SchemaConverterChat?
+
   @@index([userId])
 }
 
@@ -323,9 +325,14 @@ model WorkflowCode {
 
   // 이 코드로 실행된 결과들
   appliedSheets AppliedConvertingSheet[]
+  
+  generatedByChatId String?
+  generatedByChat   SchemaConverterChat? @relation("GeneratedByChat", fields: [generatedByChatId], references: [id], onDelete: SetNull)
+
 
   @@index([workflowId])
   @@index([parentId])
+  @@index([generatedByChatId])  
 }
 
 // 5. 실행 결과 (변환된 최종 데이터)
@@ -352,6 +359,39 @@ model AppliedConvertingSheet {
   @@index([targetSheetVersionId])
   @@index([workflowCodeId])
   @@index([createdAt]) // 시간순 조회를 위해
+}
+
+// =================================
+// Schema Converter Chat (Simple)
+// =================================
+
+model SchemaConverterChat {
+  id         String   @id @default(cuid())
+  workflowId String   @unique
+  workflow   SchemaConverterWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  messages       SchemaConverterMessage[]
+  generatedCodes WorkflowCode[] @relation("GeneratedByChat")
+  
+  @@index([workflowId])
+}
+
+model SchemaConverterMessage {
+  id        String   @id @default(cuid())
+  chatId    String
+  chat      SchemaConverterChat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  role      MessageRole
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  
+  metadata  Json?    @db.JsonB
+  
+  @@index([chatId])
+  @@index([createdAt])
 }
 
 // =================================
