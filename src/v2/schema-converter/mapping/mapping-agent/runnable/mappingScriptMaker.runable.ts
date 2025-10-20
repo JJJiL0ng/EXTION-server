@@ -49,13 +49,13 @@ export function createMappingScriptMakerRunnable(model: BaseChatModel): Runnable
         // JSON 파싱하여 유효성 검증
         const mappingScript = JSON.parse(jsonString);
 
-        // 필수 필드 검증
-        if (!mappingScript.source_sheet || !mappingScript.target_sheet || !Array.isArray(mappingScript.mappings)) {
+        // 필수 필드 검증 (새로운 형식: s, t, m)
+        if (!mappingScript.s || !mappingScript.t || !Array.isArray(mappingScript.m)) {
           console.warn('DEBUG: Invalid mapping script structure');
-          throw new Error('Invalid mapping script structure: missing required fields (source_sheet, target_sheet, or mappings array)');
+          throw new Error('Invalid mapping script structure: missing required fields (s, t, or m array)');
         }
 
-        console.log('DEBUG: Mapping script parsed successfully with', mappingScript.mappings.length, 'mappings');
+        console.log('DEBUG: Mapping script parsed successfully with', mappingScript.m.length, 'mappings');
 
         // 검증된 JSON을 문자열로 반환
         return JSON.stringify(mappingScript, null, 2);
@@ -76,11 +76,11 @@ function fixIncompleteJson(jsonString: string): string {
   // 트레일링 쉼표 제거
   jsonString = jsonString.replace(/,(\s*[}\]])/g, '$1');
 
-  // JSON이 mappings 배열 중간에 잘렸는지 확인
+  // JSON이 m 배열 중간에 잘렸는지 확인
   const lastBracketIndex = jsonString.lastIndexOf('}');
   const lastArrayBracketIndex = jsonString.lastIndexOf(']');
 
-  // mappings 배열이 닫히지 않은 경우
+  // m 배열이 닫히지 않은 경우
   if (lastBracketIndex > lastArrayBracketIndex && !jsonString.trim().endsWith('}')) {
     console.warn('DEBUG: Detected incomplete JSON - attempting to fix');
 
@@ -102,9 +102,9 @@ function fixIncompleteJson(jsonString: string): string {
     }
   }
 
-  // 배열이 완전히 열리지 않은 경우 처리
-  if (jsonString.includes('"mappings":') && !jsonString.includes('"mappings": [')) {
-    jsonString = jsonString.replace('"mappings":', '"mappings": [');
+  // 배열이 완전히 열리지 않은 경우 처리 (새로운 형식: "m")
+  if (jsonString.includes('"m":') && !jsonString.includes('"m": [')) {
+    jsonString = jsonString.replace('"m":', '"m": [');
   }
 
   return jsonString;
