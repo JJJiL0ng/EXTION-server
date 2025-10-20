@@ -3,6 +3,10 @@ import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
 export class CreateMappingScriptReqDto {
     @IsString()
     @IsNotEmpty()
+    userId: string;
+
+    @IsString()
+    @IsNotEmpty()
     sourceSheetVersionId: string;
 
     @IsString()

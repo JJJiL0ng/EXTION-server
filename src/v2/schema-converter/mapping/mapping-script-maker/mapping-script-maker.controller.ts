@@ -23,12 +23,12 @@ export class MappingScriptMakerController {
   async createMappingScript(@Body() dto: CreateMappingScriptReqDto): Promise<CreateMappingScriptResDto> {
     const requestId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     this.logger.log(
-      `[${requestId}] Creating mapping script - workFlowCodeId: ${dto.workFlowCodeId}, model: ${dto.modelType || 'small'}`,
+      `[${requestId}] Creating mapping script - userId: ${dto.userId}, workFlowCodeId: ${dto.workFlowCodeId}, model: ${dto.modelType || 'small'}`,
     );
 
     try {
       const result = await this.mappingScriptMakerService.createMappingScript(dto);
-      this.logger.log(`[${requestId}] Mapping script created successfully`);
+      this.logger.log(`[${requestId}] Mapping script created successfully for user: ${dto.userId}`);
       return result;
     } catch (error) {
       this.logger.error(

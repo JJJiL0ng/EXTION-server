@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { createMultiturnMappingRunnable } from '../mapping-agent/runnable/multiturnMapping.runnable';
 import { editScriptReqDto, editScriptResDto } from './dto/editScript.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -49,6 +49,7 @@ export class MultiturnChattingService {
     /**
      * 멀티턴 채팅으로 매핑 제안(mappingSuggestion) 수정
      * - 현재 WorkflowCode의 mappingSuggestion을 읽어옴
+     * - userId 검증: Workflow가 해당 유저의 것인지 확인
      * - 채팅 히스토리와 사용자 메시지를 기반으로 AI가 수정된 제안 생성
      * - 새로운 WorkflowCode 생성 (mappingSuggestion만, mappingScript는 빈 객체)
      * - SchemaConverterChat에 메시지 저장
@@ -56,10 +57,10 @@ export class MultiturnChattingService {
      * Note: mappingScript 생성은 사용자가 제안을 승인할 때 별도 API로 처리
      */
     async editMappingScript(dto: editScriptReqDto): Promise<editScriptResDto> {
-        const { message, workFlowId, workFlowCodeId, sourceSheetVersionId, targetSheetVersionId, modelType = 'small' } = dto;
+        const { userId, message, workFlowId, workFlowCodeId, sourceSheetVersionId, targetSheetVersionId, modelType = 'small' } = dto;
 
         this.logger.log(
-            `Editing mapping script - workFlowId: ${workFlowId}, workFlowCodeId: ${workFlowCodeId}, model: ${modelType}`,
+            `Editing mapping script - userId: ${userId}, workFlowId: ${workFlowId}, workFlowCodeId: ${workFlowCodeId}, model: ${modelType}`,
         );
 
         // 1. 워크플로우 확인 및 채팅 로드
@@ -80,7 +81,19 @@ export class MultiturnChattingService {
             throw new NotFoundException(`Workflow not found: ${workFlowId}`);
         }
 
-        // 2. 채팅이 없으면 생성
+        // 2. Validate userId - ensure the workflow belongs to the user
+        if (workflow.userId !== userId) {
+            this.logger.warn(
+                `Unauthorized access attempt - userId: ${userId}, workflowOwnerId: ${workflow.userId}`,
+            );
+            throw new BadRequestException(
+                `Unauthorized: This workflow belongs to a different user`,
+            );
+        }
+
+        this.logger.log(`UserId validation passed - user owns this workflow`);
+
+        // 3. 채팅이 없으면 생성
         let chat = workflow.chat;
         if (!chat) {
             this.logger.log(`Creating new chat for workflow: ${workFlowId}`);
@@ -94,7 +107,7 @@ export class MultiturnChattingService {
             });
         }
 
-        // 3. 현재 WorkflowCode 로드
+        // 4. 현재 WorkflowCode 로드
         const currentCode = await this.prisma.workflowCode.findUnique({
             where: { id: workFlowCodeId },
         });
@@ -105,7 +118,7 @@ export class MultiturnChattingService {
 
         // mappingSuggestion이 없어도 새로 생성 가능 (빈 문자열로 시작)
 
-        // 4. 소스 및 타겟 시트 버전 로드
+        // 5. 소스 및 타겟 시트 버전 로드
         const [sourceSheetVersion, targetSheetVersion] = await Promise.all([
             this.prisma.sourceSheetVersion.findUnique({
                 where: { id: sourceSheetVersionId },
@@ -123,7 +136,7 @@ export class MultiturnChattingService {
             throw new NotFoundException(`Target sheet version not found: ${targetSheetVersionId}`);
         }
 
-        // 5. AI 모델 선택
+        // 6. AI 모델 선택
         let selectedModel: ChatGoogleGenerativeAI;
         let modelName: string;
 
@@ -145,7 +158,7 @@ export class MultiturnChattingService {
 
         this.logger.log(`Using AI model: ${modelName}`);
 
-        // 6. 시트 데이터 준비 (parsedData 우선 사용)
+        // 7. 시트 데이터 준비 (parsedData 우선 사용)
         let sourceSheetData: Record<string, any>;
         let targetSheetData: Record<string, any>;
 
@@ -176,7 +189,7 @@ export class MultiturnChattingService {
             this.logger.log(`[PERF] Sheet parsing took: ${parseTime}ms`);
         }
 
-        // 7. 대화 히스토리 구성
+        // 8. 대화 히스토리 구성
         const chatHistory = chat.messages.map((msg) => ({
             role: msg.role.toLowerCase(),
             content: msg.content,
@@ -186,7 +199,7 @@ export class MultiturnChattingService {
         const sourceRange = sourceSheetVersion.sourceSheetRange as number[] | null;
         const targetRange = targetSheetVersion.targetSheetRange as number[] | null;
 
-        // 8. mappingSuggestion 생성
+        // 9. mappingSuggestion 생성
         this.logger.log('Generating mapping suggestion with previous context...');
         const multiturnMappingRunnable = createMultiturnMappingRunnable(selectedModel);
 
@@ -214,7 +227,7 @@ export class MultiturnChattingService {
         const suggestionElapsedTime = Date.now() - suggestionStartTime;
         this.logger.log(`[PERF] Mapping suggestion generation completed in ${suggestionElapsedTime}ms`);
 
-        // 9. 새 WorkflowCode 생성 (버전 체인)
+        // 10. 새 WorkflowCode 생성 (버전 체인)
         // mappingScript는 빈 객체로 저장 (사용자가 승인 후 별도 API로 생성)
         const newCode = await this.prisma.workflowCode.create({
             data: {
@@ -230,7 +243,7 @@ export class MultiturnChattingService {
 
         this.logger.log(`New WorkflowCode created: ${newCode.id}`);
 
-        // 10. 채팅 메시지 저장
+        // 11. 채팅 메시지 저장
         await this.prisma.$transaction([
             this.prisma.schemaConverterMessage.create({
                 data: {

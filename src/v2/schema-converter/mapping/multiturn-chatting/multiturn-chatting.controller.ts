@@ -21,12 +21,12 @@ export class MultiturnChattingController {
   async editScript(@Body() dto: editScriptReqDto): Promise<editScriptResDto> {
     const requestId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     this.logger.log(
-      `[${requestId}] Editing script - workFlowId: ${dto.workFlowId}, workFlowCodeId: ${dto.workFlowCodeId}, message: "${dto.message.substring(0, 50)}..."`,
+      `[${requestId}] Editing script - userId: ${dto.userId}, workFlowId: ${dto.workFlowId}, workFlowCodeId: ${dto.workFlowCodeId}, message: "${dto.message.substring(0, 50)}..."`,
     );
 
     try {
       const result = await this.multiturnChattingService.editMappingScript(dto);
-      this.logger.log(`[${requestId}] Script edited successfully - newWorkflowCodeId: ${result.workFlowCodeId}`);
+      this.logger.log(`[${requestId}] Script edited successfully for user: ${dto.userId} - newWorkflowCodeId: ${result.workFlowCodeId}`);
       return result;
     } catch (error) {
       this.logger.error(

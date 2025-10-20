@@ -52,30 +52,46 @@ export class MappingScriptMakerService {
     /**
      * 매핑 스크립트 생성 (AI 사용)
      * - workFlowCodeId로 WorkflowCode의 mappingSuggestion 로드
+     * - userId 검증: WorkflowCode가 해당 유저의 것인지 확인
      * - AI를 사용하여 mappingScript JSON 생성
      * - 생성된 mappingScript를 WorkflowCode에 업데이트
      */
     async createMappingScript(dto: CreateMappingScriptReqDto): Promise<CreateMappingScriptResDto> {
-        const { sourceSheetVersionId, targetSheetVersionId, workFlowCodeId, modelType = 'small' } = dto;
+        const { userId, sourceSheetVersionId, targetSheetVersionId, workFlowCodeId, modelType = 'small' } = dto;
 
         this.logger.log(
-            `Creating mapping script - sourceSheetVersionId: ${sourceSheetVersionId}, targetSheetVersionId: ${targetSheetVersionId}, workFlowCodeId: ${workFlowCodeId}, model: ${modelType}`,
+            `Creating mapping script - userId: ${userId}, sourceSheetVersionId: ${sourceSheetVersionId}, targetSheetVersionId: ${targetSheetVersionId}, workFlowCodeId: ${workFlowCodeId}, model: ${modelType}`,
         );
 
-        // 1. Load WorkflowCode (contains mappingSuggestion)
+        // 1. Load WorkflowCode (contains mappingSuggestion) with workflow relation
         const workflowCode = await this.prisma.workflowCode.findUnique({
             where: { id: workFlowCodeId },
+            include: {
+                workflow: true, // Include workflow to check userId
+            },
         });
 
         if (!workflowCode) {
             throw new NotFoundException(`Workflow code not found: ${workFlowCodeId}`);
         }
 
+        // 2. Validate userId - ensure the workflow belongs to the user
+        if (workflowCode.workflow.userId !== userId) {
+            this.logger.warn(
+                `Unauthorized access attempt - userId: ${userId}, workflowOwnerId: ${workflowCode.workflow.userId}`,
+            );
+            throw new BadRequestException(
+                `Unauthorized: This workflow belongs to a different user`,
+            );
+        }
+
         if (!workflowCode.mappingSuggestion) {
             throw new BadRequestException('WorkflowCode does not have mappingSuggestion');
         }
 
-        // 2. Load source and target sheet versions
+        this.logger.log(`UserId validation passed - user owns this workflow`);
+
+        // 3. Load source and target sheet versions
         const [sourceSheetVersion, targetSheetVersion] = await Promise.all([
             this.prisma.sourceSheetVersion.findUnique({
                 where: { id: sourceSheetVersionId },
@@ -93,7 +109,7 @@ export class MappingScriptMakerService {
             throw new NotFoundException(`Target sheet version not found: ${targetSheetVersionId}`);
         }
 
-        // 3. Select AI model
+        // 4. Select AI model
         let selectedModel: ChatGoogleGenerativeAI;
         let modelName: string;
 
@@ -115,7 +131,7 @@ export class MappingScriptMakerService {
 
         this.logger.log(`Using AI model: ${modelName}`);
 
-        // 4. Prepare sheet data - use parsedData if available, otherwise use raw data
+        // 5. Prepare sheet data - use parsedData if available, otherwise use raw data
         let sourceSheetData: Record<string, any>;
         let targetSheetData: Record<string, any>;
         let parseTime = 0;
@@ -149,7 +165,7 @@ export class MappingScriptMakerService {
             this.logger.log(`[PERF] Sheet parsing took: ${parseTime}ms`);
         }
 
-        // 5. Create runnable and invoke
+        // 6. Create runnable and invoke
         const mappingScriptMakerRunnable = createMappingScriptMakerRunnable(selectedModel);
 
         // Prepare input for the runnable
@@ -180,7 +196,7 @@ export class MappingScriptMakerService {
         const elapsedTime = Date.now() - startTime;
         this.logger.log(`[PERF] AI generation completed in ${elapsedTime}ms (parse: ${parseTime}ms, AI: ${elapsedTime}ms)`);
 
-        // 6. Parse the result
+        // 7. Parse the result
         let mappingScript: Record<string, any>;
         try {
             mappingScript = JSON.parse(mappingScriptString);
@@ -188,7 +204,7 @@ export class MappingScriptMakerService {
             throw new BadRequestException(`Failed to parse AI-generated mapping script: ${error.message}`);
         }
 
-        // 7. Update WorkflowCode with generated mappingScript
+        // 8. Update WorkflowCode with generated mappingScript
         await this.prisma.workflowCode.update({
             where: { id: workFlowCodeId },
             data: {

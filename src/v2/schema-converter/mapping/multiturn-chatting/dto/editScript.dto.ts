@@ -3,6 +3,10 @@ import { IsString, IsNotEmpty, IsOptional, IsIn } from 'class-validator';
 export class editScriptReqDto {
     @IsString()
     @IsNotEmpty()
+    userId: string;
+
+    @IsString()
+    @IsNotEmpty()
     message: string;
 
     @IsString()
