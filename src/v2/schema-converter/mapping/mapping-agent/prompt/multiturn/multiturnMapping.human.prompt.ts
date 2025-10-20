@@ -1,18 +1,18 @@
 export const MULTITURN_MAPPING_HUMAN_PROMPT = `
-# 입력
-**원본 시트 정보:**
-- 분석 범위 (행 시작-행 끝-열 시작-열 끝): {sourceSheetRange}
-- 시트 데이터:
+# Input
+**Source sheet information:**
+- Analysis range (row start - row end - column start - column end): {sourceSheetRange}
+- Sheet data:
 {sourceSheet}
 
-**타겟 시트 정보:**
-- 분석 범위 (행 시작-행 끝-열 시작-열 끝): {targetSheetRange}
-- 시트 데이터:
+**Target sheet information:**
+- Analysis range (row start - row end - column start - column end): {targetSheetRange}
+- Sheet data:
 {targetSheet}
 
-**이전 매핑 제안서:**
+**Previous mapping suggestion:**
 {previousMappingSuggestion}
 
-**작업요청사항**
-- 다음 방식대로 매핑 스크립트 작성: {mappingRequest}
+**Task instructions**
+- Write the mapping script as follows: {mappingRequest}
 `;
