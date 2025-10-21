@@ -49,13 +49,27 @@ export function createMappingScriptMakerRunnable(model: BaseChatModel): Runnable
         // JSON 파싱하여 유효성 검증
         const mappingScript = JSON.parse(jsonString);
 
-        // 필수 필드 검증 (새로운 형식: s, t, m)
-        if (!mappingScript.s || !mappingScript.t || !Array.isArray(mappingScript.m)) {
+        // 필수 필드 검증 (새로운 형식: source_sheet, target_sheet, mappings)
+        if (!mappingScript.source_sheet || !mappingScript.target_sheet || !Array.isArray(mappingScript.mappings)) {
           console.warn('DEBUG: Invalid mapping script structure');
-          throw new Error('Invalid mapping script structure: missing required fields (s, t, or m array)');
+          throw new Error('Invalid mapping script structure: missing required fields (source_sheet, target_sheet, or mappings array)');
         }
 
-        console.log('DEBUG: Mapping script parsed successfully with', mappingScript.m.length, 'mappings');
+        // mappings 배열의 각 항목이 올바른 구조인지 검증
+        const isValidMapping = mappingScript.mappings.every((mapping: any) =>
+          typeof mapping === 'object' &&
+          typeof mapping.source_row === 'number' &&
+          typeof mapping.source_col === 'number' &&
+          typeof mapping.target_row === 'number' &&
+          typeof mapping.target_col === 'number'
+        );
+
+        if (!isValidMapping) {
+          console.warn('DEBUG: Invalid mapping items structure');
+          throw new Error('Invalid mapping items: each mapping must have source_row, source_col, target_row, target_col as numbers');
+        }
+
+        console.log('DEBUG: Mapping script parsed successfully with', mappingScript.mappings.length, 'mappings');
 
         // 검증된 JSON을 문자열로 반환
         return JSON.stringify(mappingScript, null, 2);
@@ -102,9 +116,9 @@ function fixIncompleteJson(jsonString: string): string {
     }
   }
 
-  // 배열이 완전히 열리지 않은 경우 처리 (새로운 형식: "m")
-  if (jsonString.includes('"m":') && !jsonString.includes('"m": [')) {
-    jsonString = jsonString.replace('"m":', '"m": [');
+  // 배열이 완전히 열리지 않은 경우 처리 (새로운 형식: "mappings")
+  if (jsonString.includes('"mappings":') && !jsonString.includes('"mappings": [')) {
+    jsonString = jsonString.replace('"mappings":', '"mappings": [');
   }
 
   return jsonString;
