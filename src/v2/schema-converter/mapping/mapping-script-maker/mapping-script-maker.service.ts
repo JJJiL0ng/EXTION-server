@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import {
     CreateMappingScriptReqDto,
     CreateMappingScriptResDto,
+    MappingScript,
 } from './dto/mappingScript.dto';
 import { PrismaService } from '../../../../v2/prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
@@ -197,9 +198,9 @@ export class MappingScriptMakerService {
         this.logger.log(`[PERF] AI generation completed in ${elapsedTime}ms (parse: ${parseTime}ms, AI: ${elapsedTime}ms)`);
 
         // 7. Parse the result
-        let mappingScript: Record<string, any>;
+        let mappingScript: MappingScript;
         try {
-            mappingScript = JSON.parse(mappingScriptString);
+            mappingScript = JSON.parse(mappingScriptString) as MappingScript;
         } catch (error) {
             throw new BadRequestException(`Failed to parse AI-generated mapping script: ${error.message}`);
         }
@@ -208,7 +209,7 @@ export class MappingScriptMakerService {
         await this.prisma.workflowCode.update({
             where: { id: workFlowCodeId },
             data: {
-                mappingScript,
+                mappingScript: mappingScript as any, // Prisma expects InputJsonValue for Json fields
             },
         });
 
