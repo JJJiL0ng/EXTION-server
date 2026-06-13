@@ -18,10 +18,11 @@ import { Intent } from 'src/v2/ai-agent/types/taskManager.types';
 import { TableDataJsonSaveService } from 'src/v2/sheet/_table-data-json-save/table-data-json-save.service';
 import { AiAgentService } from 'src/v2/ai-agent/ai-agent.service';
 import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
+import { getCorsOrigins } from 'src/common/config/app-config';
 import { emptySheetData } from './emptySheet.json';
 @WebSocketGateway({
   cors: {
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000'],
+    origin: getCorsOrigins(process.env),
     credentials: true,
     methods: ['GET', 'POST']
   },

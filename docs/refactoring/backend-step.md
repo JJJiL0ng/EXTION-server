@@ -119,4 +119,68 @@
 - 다음 단계:
   - Step 3에서 env/config 검증을 추가하고 config 단위 테스트를 만든다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `test: 백엔드 테스트 fixture 정리`
+  - `153bbd3 test: 백엔드 테스트 fixture 정리`
+
+## Step 3. Env/config 검증 추가
+
+- 상태: 완료
+- 브랜치: `backend/refactor-003-env-config`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 서버 시작 시 필수 env와 CORS/payload 설정을 검증 가능한 공통 config 경계로 분리한다.
+- 기존 문제:
+  - `main.ts`와 `ai-chat.gateway.ts`가 각각 다른 env key(`CORS_ORIGINS`, `ALLOWED_ORIGINS`)를 직접 읽었다.
+  - `PORT`, payload limit, 필수 DB/AI key 검증이 앱 시작 전에 명시적으로 수행되지 않았다.
+  - CORS wildcard 매칭 로직이 `main.ts` 안에 직접 들어 있어 단위 테스트가 어려웠다.
+- 설계 판단:
+  - 새 외부 validation 라이브러리를 추가하지 않고 순수 함수 validator를 `ConfigModule.forRoot({ validate })`에 연결했다.
+  - `NODE_ENV=test`에서는 e2e가 DB/API key 없이 AppModule을 부트스트랩할 수 있도록 필수 외부 env 검증을 완화했다.
+  - HTTP와 WebSocket CORS 모두 `getCorsOrigins`를 사용하게 하고, `CORS_ORIGINS`를 우선하되 legacy `ALLOWED_ORIGINS`를 fallback으로 유지했다.
+- 대안과 트레이드오프:
+  - Joi/Zod 도입도 가능하지만, 현재 검증 범위가 작고 의존성 추가 비용이 더 크다고 판단했다.
+  - Gateway decorator는 DI 시점보다 먼저 평가되므로 `ConfigService` 주입 대신 같은 순수 helper를 `process.env`와 함께 사용했다.
+- 수정한 주요 파일:
+  - `src/common/config/app-config.ts`
+  - `src/common/config/env.validation.ts`
+  - `src/common/config/*.spec.ts`
+  - `src/app.module.ts`
+  - `src/main.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+- 변경 내용:
+  - `DATABASE_URL`, `GOOGLE_API_KEY`, `PORT` env 검증 추가
+  - CORS origin 파싱, wildcard 매칭, 고정 origin 병합 helper 추가
+  - HTTP payload limit을 `JSON_BODY_LIMIT`, `URLENCODED_BODY_LIMIT` env로 분리하고 기본값은 기존 `10mb` 유지
+  - WebSocket gateway CORS도 공통 origin helper 사용
+  - config 단위 테스트 추가
+- Before/After:
+  - Before: CORS source가 HTTP/WS에서 분리되고 wildcard 매칭 테스트 없음
+  - After: HTTP/WS가 같은 CORS origin helper를 사용하고 config 테스트 9개 추가
+- 포트폴리오 평가 포인트:
+  - 운영 설정 실패를 앱 시작 단계에서 발견하도록 만들고, CORS/payload 정책을 단위 테스트 가능한 순수 함수로 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/common/config/env.validation.ts`
+  - `src/common/config/app-config.ts`
+  - `src/main.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+- DB/Prisma 영향:
+  - schema 영향 없음
+  - `NODE_ENV !== test`에서 `DATABASE_URL` 누락 시 앱 시작 실패
+- API/WebSocket 영향:
+  - API response shape 영향 없음
+  - HTTP/WS CORS origin source가 공통 helper로 통합됨
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 4 suites, 16 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - `ai-chat.gateway.ts`의 decorator는 여전히 프로세스 시작 시점의 env만 읽는다.
+  - CORS env key를 장기적으로 `CORS_ORIGINS` 하나로 정리하려면 배포 env에서 `ALLOWED_ORIGINS` 사용 여부를 확인해야 한다.
+- 다음 단계:
+  - Step 4에서 `AiChatService`의 메시지/브랜치/시트 컨텍스트 책임을 분리한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `feat: 백엔드 환경 설정 검증 추가`

@@ -5,6 +5,11 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 import helmet from 'helmet';
+import {
+  getCorsOrigins,
+  getPayloadLimits,
+  isCorsOriginAllowed,
+} from './common/config/app-config';
 
 async function bootstrap() {
   // ✨ IMPROVEMENT: 로거 인스턴스를 초기에 생성하여 일관되게 사용합니다.
@@ -24,37 +29,25 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const nodeEnv = configService.get<string>('NODE_ENV', 'development');
   const port = configService.get<number>('PORT', 8080);
+  const payloadLimits = getPayloadLimits({
+    JSON_BODY_LIMIT: configService.get<string>('JSON_BODY_LIMIT'),
+    URLENCODED_BODY_LIMIT: configService.get<string>('URLENCODED_BODY_LIMIT'),
+  });
   
   // JSON payload 크기 제한 증가
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ limit: '10mb', extended: true }));
+  app.use(express.json({ limit: payloadLimits.jsonLimit }));
+  app.use(express.urlencoded({ limit: payloadLimits.urlencodedLimit, extended: true }));
 
-  // ✨ IMPROVEMENT: CORS 허용 목록을 환경 변수에서 동적으로 가져옵니다.
-  // .env 파일 예시: CORS_ORIGINS=http://localhost:3000,https://extion-beta.vercel.app,https://extion.co
-  const corsOriginsFromEnv = configService.get<string>('CORS_ORIGINS');
-  const corsOrigins = corsOriginsFromEnv ? corsOriginsFromEnv.split(',') : [
-    'http://localhost:3000', // 환경 변수가 없을 경우의 기본값
-  ];
-  
-  // Railway 내부 통신 및 기타 고정 origin 추가
-  const fixedOrigins = [
-    'https://docs.google.com',
-    'https://*.googleusercontent.com',
-    'https://extion-server.railway.internal',
-  ];
-  const allowedOrigins = [...corsOrigins, ...fixedOrigins];
+  const allowedOrigins = getCorsOrigins({
+    CORS_ORIGINS: configService.get<string>('CORS_ORIGINS'),
+    ALLOWED_ORIGINS: configService.get<string>('ALLOWED_ORIGINS'),
+  });
 
   app.enableCors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       
-      const isAllowed = allowedOrigins.some(allowedOrigin => {
-        if (allowedOrigin.includes('*')) {
-          const regex = new RegExp(`^${allowedOrigin.replace(/\*/g, '.*')}$`);
-          return regex.test(origin);
-        }
-        return origin === allowedOrigin;
-      });
+      const isAllowed = isCorsOriginAllowed(origin, allowedOrigins);
       
       if (isAllowed) {
         callback(null, true);
