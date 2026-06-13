@@ -52,7 +52,6 @@ export class AiChatMessageService {
   async saveUserMessage(aiReq: aiChatApiReq): Promise<string> {
     try {
       this.logger.log(`사용자 메시지 저장 시작 - chatId: ${aiReq.chatId}, userId: ${aiReq.userId}, userChatSessionBranchId: ${aiReq.userChatSessionBranchId}`);
-      this.logger.log(`🔍 DEBUG: aiReq.spreadSheetVersionId = ${aiReq.spreadSheetVersionId} (type: ${typeof aiReq.spreadSheetVersionId})`);
 
       return await this.messageRepository.transaction(async (tx) => {
         if (!aiReq.chatSessionId) {
@@ -76,23 +75,17 @@ export class AiChatMessageService {
         if (existingMessages.length === 0) {
           this.logger.log(`첫 번째 채팅 - 부모 노드 생성 후 자식 노드를 userChatSessionBranchId로 생성`);
 
-          this.logger.log(`🔍 DEBUG: 부모 브랜치 생성 - spreadSheetVersionId: ${aiReq.spreadSheetVersionId}, 조건: ${!!aiReq.spreadSheetVersionId}`);
           const parentBranch = await this.branchRepository.createBranch({
             chatSessionId: session.id,
             parentBranchId: null,
             ...(aiReq.spreadSheetVersionId && { spreadSheetVersionId: aiReq.spreadSheetVersionId }),
           }, tx);
-          this.logger.log(`🔍 DEBUG: 부모 브랜치 생성 완료 - id: ${parentBranch.id}, spreadSheetVersionId: ${(parentBranch as any).spreadSheetVersionId}`);
-
-          this.logger.log(`🔍 DEBUG: 자식 브랜치 생성 - spreadSheetVersionId: ${aiReq.spreadSheetVersionId}, 조건: ${!!aiReq.spreadSheetVersionId}`);
           const childBranch = await this.branchRepository.createBranch({
             id: aiReq.userChatSessionBranchId,
             chatSessionId: session.id,
             parentBranchId: parentBranch.id,
             ...(aiReq.spreadSheetVersionId && { spreadSheetVersionId: aiReq.spreadSheetVersionId }),
           }, tx);
-          this.logger.log(`🔍 DEBUG: 자식 브랜치 생성 완료 - id: ${childBranch.id}, spreadSheetVersionId: ${(childBranch as any).spreadSheetVersionId}`);
-
           targetBranchId = childBranch.id;
 
           await this.branchRepository.updateSessionLatestBranch(session.id, childBranch.id, tx);
@@ -110,15 +103,12 @@ export class AiChatMessageService {
               throw new Error('Current branch not found');
             }
 
-            this.logger.log(`🔍 DEBUG: 후속 브랜치 생성 - spreadSheetVersionId: ${aiReq.spreadSheetVersionId}, 조건: ${!!aiReq.spreadSheetVersionId}`);
             const newBranch = await this.branchRepository.createBranch({
               id: aiReq.userChatSessionBranchId,
               chatSessionId: session.id,
               parentBranchId: currentBranch.id,
               ...(aiReq.spreadSheetVersionId && { spreadSheetVersionId: aiReq.spreadSheetVersionId }),
             }, tx);
-            this.logger.log(`🔍 DEBUG: 후속 브랜치 생성 완료 - id: ${newBranch.id}, spreadSheetVersionId: ${(newBranch as any).spreadSheetVersionId}`);
-
             targetBranchId = newBranch.id;
 
             await this.branchRepository.updateSessionLatestBranch(session.id, newBranch.id, tx);

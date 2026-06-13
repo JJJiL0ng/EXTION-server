@@ -551,4 +551,72 @@
 - 다음 단계:
   - Step 10에서 legacy dead code, debug log, 미사용 주석 코드를 정리하고 전체 회귀 검증을 실행한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `feat: 에러 응답과 관측성 경계 정리`
+  - `b79658d feat: 에러 응답과 관측성 경계 정리`
+
+## Step 10. Legacy cleanup
+
+- 상태: 완료
+- 브랜치: `backend/refactor-010-legacy-cleanup`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 주석 처리된 dead code, 임시 debug log, 원문 LLM 출력 로그를 제거해 운영 로그와 리뷰 표면을 정리한다.
+- 기존 문제:
+  - `ai-chat.controller.ts`는 전체가 주석 처리된 legacy REST controller였고 module에서도 주석 import/controller 흔적이 남아 있었다.
+  - AI agent/schema-converter runnable에 `console.log('DEBUG...')`가 남아 LLM 원문 출력 일부가 로그로 노출될 수 있었다.
+  - 일부 service에는 디버그 목적의 상세 branch/version 로그가 운영 Logger에 남아 있었다.
+- 설계 판단:
+  - 공개 API/WebSocket 계약 변경 없이 참조되지 않는 파일과 로그만 제거했다.
+  - 실패 원인 파악에 필요한 AI agent 에러는 Nest `Logger`의 요약 로그로 남기고, prompt/context 원문은 남기지 않았다.
+  - lint 설정 복구는 기존 코드 전반의 대량 오류를 동반하므로 이번 cleanup 커밋 범위에서 제외하고 별도 후속 debt로 분리했다.
+- 대안과 트레이드오프:
+  - 모든 Logger 호출을 구조화 로그 정책으로 바꿀 수도 있지만, 변경 범위가 gateway/service 전반으로 커져 dead code cleanup과 분리했다.
+  - ESLint config를 바로 복구할 수도 있지만, 기존 코드 전반에서 2,219건의 문제가 드러나 이번 리팩토링 검증 범위를 크게 넘는다.
+- 수정한 주요 파일:
+  - `src/v2/ai-chat/ai-chat.controller.ts`
+  - `src/v2/ai-chat/ai-chat.module.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/ai-agent/runnables/*`
+  - `src/v2/schema-converter/mapping/mapping-agent/runnable/*`
+- 변경 내용:
+  - 주석 처리된 legacy `AiChatController` 파일 삭제
+  - module의 주석 처리 controller/import 제거
+  - AI agent task/file name runner의 raw debug output 제거
+  - schema-converter mapping runner의 raw LLM output/snippet debug log 제거
+  - chat message branch/version 저장 경로의 임시 debug log 제거
+  - gateway의 임시 운영 제거 예정 주석 제거
+- Before/After:
+  - `rg "console\\.|DEBUG|프로덕션에서는 지울 예정|AiChatController" src/v2 src/common`: cleanup 전 다수 검출 -> cleanup 후 검출 없음
+  - legacy controller 파일: 주석 코드 169줄 -> 삭제
+- 포트폴리오 평가 포인트:
+  - 운영 로그에 민감할 수 있는 AI 원문 출력이 남지 않도록 하고, 리팩토링 후 남은 dead code를 제거했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-chat/ai-chat.module.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/schema-converter/mapping/mapping-agent/runnable/mappingScriptMaker.runable.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - API/WebSocket payload shape 변경 없음
+  - 삭제한 controller는 module에 등록되지 않은 주석 처리 legacy 파일이라 runtime route 영향 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+  - `npm run lint`
+  - `rg "console\\.|DEBUG|프로덕션에서는 지울 예정|ai-chat.controller|AiChatController" src/v2 src/common -n`
+- 검증 결과:
+  - `npm run test`: 성공. 12 suites, 41 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+  - `rg ...`: 성공. 검출 없음
+  - `npm run lint`: 실패. 기존 `eslint.config.mjs`가 전체 주석 처리된 빈 config라 ESLint가 TS 파일을 모두 ignored 처리함. 임시로 주석 설정을 켜 확인한 결과 기존 코드 전반에서 2,219 problems가 발생해 별도 lint 복구 작업으로 분리해야 함.
+- 남은 리스크:
+  - ESLint 설정은 아직 복구되지 않았다.
+  - 운영 로그 표준화는 raw debug 제거까지만 완료했고, 모든 Logger message schema 통일은 후속 작업이다.
+- 다음 단계:
+  - 백엔드 1차 리팩토링 완료. 후속으로 프론트 에러 계약 확인과 ESLint 설정 복구를 별도 브랜치에서 진행한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `chore: 백엔드 legacy 정리`

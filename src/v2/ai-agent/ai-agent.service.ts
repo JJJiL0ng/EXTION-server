@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { routeAndRunSingleTask } from './task-run-route/routeAndRunSingleTask';
 import type { Task, TaskManagerOutput } from './types/taskManager.types';
-import type { dataEditChatRes, dataEditCommand } from './types/dataEdit.types';
+import type { dataEditCommand } from './types/dataEdit.types';
 
 import { filteredSheetReturns, PreviousChatMessage } from '../ai-chat/types/aiChat.types';
 
@@ -15,6 +15,7 @@ import { LlmModelFactoryService } from './model/llm-model-factory.service';
 
 @Injectable()
 export class AiAgentService {
+  private readonly logger = new Logger(AiAgentService.name);
   private readonly geminiSmall: ChatGoogleGenerativeAI; // 2.5 flash lite
   private readonly geminiNormal: ChatGoogleGenerativeAI; // 2.5 flash
   private readonly geminiLarge: ChatGoogleGenerativeAI; // 2.5 pro
@@ -25,24 +26,14 @@ export class AiAgentService {
 
   constructor(
     private readonly llmModelFactory: LlmModelFactoryService,
-    // private readonly cacheService: TableDataCacheService,
   ) {
-    // LLM 초기화 - Gemini 2.5 Flash-lite 스트리밍 설정
     this.geminiSmall = this.llmModelFactory.create('gemini-small');
     this.geminiNormal = this.llmModelFactory.create('gemini-normal');
     this.geminiLarge = this.llmModelFactory.create('gemini-large');
-    //----------------------------------------------------------------
-    // LLM 초기화 - Extion 1.0 Large
-    //----------------------------------------------------------------
     this.ExtionLarge = this.llmModelFactory.create('extion-large');
     this.ExtionMedium = this.llmModelFactory.create('extion-medium');
     this.ExtionSmall = this.llmModelFactory.create('extion-small');
-    //----------------------------------------------------------------
-    // task manager 전용 튜닝 모델
-    //----------------------------------------------------------------
     this.TaskManagerModel = this.llmModelFactory.create('task-manager');
-
-    
   }
 
   async runTaskManager(
@@ -57,15 +48,15 @@ export class AiAgentService {
 
     const taskManager = createTaskManagerRunnable(this.TaskManagerModel);
 
-    // 디버깅을 위해 중간 결과를 확인
     try {
       const result = await taskManager.invoke({ question, previousMessages, dataContext: dataContextString });
-      console.log('DEBUG: TaskManager raw result:', JSON.stringify(result, null, 2));
+      this.logger.debug(`TaskManager completed - tasks: ${(result as TaskManagerOutput)?.tasks?.length ?? 0}`);
       return result as TaskManagerOutput;
     } catch (error) {
-      console.error('DEBUG: TaskManager error:', error);
-      console.error('DEBUG: Question:', question);
-      console.error('DEBUG: DataContext length:', dataContextString.length);
+      this.logger.error(
+        `TaskManager failed - questionLength: ${question.length}, dataContextLength: ${dataContextString.length}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw error;
     }
   }
@@ -97,17 +88,16 @@ export class AiAgentService {
     const fileNameMaker = createFileNameMakerRunnable(this.ExtionSmall);
 
     try {
-      // 러너블 실행하여 파일명 생성
       const result = await fileNameMaker.invoke({ dataContext: dataContextString });
-      console.log('DEBUG: FileNameMaker raw result:', result);
-      
-      // 결과가 문자열인지 확인하고 반환
+
       const fileName = typeof result === 'string' ? result : String(result);
       return fileName.trim();
     } catch (error) {
-      console.error('DEBUG: FileNameMaker error:', error);
-      console.error('DEBUG: DataContext length:', dataContextString.length);
-      
+      this.logger.error(
+        `FileNameMaker failed - dataContextLength: ${dataContextString.length}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+
       // 에러 발생 시 기본 파일명 반환
       return 'Extion-Sheet';
     }

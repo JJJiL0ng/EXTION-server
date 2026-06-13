@@ -23,22 +23,18 @@ export function createFileNameMakerRunnable(model: BaseChatModel): Runnable {
     .pipe(model)
     .pipe(parser)
     .pipe((output: string) => {
-      console.log('DEBUG: Raw LLM output:', output);
-
       // 문자열 정리 (불필요한 공백, 따옴표 등 제거)
       try {
         let cleanedOutput = output.trim();
-        
+
         // 따옴표로 감싸진 경우 제거
         if ((cleanedOutput.startsWith('"') && cleanedOutput.endsWith('"')) ||
             (cleanedOutput.startsWith("'") && cleanedOutput.endsWith("'"))) {
           cleanedOutput = cleanedOutput.slice(1, -1);
         }
-        
-        console.log('DEBUG: Cleaned output:', cleanedOutput);
+
         return cleanedOutput;
-      } catch (error) {
-        console.warn('DEBUG: Failed to clean output, using original:', error);
+      } catch {
         return output.trim();
       }
     });

@@ -30,18 +30,14 @@ export function createTaskManagerRunnable(model: BaseChatModel): Runnable {
     .pipe(model)
     .pipe(new StringOutputParser())
     .pipe((output: string) => {
-      console.log('DEBUG: Raw LLM output:', output);
-
       // JSON 정리 (마크다운 코드블록 등 제거 가능)
       try {
         let cleanedOutput = output;
         // 필요 시 코드블록 제거 로직을 활성화
         // cleanedOutput = cleanedOutput.replace(/```json\s*|```/g, '');
         cleanedOutput = cleanedOutput.trim();
-        console.log('DEBUG: Cleaned output:', cleanedOutput);
         return cleanedOutput;
-      } catch (error) {
-        console.warn('DEBUG: Failed to clean output, using original:', error);
+      } catch {
         return output;
       }
     })

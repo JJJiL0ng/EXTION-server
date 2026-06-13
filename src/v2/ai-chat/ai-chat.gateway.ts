@@ -46,9 +46,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ) { }
 
 
-  //====================
-  // 프로덕션에서는 지울 예정
-
   // 클라이언트가 연결되었을 때
   handleConnection(client: Socket) {
     this.logger.log(`클라이언트 연결: ${client.id}`);
@@ -61,8 +58,6 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // 연결이 끊어진 클라이언트의 진행 중인 작업 정리
     this.cleanupClientJobs(client.id);
   }
-
-  // ===================
 
   /**
    * 클라이언트의 진행 중인 작업들을 정리합니다.
