@@ -10,6 +10,7 @@ import {
   getPayloadLimits,
   isCorsOriginAllowed,
 } from './common/config/app-config';
+import { HttpExceptionFilter } from './common/errors/http-exception.filter';
 
 async function bootstrap() {
   // ✨ IMPROVEMENT: 로거 인스턴스를 초기에 생성하여 일관되게 사용합니다.
@@ -71,6 +72,7 @@ async function bootstrap() {
       disableErrorMessages: nodeEnv === 'production',
     }),
   );
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   // ✨ IMPROVEMENT: 프로덕션 환경이 아닐 때만 Swagger 문서를 활성화합니다.
   if (nodeEnv !== 'production') {

@@ -23,6 +23,7 @@ import { emptySheetData } from './emptySheet.json';
 import { AiChatJobRegistryService } from './services/ai-chat-job-registry.service';
 import { AiChatRateLimitService } from './services/ai-chat-rate-limit.service';
 import { AI_CHAT_EVENTS } from './events/ai-chat-events';
+import { createSocketErrorPayload } from 'src/common/errors/socket-error-payload';
 @WebSocketGateway({
   cors: {
     origin: getCorsOrigins(process.env),
@@ -94,10 +95,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (!payload.spreadsheetId || !payload.chatId || !payload.userId || !payload.jobId) {
         this.logger.error(`필수 파라미터 누락 - 클라이언트: ${client.id}`);
-        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
           message: 'MISSING_REQUIRED_PARAMETERS',
           code: 'VALIDATION_ERROR',
-        });
+        }));
         return;
       }
 
@@ -109,12 +110,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const rateLimitCheck = this.rateLimitService.check(payload.userId, clientIp);
       if (rateLimitCheck.blocked) {
         this.logger.warn(`Rate Limit 차단 - 사용자: ${payload.userId}, IP: ${clientIp}, 이유: ${rateLimitCheck.reason}`);
-        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
           message: rateLimitCheck.reason,
           code: 'RATE_LIMIT_EXCEEDED',
           retryAfter: rateLimitCheck.retryAfter,
-          timestamp: new Date().toISOString(),
-        });
+        }));
         return;
       }
       const aiReq: aiChatApiReq = {
@@ -199,11 +199,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'AI_JOB_START_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
         message,
         code: 'JOB_START_ERROR',
-        timestamp: new Date().toISOString(),
-      });
+      }));
     }
   }
 
@@ -222,10 +221,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 입력 데이터 검증
       if (!payload.spreadSheetId || !payload.chatSessionId || !payload.chatSessionBranchId || !payload.userId) {
         this.logger.error(`롤백 필수 파라미터 누락 - 클라이언트: ${clientId}`);
-        this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_ERROR, {
+        this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_ERROR, createSocketErrorPayload({
           message: 'MISSING_REQUIRED_PARAMETERS',
           code: 'VALIDATION_ERROR',
-        });
+        }));
         return;
       }
 
@@ -254,11 +253,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'ROLLBACK_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_ERROR, {
+      this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_ERROR, createSocketErrorPayload({
         message,
         code: 'ROLLBACK_ERROR',
-        timestamp: new Date().toISOString(),
-      });
+      }));
     }
   }
 
@@ -274,33 +272,33 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 입력 검증
       if (!jobId || !feedback || !['SUCCESS', 'FAILURE'].includes(feedback)) {
         this.logger.error(`잘못된 피드백 데이터 - 클라이언트: ${client.id}, 작업ID: ${jobId}, 피드백: ${feedback}`);
-        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
           jobId,
           message: 'INVALID_FEEDBACK_DATA',
           code: 'VALIDATION_ERROR',
-        });
+        }));
         return;
       }
 
       const job = this.jobRegistryService.get(jobId);
       if (!job) {
         this.logger.warn(`존재하지 않는 작업ID - ID: ${jobId}, 클라이언트: ${client.id}`);
-        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
           jobId,
           message: 'INVALID_JOB_ID',
           code: 'JOB_NOT_FOUND',
-        });
+        }));
         return;
       }
 
       // 클라이언트 소유권 확인
       if (job.clientId !== client.id) {
         this.logger.error(`작업 소유권 불일치 - 작업ID: ${jobId}, 요청 클라이언트: ${client.id}, 소유 클라이언트: ${job.clientId}`);
-        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
           jobId,
           message: 'UNAUTHORIZED_JOB_ACCESS',
           code: 'PERMISSION_ERROR',
-        });
+        }));
         return;
       }
 
@@ -328,12 +326,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'FEEDBACK_PROCESSING_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
         jobId,
         message,
         code: 'FEEDBACK_ERROR',
-        timestamp: new Date().toISOString(),
-      });
+      }));
     }
   }
 
@@ -417,13 +414,12 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'JOB_EXECUTION_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(clientId).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
+      this.server.to(clientId).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, createSocketErrorPayload({
         jobId: aiReq.jobId,
         message,
         code: 'EXECUTION_ERROR',
         executionTime,
-        timestamp: new Date().toISOString(),
-      });
+      }));
     }
   }
 

@@ -489,4 +489,66 @@
 - 다음 단계:
   - Step 9에서 error payload와 logging 정책을 정리한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `refactor: LLM 모델 factory 통합`
+  - `262bfdc refactor: LLM 모델 factory 통합`
+
+## Step 9. Error와 observability 정리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-009-error-observability`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - REST exception response와 WebSocket error payload 생성 방식을 공통 helper로 정리하고, 에러 코드 매핑을 테스트로 고정한다.
+- 기존 문제:
+  - REST 전역 exception filter가 없어 Nest 기본 error shape에 의존했다.
+  - WebSocket gateway error payload에 timestamp 생성과 code/message 구성이 반복되어 있었다.
+  - HTTP status와 app error code 매핑을 테스트할 경계가 없었다.
+- 설계 판단:
+  - REST는 `HttpExceptionFilter`를 전역 등록해 `{ success:false, statusCode, code, message, timestamp, path }` shape로 통일했다.
+  - production unknown error는 내부 message를 숨기고 `INTERNAL_SERVER_ERROR`로 응답하게 했다.
+  - WebSocket은 event 이름/shape를 유지하면서 `createSocketErrorPayload`로 timestamp 생성을 통일했다.
+- 대안과 트레이드오프:
+  - 모든 서비스 exception을 custom domain error로 바꿀 수도 있지만, 변경 범위가 커서 이번 단계에서는 filter mapping부터 도입했다.
+  - WebSocket error code enum 강제는 프론트 계약 확인이 필요해 기존 string code를 유지했다.
+- 수정한 주요 파일:
+  - `src/common/errors/error-code.ts`
+  - `src/common/errors/http-error-response.ts`
+  - `src/common/errors/http-exception.filter.ts`
+  - `src/common/errors/socket-error-payload.ts`
+  - `src/main.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - 관련 spec 파일
+- 변경 내용:
+  - HTTP status -> app error code mapping 추가
+  - REST global exception filter 등록
+  - HTTP error response builder와 socket error payload helper 추가
+  - gateway error emit에 socket helper 적용
+  - error helper 단위 테스트 추가
+- Before/After:
+  - unit test: 10 suites/36 tests -> 12 suites/41 tests
+- 포트폴리오 평가 포인트:
+  - 운영에서 숨겨야 할 unknown error와 클라이언트가 처리할 code/timestamp 계약을 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/common/errors/http-exception.filter.ts`
+  - `src/common/errors/http-error-response.ts`
+  - `src/common/errors/socket-error-payload.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - REST error response shape 변경 있음
+  - WebSocket error event 이름과 기존 code/message 값은 유지, timestamp는 helper에서 기본 생성
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 성공. 12 suites, 41 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+- 남은 리스크:
+  - REST error shape 변경은 프론트 에러 처리와 맞춰 확인해야 한다.
+  - service별 domain error code 세분화는 아직 하지 않았다.
+- 다음 단계:
+  - Step 10에서 legacy dead code, debug log, 미사용 주석 코드를 정리하고 전체 회귀 검증을 실행한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `feat: 에러 응답과 관측성 경계 정리`
