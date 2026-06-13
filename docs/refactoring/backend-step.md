@@ -309,4 +309,62 @@
 - 다음 단계:
   - Step 6에서 spreadsheet versioning, editLockVersion conflict, rollback 관련 테스트를 추가한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `refactor: AI 채팅 게이트웨이 상태 분리`
+  - `aa8c64d refactor: AI 채팅 게이트웨이 상태 분리`
+
+## Step 6. Sheet versioning 테스트 추가
+
+- 상태: 완료
+- 브랜치: `backend/refactor-006-sheet-versioning-tests`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - spreadsheet create/addVersion/load/rename/rollback 흐름의 DB 호출 계약과 낙관적 잠금 충돌 처리를 회귀 테스트로 고정한다.
+- 기존 문제:
+  - `TableDataJsonSaveService`는 핵심 versioning 로직을 갖고 있지만 테스트가 없었다.
+  - `$transaction` callback mock이 없어 create/addVersion처럼 transaction 내부에서 여러 delegate를 호출하는 코드를 검증하기 어려웠다.
+  - rollback은 parent branch와 sheet editLockVersion을 함께 바꾸지만 성공/실패 케이스 테스트가 없었다.
+- 설계 판단:
+  - 실제 DB 대신 Prisma mock transaction helper로 service-level DB 호출 계약을 검증했다.
+  - e2e DB 테스트는 환경 의존성이 크므로 이번 단계에서는 unit test로 versioning 분기와 Prisma 호출 shape를 먼저 고정했다.
+- 대안과 트레이드오프:
+  - test DB를 띄워 transaction rollback까지 검증할 수 있지만, 현재 CI/로컬 기준선에서는 DB가 없으면 e2e가 실패한다. 우선 mock 기반 회귀 테스트를 추가했다.
+  - controller 테스트보다 service 테스트를 선택했다. versioning 위험은 DTO validation보다 service transaction 순서와 lock 조건에 더 집중되어 있기 때문이다.
+- 수정한 주요 파일:
+  - `test/prisma-service.mock.ts`
+  - `src/v2/sheet/_table-data-json-save/table-data-json-save.service.spec.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.spec.ts`
+- 변경 내용:
+  - Prisma `$transaction` callback helper 추가
+  - spreadsheet 최초 생성 시 초기 version/chat/headVersionId 업데이트 검증
+  - addVersion parentId/headVersionId/editLockVersion increment 검증
+  - Prisma `P2025` stale lock을 `ConflictException`으로 매핑하는 케이스 검증
+  - load/rename ownership 흐름 검증
+  - rollback parent branch 이동과 spreadsheet editLockVersion increment 검증
+- Before/After:
+  - unit test: 7 suites/25 tests -> 9 suites/33 tests
+- 포트폴리오 평가 포인트:
+  - versioning과 rollback의 DB write 순서, optimistic lock 조건, 실패 매핑을 테스트로 문서화했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/sheet/_table-data-json-save/table-data-json-save.service.spec.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.spec.ts`
+  - `test/prisma-service.mock.ts`
+- DB/Prisma 영향:
+  - schema 변경 없음
+  - production query 변경 없음
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 9 suites, 33 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - mock transaction은 실제 DB rollback을 재현하지 않는다.
+  - `addNewVersionSpreadSheetData`는 새 version row 생성 후 optimistic lock update를 시도한다. 실제 DB transaction에서는 rollback되지만, 이 순서는 Step 7 repository/transaction 정리 때 다시 검토할 필요가 있다.
+- 다음 단계:
+  - Step 7에서 Prisma query를 repository 계층으로 분리하고 transaction client 전달 패턴을 정리한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `test: 시트 버전 관리 회귀 테스트 추가`

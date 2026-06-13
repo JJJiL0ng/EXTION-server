@@ -35,3 +35,16 @@ export const createPrismaServiceMock = (): PrismaServiceMock =>
     $disconnect: jest.fn(),
     $transaction: jest.fn(),
   }) as unknown as PrismaServiceMock;
+
+export const mockPrismaTransaction = (
+  prisma: PrismaServiceMock,
+  tx: PrismaServiceMock = prisma,
+) => {
+  (prisma.$transaction as jest.Mock).mockImplementation(async (callbackOrQueries) => {
+    if (typeof callbackOrQueries === 'function') {
+      return callbackOrQueries(tx);
+    }
+
+    return Promise.all(callbackOrQueries);
+  });
+};
