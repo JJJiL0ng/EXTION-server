@@ -57,4 +57,66 @@
 - 다음 단계:
   - Step 2에서 Jest alias와 Prisma mock 경로를 현재 구조에 맞추고, 테스트 fixture 기반을 정리한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `docs: 백엔드 기준선 문서 추가`
+  - `700cb05 docs: 백엔드 기준선 문서 추가`
+
+## Step 2. 테스트 fixture와 Prisma mock 정리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-002-test-fixtures`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 기존 unit/e2e 테스트가 실행 전 설정 단계에서 실패하던 문제를 고치고, 서비스 테스트에서 재사용할 Prisma mock factory를 만든다.
+- 기존 문제:
+  - `test/jest-setup.ts`가 존재하지 않는 `src/prisma/prisma.service`와 legacy prompt/gemini module을 전역 mock했다.
+  - `UserService` spec은 `PrismaService` provider를 등록하지 않아 setup 경로를 고친 뒤에도 DI 실패가 날 구조였다.
+  - e2e Jest 설정은 `src/*` alias가 없어 AppModule import 경로를 해석하지 못했고, alias를 고치면 실제 DB 연결을 시도했다.
+- 설계 판단:
+  - 전역 `jest.mock` 대신 spec의 provider override로 Prisma 의존성을 명시했다.
+  - e2e `/` 테스트는 DB 기능 검증이 아니므로 `PrismaService`를 mock으로 override해 앱 부트스트랩과 라우팅 계약만 확인했다.
+  - LLM fake adapter는 이번 테스트 범위에서 사용처가 없어서 추가하지 않았다. AiAgent/AiChat service 테스트를 추가하는 단계에서 필요한 인터페이스에 맞춰 만든다.
+- 대안과 트레이드오프:
+  - `PrismaModule`을 unit spec에 import할 수도 있지만 실제 PrismaClient 초기화와 DB 연결 위험이 생긴다.
+  - 모든 Prisma delegate를 정교하게 타입화할 수도 있지만, 현재 목적은 테스트 실행 기준선 회복이므로 공통 delegate mock으로 시작했다.
+- 수정한 주요 파일:
+  - `test/prisma-service.mock.ts`
+  - `test/jest-setup.ts`
+  - `test/jest-e2e.json`
+  - `test/app.e2e-spec.ts`
+  - `src/v2/user/user.service.spec.ts`
+  - `src/v2/user/user.controller.spec.ts`
+- 변경 내용:
+  - 현재 `src/v2/prisma/prisma.service` 구조에 맞는 Prisma mock factory 추가
+  - stale 전역 mock 제거 후 `jest.clearAllMocks()`만 전역 setup에 유지
+  - e2e Jest `src/*` alias 매핑 추가
+  - e2e AppModule에서 `PrismaService`를 mock으로 override
+  - user service/controller 테스트를 defined 수준에서 create/unique conflict/guest validation/controller response 검증까지 확장
+- Before/After:
+  - Unit test: 실행 전 설정 실패 -> 2개 suite, 7개 test 통과
+  - E2E test: alias/DB 연결 실패 -> `/` GET 1개 test 통과
+- 포트폴리오 평가 포인트:
+  - 테스트가 DB와 legacy 전역 mock에 묶이지 않도록 의존성 주입 경계를 명시했다.
+- 리뷰어가 먼저 볼 파일:
+  - `test/prisma-service.mock.ts`
+  - `src/v2/user/user.service.spec.ts`
+  - `test/app.e2e-spec.ts`
+- DB/Prisma 영향:
+  - production schema 영향 없음
+  - 테스트에서만 PrismaClient 실제 연결을 피하도록 mock 사용
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 2 suites, 7 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - `$transaction` mock은 아직 실제 callback/array transaction 동작을 흉내 내지 않는다.
+  - Prisma delegate mock은 현재 테스트에 필요한 공통 메서드만 제공한다.
+- 다음 단계:
+  - Step 3에서 env/config 검증을 추가하고 config 단위 테스트를 만든다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `test: 백엔드 테스트 fixture 정리`
