@@ -20,6 +20,9 @@ import { AiAgentService } from 'src/v2/ai-agent/ai-agent.service';
 import { AddNewVersionSpreadSheetData } from 'src/v2/sheet/types/spreadsheet.types';
 import { getCorsOrigins } from 'src/common/config/app-config';
 import { emptySheetData } from './emptySheet.json';
+import { AiChatJobRegistryService } from './services/ai-chat-job-registry.service';
+import { AiChatRateLimitService } from './services/ai-chat-rate-limit.service';
+import { AI_CHAT_EVENTS } from './events/ai-chat-events';
 @WebSocketGateway({
   cors: {
     origin: getCorsOrigins(process.env),
@@ -37,51 +40,9 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly aiChatService: AiChatService,
     private readonly tableDataJsonSaveService: TableDataJsonSaveService,
     private readonly aiAgentService: AiAgentService,
+    private readonly jobRegistryService: AiChatJobRegistryService,
+    private readonly rateLimitService: AiChatRateLimitService,
   ) { }
-
-  // 간단한 메모리 상태 저장 (jobId -> 상태)
-  // dataContext는 메모리 절약을 위해 저장하지 않고 필요시 재조회
-  private jobs = new Map<
-    string,
-    {
-      aiReq: aiChatApiReq;
-      plan: TaskManagerOutput;
-      clientId: string;
-      createdAt: number;
-      previousMessages: PreviousChatMessage[];
-      fileName?: string;
-    }
-  >();
-
-  // Rate Limiting을 위한 사용자별 요청 추적
-  private userRequestTracking = new Map<
-    string, // userId
-    {
-      requestTimestamps: number[]; // 요청 시간 배열
-      blockedUntil?: number; // 차단 종료 시간 (밀리초)
-    }
-  >();
-
-  // IP별 요청 추적 (게스트 사용자 및 추가 보안)
-  private ipRequestTracking = new Map<
-    string, // IP address
-    {
-      requestTimestamps: number[];
-      blockedUntil?: number;
-    }
-  >();
-
-  // Rate Limiting 설정
-  private readonly RATE_LIMIT_CONFIG = {
-    // 일반 사용자: 1분당 최대 10개 요청
-    USER_REQUESTS_PER_MINUTE: 10,
-    // IP당: 1분당 최대 20개 요청 (여러 사용자가 같은 IP 사용 가능)
-    IP_REQUESTS_PER_MINUTE: 20,
-    // 차단 시간: 5분
-    BLOCK_DURATION_MS: 5 * 60 * 1000,
-    // 추적 윈도우: 1분
-    TRACKING_WINDOW_MS: 60 * 1000,
-  };
 
 
   //====================
@@ -103,111 +64,17 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // ===================
 
   /**
-   * Rate Limiting 검증: 사용자 및 IP 기반
-   * @returns true면 차단됨, false면 정상
-   */
-  private checkRateLimit(userId: string, clientIp: string): { blocked: boolean; reason?: string; retryAfter?: number } {
-    const now = Date.now();
-
-    // 1. 사용자별 Rate Limiting 검증
-    const userTracking = this.userRequestTracking.get(userId);
-
-    if (userTracking) {
-      // 차단 기간 확인
-      if (userTracking.blockedUntil && now < userTracking.blockedUntil) {
-        const retryAfter = Math.ceil((userTracking.blockedUntil - now) / 1000);
-        this.logger.warn(`Rate Limit 차단 중 - 사용자: ${userId}, 남은 시간: ${retryAfter}초`);
-        return {
-          blocked: true,
-          reason: 'USER_RATE_LIMIT_EXCEEDED',
-          retryAfter,
-        };
-      }
-
-      // 추적 윈도우 내 요청 필터링 (1분 이내)
-      const recentRequests = userTracking.requestTimestamps.filter(
-        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS
-      );
-
-      // 제한 초과 확인
-      if (recentRequests.length >= this.RATE_LIMIT_CONFIG.USER_REQUESTS_PER_MINUTE) {
-        userTracking.blockedUntil = now + this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS;
-        this.logger.warn(`Rate Limit 초과 - 사용자: ${userId}, 요청 수: ${recentRequests.length}, 5분간 차단`);
-        return {
-          blocked: true,
-          reason: 'USER_RATE_LIMIT_EXCEEDED',
-          retryAfter: Math.ceil(this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS / 1000),
-        };
-      }
-
-      // 오래된 타임스탬프 제거 후 새 요청 추가
-      userTracking.requestTimestamps = [...recentRequests, now];
-    } else {
-      // 첫 요청
-      this.userRequestTracking.set(userId, {
-        requestTimestamps: [now],
-      });
-    }
-
-    // 2. IP별 Rate Limiting 검증
-    const ipTracking = this.ipRequestTracking.get(clientIp);
-
-    if (ipTracking) {
-      // 차단 기간 확인
-      if (ipTracking.blockedUntil && now < ipTracking.blockedUntil) {
-        const retryAfter = Math.ceil((ipTracking.blockedUntil - now) / 1000);
-        this.logger.warn(`Rate Limit 차단 중 - IP: ${clientIp}, 남은 시간: ${retryAfter}초`);
-        return {
-          blocked: true,
-          reason: 'IP_RATE_LIMIT_EXCEEDED',
-          retryAfter,
-        };
-      }
-
-      // 추적 윈도우 내 요청 필터링
-      const recentRequests = ipTracking.requestTimestamps.filter(
-        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS
-      );
-
-      // 제한 초과 확인
-      if (recentRequests.length >= this.RATE_LIMIT_CONFIG.IP_REQUESTS_PER_MINUTE) {
-        ipTracking.blockedUntil = now + this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS;
-        this.logger.warn(`Rate Limit 초과 - IP: ${clientIp}, 요청 수: ${recentRequests.length}, 5분간 차단`);
-        return {
-          blocked: true,
-          reason: 'IP_RATE_LIMIT_EXCEEDED',
-          retryAfter: Math.ceil(this.RATE_LIMIT_CONFIG.BLOCK_DURATION_MS / 1000),
-        };
-      }
-
-      // 오래된 타임스탬프 제거 후 새 요청 추가
-      ipTracking.requestTimestamps = [...recentRequests, now];
-    } else {
-      // 첫 요청
-      this.ipRequestTracking.set(clientIp, {
-        requestTimestamps: [now],
-      });
-    }
-
-    return { blocked: false };
-  }
-
-  /**
    * 클라이언트의 진행 중인 작업들을 정리합니다.
    */
   private cleanupClientJobs(clientId: string) {
-    let cleanedJobsCount = 0;
+    const deletedJobIds = this.jobRegistryService.deleteByClientId(clientId);
 
-    for (const [jobId, job] of this.jobs.entries()) {
-      if (job.clientId === clientId) {
-        this.jobs.delete(jobId);
-        cleanedJobsCount++;
-        this.logger.warn(`연결 해제로 인한 작업 정리: ${jobId}`);
-      }
+    for (const jobId of deletedJobIds) {
+      this.logger.warn(`연결 해제로 인한 작업 정리: ${jobId}`);
     }
 
-    if (cleanedJobsCount > 0) {
-      this.logger.log(`클라이언트 ${clientId}의 ${cleanedJobsCount}개 작업이 정리되었습니다.`);
+    if (deletedJobIds.length > 0) {
+      this.logger.log(`클라이언트 ${clientId}의 ${deletedJobIds.length}개 작업이 정리되었습니다.`);
     }
   }
 
@@ -227,7 +94,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       if (!payload.spreadsheetId || !payload.chatId || !payload.userId || !payload.jobId) {
         this.logger.error(`필수 파라미터 누락 - 클라이언트: ${client.id}`);
-        this.server.to(client.id).emit('ai_job_error', {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
           message: 'MISSING_REQUIRED_PARAMETERS',
           code: 'VALIDATION_ERROR',
         });
@@ -239,10 +106,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         || client.handshake.address
         || 'unknown';
 
-      const rateLimitCheck = this.checkRateLimit(payload.userId, clientIp);
+      const rateLimitCheck = this.rateLimitService.check(payload.userId, clientIp);
       if (rateLimitCheck.blocked) {
         this.logger.warn(`Rate Limit 차단 - 사용자: ${payload.userId}, IP: ${clientIp}, 이유: ${rateLimitCheck.reason}`);
-        this.server.to(client.id).emit('ai_job_error', {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
           message: rateLimitCheck.reason,
           code: 'RATE_LIMIT_EXCEEDED',
           retryAfter: rateLimitCheck.retryAfter,
@@ -317,7 +184,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // 2) 클라이언트에게 계획 전송
 
-      this.server.to(client.id).emit('ai_job_planned', {
+      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_PLANNED, {
         jobId: payload.jobId,
         plan,
       });
@@ -332,7 +199,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'AI_JOB_START_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(client.id).emit('ai_job_error', {
+      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
         message,
         code: 'JOB_START_ERROR',
         timestamp: new Date().toISOString(),
@@ -355,7 +222,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 입력 데이터 검증
       if (!payload.spreadSheetId || !payload.chatSessionId || !payload.chatSessionBranchId || !payload.userId) {
         this.logger.error(`롤백 필수 파라미터 누락 - 클라이언트: ${clientId}`);
-        this.server.to(clientId).emit('rollback_message_error', {
+        this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_ERROR, {
           message: 'MISSING_REQUIRED_PARAMETERS',
           code: 'VALIDATION_ERROR',
         });
@@ -378,7 +245,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
 
       this.logger.log(`롤백 응답 전송 - 클라이언트: ${clientId}`);
-      this.server.to(clientId).emit('rollback_message_response', rollbackMessageRes);
+      this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_RESPONSE, rollbackMessageRes);
 
     } catch (err) {
       this.logger.error(`롤백 처리 실패 - 클라이언트: ${clientId}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
@@ -387,7 +254,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'ROLLBACK_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(clientId).emit('rollback_message_error', {
+      this.server.to(clientId).emit(AI_CHAT_EVENTS.ROLLBACK_MESSAGE_ERROR, {
         message,
         code: 'ROLLBACK_ERROR',
         timestamp: new Date().toISOString(),
@@ -407,7 +274,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 입력 검증
       if (!jobId || !feedback || !['SUCCESS', 'FAILURE'].includes(feedback)) {
         this.logger.error(`잘못된 피드백 데이터 - 클라이언트: ${client.id}, 작업ID: ${jobId}, 피드백: ${feedback}`);
-        this.server.to(client.id).emit('ai_job_error', {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
           jobId,
           message: 'INVALID_FEEDBACK_DATA',
           code: 'VALIDATION_ERROR',
@@ -415,10 +282,10 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const job = this.jobs.get(jobId);
+      const job = this.jobRegistryService.get(jobId);
       if (!job) {
         this.logger.warn(`존재하지 않는 작업ID - ID: ${jobId}, 클라이언트: ${client.id}`);
-        this.server.to(client.id).emit('ai_job_error', {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
           jobId,
           message: 'INVALID_JOB_ID',
           code: 'JOB_NOT_FOUND',
@@ -429,7 +296,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 클라이언트 소유권 확인
       if (job.clientId !== client.id) {
         this.logger.error(`작업 소유권 불일치 - 작업ID: ${jobId}, 요청 클라이언트: ${client.id}, 소유 클라이언트: ${job.clientId}`);
-        this.server.to(client.id).emit('ai_job_error', {
+        this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
           jobId,
           message: 'UNAUTHORIZED_JOB_ACCESS',
           code: 'PERMISSION_ERROR',
@@ -449,11 +316,11 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       } else {
         // 실행 취소
         this.logger.warn(`작업 취소됨 - ID: ${jobId}`);
-        this.server.to(job.clientId).emit('ai_job_cancelled', { jobId });
+        this.server.to(job.clientId).emit(AI_CHAT_EVENTS.AI_JOB_CANCELLED, { jobId });
       }
 
       // feedback 처리 후 job 삭제
-      this.jobs.delete(jobId);
+      this.jobRegistryService.delete(jobId);
     } catch (err) {
       this.logger.error(`작업 피드백 처리 실패 - 작업ID: ${jobId}, 에러: ${err instanceof Error ? err.message : 'Unknown error'}`, err instanceof Error ? err.stack : undefined);
 
@@ -461,7 +328,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'FEEDBACK_PROCESSING_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(client.id).emit('ai_job_error', {
+      this.server.to(client.id).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
         jobId,
         message,
         code: 'FEEDBACK_ERROR',
@@ -524,7 +391,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // 3. ✅ DB 저장이 성공한 후에만 클라이언트에 응답 전송
       this.logger.log(`클라이언트 응답 전송 준비 - fileName: ${fileName}`);
-      this.server.to(clientId).emit('ai_tasks_executed', {
+      this.server.to(clientId).emit(AI_CHAT_EVENTS.AI_TASKS_EXECUTED, {
         jobId: aiReq.jobId,
         chatSessionId: aiReq.chatSessionId, // 프론트엔드에서 다음 요청에 사용할 수 있도록 반환
         dataEditChatRes: {
@@ -550,7 +417,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         ? 'JOB_EXECUTION_FAILED'
         : (err instanceof Error ? err.message : 'Unknown error');
 
-      this.server.to(clientId).emit('ai_job_error', {
+      this.server.to(clientId).emit(AI_CHAT_EVENTS.AI_JOB_ERROR, {
         jobId: aiReq.jobId,
         message,
         code: 'EXECUTION_ERROR',
@@ -668,24 +535,20 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private cleanupOldJobs() {
     const now = Date.now();
     const maxJobAge = 30 * 60 * 1000; // 30분
-    let cleanedCount = 0;
+    const expiredJobs = this.jobRegistryService.deleteExpiredJobs(maxJobAge, now);
 
-    for (const [jobId, job] of this.jobs.entries()) {
-      if (now - job.createdAt > maxJobAge) {
-        this.jobs.delete(jobId);
-        cleanedCount++;
-        this.logger.warn(`오래된 작업 정리 - ID: ${jobId}, 생성시간: ${new Date(job.createdAt).toISOString()}`);
+    for (const job of expiredJobs) {
+      this.logger.warn(`오래된 작업 정리 - ID: ${job.jobId}, 생성시간: ${new Date(job.createdAt).toISOString()}`);
 
-        // 클라이언트에게 타임아웃 알림
-        this.server.to(job.clientId).emit('ai_job_timeout', {
-          jobId,
-          message: 'JOB_TIMEOUT',
-        });
-      }
+      // 클라이언트에게 타임아웃 알림
+      this.server.to(job.clientId).emit(AI_CHAT_EVENTS.AI_JOB_TIMEOUT, {
+        jobId: job.jobId,
+        message: 'JOB_TIMEOUT',
+      });
     }
 
-    if (cleanedCount > 0) {
-      this.logger.log(`${cleanedCount}개의 오래된 작업이 정리되었습니다.`);
+    if (expiredJobs.length > 0) {
+      this.logger.log(`${expiredJobs.length}개의 오래된 작업이 정리되었습니다.`);
     }
   }
 
@@ -695,43 +558,7 @@ export class AiChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
    */
   @Cron(CronExpression.EVERY_10_MINUTES)
   private cleanupRateLimitTracking() {
-    const now = Date.now();
-    let userCleanedCount = 0;
-    let ipCleanedCount = 0;
-
-    // 사용자별 추적 정리
-    for (const [userId, tracking] of this.userRequestTracking.entries()) {
-      // 차단이 해제되었고, 최근 요청이 없는 경우 삭제
-      const hasRecentActivity = tracking.requestTimestamps.some(
-        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS * 2 // 2분 버퍼
-      );
-
-      const isBlockExpired = !tracking.blockedUntil || now > tracking.blockedUntil;
-
-      if (isBlockExpired && !hasRecentActivity) {
-        this.userRequestTracking.delete(userId);
-        userCleanedCount++;
-      } else if (tracking.blockedUntil && now > tracking.blockedUntil) {
-        // 차단만 해제하고 추적은 유지
-        delete tracking.blockedUntil;
-      }
-    }
-
-    // IP별 추적 정리
-    for (const [ip, tracking] of this.ipRequestTracking.entries()) {
-      const hasRecentActivity = tracking.requestTimestamps.some(
-        (timestamp) => now - timestamp < this.RATE_LIMIT_CONFIG.TRACKING_WINDOW_MS * 2
-      );
-
-      const isBlockExpired = !tracking.blockedUntil || now > tracking.blockedUntil;
-
-      if (isBlockExpired && !hasRecentActivity) {
-        this.ipRequestTracking.delete(ip);
-        ipCleanedCount++;
-      } else if (tracking.blockedUntil && now > tracking.blockedUntil) {
-        delete tracking.blockedUntil;
-      }
-    }
+    const { userCleanedCount, ipCleanedCount } = this.rateLimitService.cleanup();
 
     if (userCleanedCount > 0 || ipCleanedCount > 0) {
       this.logger.log(`Rate Limit 추적 데이터 정리 완료 - 사용자: ${userCleanedCount}개, IP: ${ipCleanedCount}개`);

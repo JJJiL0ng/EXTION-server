@@ -247,4 +247,66 @@
 - 다음 단계:
   - Step 5에서 `AiChatGateway`의 job registry와 socket rate limit 책임을 분리한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `refactor: AI 채팅 서비스 경계 분리`
+  - `d7a32db refactor: AI 채팅 서비스 경계 분리`
+
+## Step 5. AiChatGateway 경계 분리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-005-ai-chat-gateway-boundary`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - `AiChatGateway`가 직접 소유하던 job registry, rate limit map, event name 책임을 별도 경계로 분리한다.
+- 기존 문제:
+  - gateway가 socket handler와 in-memory job map, 사용자/IP rate limit map, cleanup cron 로직을 모두 직접 들고 있었다.
+  - rate limit 정책이 private method에 갇혀 있어 사용자/IP 제한과 cleanup 동작을 단위 테스트하기 어려웠다.
+  - emit 이벤트 이름이 문자열로 반복되어 event contract 변경 시 검색 의존도가 높았다.
+- 설계 판단:
+  - 현재 gateway에는 `jobs.set` 호출이 없어 acknowledge job queue 동작은 바꾸지 않고, 기존 map 소유권만 registry service로 이동했다.
+  - rate limit은 DB에 저장하지 않고 기존과 동일한 in-memory 정책을 유지했다. 분산 rate limit은 운영 인프라 판단이 필요해 이번 범위에서 제외했다.
+  - event payload shape는 바꾸지 않고 이벤트 이름 상수와 payload 타입만 분리했다.
+- 대안과 트레이드오프:
+  - gateway orchestration 전체를 application service로 옮길 수도 있지만, DB sync와 socket emit 순서가 섞여 있어 이번 PR에서는 상태 저장/정책 로직만 먼저 분리했다.
+  - Redis 기반 rate limit도 가능하지만 현재 의존 Redis 설정이 운영에서 확정되어 있지 않아 in-memory 정책을 유지했다.
+- 수정한 주요 파일:
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - `src/v2/ai-chat/services/ai-chat-job-registry.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-rate-limit.service.ts`
+  - `src/v2/ai-chat/events/ai-chat-events.ts`
+  - `src/v2/ai-chat/services/*.spec.ts`
+  - `src/v2/ai-chat/ai-chat.module.ts`
+- 변경 내용:
+  - in-memory job map을 `AiChatJobRegistryService`로 이동
+  - 사용자/IP rate limit tracking과 cleanup을 `AiChatRateLimitService`로 이동
+  - gateway cleanup cron은 service 결과를 받아 timeout event를 emit하는 역할만 유지
+  - socket event 이름과 일부 payload 타입을 `events/ai-chat-events.ts`로 분리
+  - job registry/rate limit 단위 테스트 추가
+- Before/After:
+  - `ai-chat.gateway.ts`: 740줄 -> 567줄
+  - unit test: 5 suites/19 tests -> 7 suites/25 tests
+- 포트폴리오 평가 포인트:
+  - socket adapter 역할과 in-memory 정책 상태를 분리해 rate limit/job lifecycle을 독립 테스트 가능한 단위로 만들었다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - `src/v2/ai-chat/services/ai-chat-rate-limit.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-job-registry.service.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - WebSocket event 이름과 payload shape 유지
+  - event 이름은 상수로 이동
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 7 suites, 25 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - job registry는 기존 동작 보존을 위해 여전히 실제 등록 호출이 없다. acknowledge 기반 실행 플로우를 복구하려면 별도 요구사항 확인이 필요하다.
+  - in-memory rate limit은 multi-instance 배포에서 인스턴스별로 분리된다.
+- 다음 단계:
+  - Step 6에서 spreadsheet versioning, editLockVersion conflict, rollback 관련 테스트를 추가한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `refactor: AI 채팅 게이트웨이 상태 분리`

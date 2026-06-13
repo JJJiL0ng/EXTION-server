@@ -7,7 +7,9 @@ import { AiAgentModule } from '../ai-agent/ai-agent.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { TableDataJsonSaveModule } from '../sheet/_table-data-json-save/table-data-json-save.module';
 import { AiChatBranchService } from './services/ai-chat-branch.service';
+import { AiChatJobRegistryService } from './services/ai-chat-job-registry.service';
 import { AiChatMessageService } from './services/ai-chat-message.service';
+import { AiChatRateLimitService } from './services/ai-chat-rate-limit.service';
 import { AiChatSpreadsheetContextService } from './services/ai-chat-spreadsheet-context.service';
 import { AiChatUserService } from './services/ai-chat-user.service';
 
@@ -27,6 +29,8 @@ import { AiChatUserService } from './services/ai-chat-user.service';
     AiChatBranchService,
     AiChatSpreadsheetContextService,
     AiChatMessageService,
+    AiChatJobRegistryService,
+    AiChatRateLimitService,
   ],
   exports: [AiChatService],
 })
