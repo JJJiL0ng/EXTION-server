@@ -9,11 +9,13 @@ import {
   PrismaServiceMock,
 } from '../../../../test/prisma-service.mock';
 import { UserService } from '../../user/user.service';
+import { SpreadsheetRepository } from '../repositories/spreadsheet.repository';
 
 describe('TableDataJsonSaveService', () => {
   let service: TableDataJsonSaveService;
   let prisma: PrismaServiceMock;
   let userService: jest.Mocked<Pick<UserService, 'validateUser'>>;
+  let spreadsheetRepository: SpreadsheetRepository;
 
   beforeEach(() => {
     prisma = createPrismaServiceMock();
@@ -21,8 +23,9 @@ describe('TableDataJsonSaveService', () => {
     userService = {
       validateUser: jest.fn().mockResolvedValue(undefined),
     };
+    spreadsheetRepository = new SpreadsheetRepository(prisma);
     service = new TableDataJsonSaveService(
-      prisma,
+      spreadsheetRepository,
       userService as unknown as UserService,
     );
   });

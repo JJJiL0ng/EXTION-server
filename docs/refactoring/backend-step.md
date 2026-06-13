@@ -367,4 +367,67 @@
 - 다음 단계:
   - Step 7에서 Prisma query를 repository 계층으로 분리하고 transaction client 전달 패턴을 정리한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `test: 시트 버전 관리 회귀 테스트 추가`
+  - `f0a1c92 test: 시트 버전 관리 회귀 테스트 추가`
+
+## Step 7. Prisma repository 계층 도입
+
+- 상태: 완료
+- 브랜치: `backend/refactor-007-prisma-repositories`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - service use case와 Prisma delegate 호출을 분리해 transaction 안에서 어떤 query가 실행되는지 repository 경계로 모은다.
+- 기존 문제:
+  - `TableDataJsonSaveService`, `AiChatBranchService`, `AiChatMessageService`가 Prisma delegate shape를 직접 들고 있었다.
+  - transaction client를 넘기는 패턴이 service 내부 `tx.*` 호출로 퍼져 있어 query 위치와 use case 판단이 섞였다.
+- 설계 판단:
+  - Step 6에서 테스트로 고정한 sheet versioning/rollback/message 저장 경로부터 repository로 이동했다.
+  - transaction 순서와 예외 매핑은 service에 남기고, Prisma 호출 shape만 repository가 소유하게 했다.
+  - `AiChatSpreadsheetContextService` read-only context load와 `AiChatUserService` user auto-create는 다음 repository 확장 범위로 남겼다.
+- 대안과 트레이드오프:
+  - 모든 Prisma 호출을 한 번에 repository로 이동할 수도 있지만, schema-converter까지 포함하면 리뷰 범위가 커져 회귀 원인 추적이 어려워진다.
+  - repository가 transaction을 완전히 숨길 수도 있지만, 현재 use case에서는 transaction 안의 실행 순서가 중요해 service에 orchestration을 남겼다.
+- 수정한 주요 파일:
+  - `src/v2/sheet/repositories/spreadsheet.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-branch.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-message.repository.ts`
+  - `src/v2/sheet/_table-data-json-save/table-data-json-save.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - 관련 module/spec 파일
+- 변경 내용:
+  - spreadsheet create/version/head update/load/history/rename query를 `SpreadsheetRepository`로 이동
+  - chat/session/branch/rollback query를 `AiChatBranchRepository`로 이동
+  - chat/message 저장과 owned chat 조회를 `AiChatMessageRepository`로 이동
+  - repository provider를 `AiChatModule`, `TableDataJsonSaveModule`에 등록
+  - 기존 service 테스트는 실제 repository 인스턴스와 Prisma mock을 같이 사용하도록 조정
+- Before/After:
+  - `table-data-json-save.service.ts`: 384줄 -> 311줄
+  - 신규 repository: 3개, 총 388줄
+  - unit test 수: 9 suites/33 tests 유지
+- 포트폴리오 평가 포인트:
+  - transaction orchestration과 Prisma delegate 호출 책임을 분리해 repository 단위 확장과 query 검토가 가능해졌다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/sheet/repositories/spreadsheet.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-branch.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-message.repository.ts`
+- DB/Prisma 영향:
+  - schema 변경 없음
+  - query shape는 기존 테스트 기준으로 유지
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 성공. 9 suites, 33 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+- 남은 리스크:
+  - `AiChatUserService`, `AiChatSpreadsheetContextService`, schema-converter 서비스에는 Prisma 직접 호출이 남아 있다.
+  - repository client 타입은 아직 `any`를 포함한다. Prisma transaction client 타입 정리는 strict TS 강화 단계에서 이어간다.
+- 다음 단계:
+  - Step 8에서 반복된 LLM model 생성 로직을 factory로 통합한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `refactor: Prisma repository 경계 도입`

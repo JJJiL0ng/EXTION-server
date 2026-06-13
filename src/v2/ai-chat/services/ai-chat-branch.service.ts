@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
+import { AiChatBranchRepository } from '../repositories/ai-chat-branch.repository';
 
 export interface RollbackBranchResult {
   spreadSheetVersionId: string;
@@ -17,21 +17,18 @@ export interface ActiveBranchResult {
 export class AiChatBranchService {
   private readonly logger = new Logger(AiChatBranchService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly branchRepository: AiChatBranchRepository) {}
 
   async rollPreviousMessage(
     spreadSheetId: string,
     chatSessionId: string,
     chatSessionBranchId: string,
   ): Promise<RollbackBranchResult> {
-    return await this.prisma.$transaction(async (tx) => {
-      const currentBranch = await tx.chatSessionBranch.findUnique({
-        where: { id: chatSessionBranchId },
-        select: {
-          parentBranchId: true,
-          chatSessionId: true,
-        },
-      });
+    return await this.branchRepository.transaction(async (tx) => {
+      const currentBranch = await this.branchRepository.findBranchForRollback(
+        chatSessionBranchId,
+        tx,
+      );
 
       if (!currentBranch) {
         throw new Error(`ChatSessionBranch with id ${chatSessionBranchId} not found`);
@@ -41,28 +38,21 @@ export class AiChatBranchService {
         throw new Error(`Cannot roll back: ChatSessionBranch ${chatSessionBranchId} has no parent branch`);
       }
 
-      const parentBranch = await tx.chatSessionBranch.findUnique({
-        where: { id: currentBranch.parentBranchId },
-        select: {
-          id: true,
-          spreadSheetVersionId: true,
-        },
-      });
+      const parentBranch = await this.branchRepository.findParentBranchForRollback(
+        currentBranch.parentBranchId,
+        tx,
+      );
 
       if (!parentBranch) {
         throw new Error(`Parent branch with id ${currentBranch.parentBranchId} not found`);
       }
 
-      await tx.chatSession.update({
-        where: { id: chatSessionId },
-        data: { latestBranchId: parentBranch.id },
-      });
+      await this.branchRepository.updateSessionLatestBranch(chatSessionId, parentBranch.id, tx);
 
-      const updatedSpreadSheet = await tx.spreadSheet.update({
-        where: { id: spreadSheetId },
-        data: { editLockVersion: { increment: 1 } },
-        select: { editLockVersion: true },
-      });
+      const updatedSpreadSheet = await this.branchRepository.incrementSpreadsheetEditLockVersion(
+        spreadSheetId,
+        tx,
+      );
 
       return {
         spreadSheetVersionId: parentBranch.spreadSheetVersionId || '',
@@ -80,10 +70,7 @@ export class AiChatBranchService {
       let targetSessionId = chatSessionId;
 
       if (!targetSessionId) {
-        const basicChat = await this.prisma.chat.findUnique({
-          where: { id: chatId },
-          select: { latestChatSessionId: true },
-        });
+        const basicChat = await this.branchRepository.findChatLatestSession(chatId);
         targetSessionId = basicChat?.latestChatSessionId ?? undefined;
       }
 
@@ -92,21 +79,10 @@ export class AiChatBranchService {
         return [];
       }
 
-      const session = await this.prisma.chatSession.findFirst({
-        where: {
-          id: targetSessionId,
-          chatId: chatId,
-        },
-        include: {
-          branches: {
-            include: {
-              messages: {
-                orderBy: { createdAt: 'asc' },
-              },
-            },
-          },
-        },
-      });
+      const session = await this.branchRepository.findSessionWithBranches(
+        chatId,
+        targetSessionId,
+      );
 
       if (!session) {
         this.logger.log(`지정된 채팅 세션을 찾을 수 없음 - chatId: ${chatId}, sessionId: ${targetSessionId}`);
@@ -153,67 +129,41 @@ export class AiChatBranchService {
     userId: string,
     tx: any,
   ): Promise<ActiveBranchResult> {
-    let chat = await tx.chat.findUnique({
-      where: { id: chatId },
-    });
+    let chat = await this.branchRepository.findChat(chatId, tx);
 
     if (!chat) {
       this.logger.log(`Chat not found, creating new chat: ${chatId}`);
 
-      chat = await tx.chat.create({
-        data: {
-          id: chatId,
-          title: '새 채팅',
-          status: 'ACTIVE',
-          messageCount: 0,
-          spreadSheetId: spreadSheetId,
-          userId: userId,
-        },
-      });
+      chat = await this.branchRepository.createChat({
+        id: chatId,
+        title: '새 채팅',
+        status: 'ACTIVE',
+        messageCount: 0,
+        spreadSheetId: spreadSheetId,
+        userId: userId,
+      }, tx);
 
       this.logger.log(`새 Chat 생성 완료: ${chatId}, spreadSheetId: ${spreadSheetId}`);
     }
 
-    const session: any = await tx.chatSession.upsert({
-      where: {
-        id: chatSessionId,
-      },
-      update: {
-        chatId: chatId,
-      },
-      create: {
-        id: chatSessionId,
-        chatId: chatId,
-        name: '새 대화',
-      },
-    });
+    const session: any = await this.branchRepository.upsertSession(chatId, chatSessionId, tx);
 
-    await tx.chat.update({
-      where: { id: chatId },
-      data: { latestChatSessionId: session.id },
-    });
+    await this.branchRepository.updateChatLatestSession(chatId, session.id, tx);
 
     this.logger.log(`ChatSession 준비됨 - sessionId: ${session.id}`);
 
     let branch: any = null;
     if (session.latestBranchId) {
-      branch = await tx.chatSessionBranch.findUnique({
-        where: { id: session.latestBranchId },
-      });
+      branch = await this.branchRepository.findBranch(session.latestBranchId, tx);
     }
 
     if (!branch) {
-      branch = await tx.chatSessionBranch.create({
-        data: {
-          chatSessionId: session.id,
-          parentBranchId: null,
-        },
-      });
+      branch = await this.branchRepository.createBranch({
+        chatSessionId: session.id,
+        parentBranchId: null,
+      }, tx);
 
-      await tx.chatSession.update({
-        where: { id: session.id },
-        data: { latestBranchId: branch.id },
-      });
+      await this.branchRepository.updateSessionLatestBranch(session.id, branch.id, tx);
 
       this.logger.log(`새 ChatSessionBranch 생성됨 - branchId: ${branch.id}`);
     }

@@ -4,15 +4,18 @@ import {
   mockPrismaTransaction,
   PrismaServiceMock,
 } from '../../../../test/prisma-service.mock';
+import { AiChatBranchRepository } from '../repositories/ai-chat-branch.repository';
 
 describe('AiChatBranchService', () => {
   let service: AiChatBranchService;
   let prisma: PrismaServiceMock;
+  let branchRepository: AiChatBranchRepository;
 
   beforeEach(() => {
     prisma = createPrismaServiceMock();
     mockPrismaTransaction(prisma);
-    service = new AiChatBranchService(prisma);
+    branchRepository = new AiChatBranchRepository(prisma);
+    service = new AiChatBranchService(branchRepository);
   });
 
   it('rolls back to the parent branch and increments spreadsheet editLockVersion', async () => {
