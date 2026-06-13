@@ -430,4 +430,63 @@
 - 다음 단계:
   - Step 8에서 반복된 LLM model 생성 로직을 factory로 통합한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `refactor: Prisma repository 경계 도입`
+  - `3d403de refactor: Prisma repository 경계 도입`
+
+## Step 8. LLM model factory 통합
+
+- 상태: 완료
+- 브랜치: `backend/refactor-008-llm-model-factory`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - `ChatGoogleGenerativeAI` 생성 로직을 factory로 통합해 모델 alias, 기본 옵션, use-case override를 한 곳에서 관리한다.
+- 기존 문제:
+  - `AiAgentService`, `MappingService`, `MappingScriptMakerService`, `MultiturnChattingService`가 각각 `GOOGLE_API_KEY`와 모델 옵션을 반복해서 읽었다.
+  - Extion alias와 실제 Gemini model name 매핑이 서비스마다 코드로 흩어져 있었다.
+- 설계 판단:
+  - `LlmModelFactoryService`는 alias 기본값을 제공하고, mapping/script/multiturn처럼 temperature/max token/retry가 다른 경우 override를 받게 했다.
+  - 기존 model name, temperature, token, retry 값은 변경하지 않았다.
+  - factory config는 순수 함수 `resolveLlmModelConfig`로 분리해 API key 없이 단위 테스트했다.
+- 대안과 트레이드오프:
+  - 모델 인스턴스를 singleton cache로 공유할 수도 있지만, LangChain model 객체의 상태/옵션 변경 가능성을 검토하지 않았으므로 이번 단계에서는 생성 경계만 통합했다.
+  - 모델 옵션을 env로 모두 빼는 방법도 있지만 운영 설정 surface가 커져 alias 기반 코드 config를 먼저 선택했다.
+- 수정한 주요 파일:
+  - `src/v2/ai-agent/model/llm-model-factory.service.ts`
+  - `src/v2/ai-agent/model/llm-model-factory.service.spec.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/schema-converter/mapping/*.service.ts`
+  - 관련 module 파일
+- 변경 내용:
+  - `LlmModelAlias`와 alias별 기본 모델 설정 추가
+  - `AiAgentModule`에서 factory provider export
+  - schema-converter/mapping 모듈에서 factory provider import
+  - 기존 서비스의 `new ChatGoogleGenerativeAI` 직접 생성 제거
+- Before/After:
+  - `new ChatGoogleGenerativeAI`: 16곳 -> 1곳
+  - unit test: 9 suites/33 tests -> 10 suites/36 tests
+- 포트폴리오 평가 포인트:
+  - AI provider 설정을 한 경계로 모아 테스트 가능한 model alias 계약을 만들었다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-agent/model/llm-model-factory.service.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/schema-converter/mapping/mapping.service.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - 없음
+  - AI model option 값은 기존과 동일하게 유지
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 성공. 10 suites, 36 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+- 남은 리스크:
+  - factory는 아직 Google provider 전용이다. Anthropic/OpenAI provider 추상화는 실제 사용처가 정리된 뒤 다루는 편이 안전하다.
+  - model instance caching은 하지 않았다.
+- 다음 단계:
+  - Step 9에서 error payload와 logging 정책을 정리한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `refactor: LLM 모델 factory 통합`

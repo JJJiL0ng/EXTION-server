@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { routeAndRunSingleTask } from './task-run-route/routeAndRunSingleTask';
@@ -12,6 +11,7 @@ import { createTaskManagerRunnable } from './runnables/task_manager/task_manager
 import { createFileNameMakerRunnable } from './runnables/fileNameMaker/fileNameMaker.runnable';
 
 import { aiModelType } from 'src/v2/ai-chat/types/aiChat.types';
+import { LlmModelFactoryService } from './model/llm-model-factory.service';
 
 @Injectable()
 export class AiAgentService {
@@ -24,67 +24,23 @@ export class AiAgentService {
   private readonly TaskManagerModel: ChatGoogleGenerativeAI; // task manager 전용 모델
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly llmModelFactory: LlmModelFactoryService,
     // private readonly cacheService: TableDataCacheService,
   ) {
     // LLM 초기화 - Gemini 2.5 Flash-lite 스트리밍 설정
-    this.geminiSmall = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.5-flash-lite',
-      temperature: 0.3,
-      maxOutputTokens: 8000,
-      streaming: false,  // 스트리밍 비활성화
-    });
-
-    this.geminiNormal = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.5-flash',
-      temperature: 0.3,
-      maxOutputTokens: 6000,
-      streaming: false, // 스트리밍 비활성화
-    });
-
-    this.geminiLarge = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.5-pro',
-      temperature: 0.3,
-      maxOutputTokens: 8000,
-      streaming: false,  // 스트리밍 비활성화
-    });
+    this.geminiSmall = this.llmModelFactory.create('gemini-small');
+    this.geminiNormal = this.llmModelFactory.create('gemini-normal');
+    this.geminiLarge = this.llmModelFactory.create('gemini-large');
     //----------------------------------------------------------------
     // LLM 초기화 - Extion 1.0 Large
     //----------------------------------------------------------------
-    this.ExtionLarge = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.5-flash', 
-      temperature: 0.3,
-      maxOutputTokens: 8000,
-      streaming: false,  // 스트리밍 비활성화
-    });
-     this.ExtionMedium = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.5-flash-lite', 
-      temperature: 0.3,
-      maxOutputTokens: 8000,
-      streaming: false,  // 스트리밍 비활성화
-    });
-     this.ExtionSmall = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.0-flash-lite', 
-      temperature: 0.3,
-      maxOutputTokens: 8000,
-      streaming: false,  // 스트리밍 비활성화
-    });
+    this.ExtionLarge = this.llmModelFactory.create('extion-large');
+    this.ExtionMedium = this.llmModelFactory.create('extion-medium');
+    this.ExtionSmall = this.llmModelFactory.create('extion-small');
     //----------------------------------------------------------------
     // task manager 전용 튜닝 모델
     //----------------------------------------------------------------
-    this.TaskManagerModel = new ChatGoogleGenerativeAI({
-      apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-      model: 'gemini-2.5-flash-lite',
-      temperature: 0.1,
-      maxOutputTokens: 8000,
-      streaming: false,  // 스트리밍 비활성화
-    });
+    this.TaskManagerModel = this.llmModelFactory.create('task-manager');
 
     
   }
