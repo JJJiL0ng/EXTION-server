@@ -183,4 +183,68 @@
 - 다음 단계:
   - Step 4에서 `AiChatService`의 메시지/브랜치/시트 컨텍스트 책임을 분리한다.
 - 관련 커밋/PR:
-  - 로컬 커밋 예정: `feat: 백엔드 환경 설정 검증 추가`
+  - `c2d59a5 feat: 백엔드 환경 설정 검증 추가`
+
+## Step 4. AiChatService 경계 분리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-004-ai-chat-service-boundary`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - `AiChatService`가 맡던 message save/load, branch lineage, spreadsheet context load 책임을 분리하고 기존 gateway-facing public API는 유지한다.
+- 기존 문제:
+  - `ai-chat.service.ts`가 AI task 실행, 시트 JSONB 로드, 메시지 저장, 브랜치 생성/계보 추적, rollback을 동시에 담당했다.
+  - private method가 많아 branch/message 로직을 단위 테스트하기 어렵고, transaction client 전달 위치가 한 파일 안에 섞여 있었다.
+- 설계 판단:
+  - 기존 gateway 호출부가 쓰는 `AiChatService` method signature는 유지하고 facade로 축소했다.
+  - DB query 위치는 service 단위로 이동하되 schema와 response shape는 바꾸지 않았다.
+  - repository 추출은 Step 7 범위로 남기고, 이번 단계는 application service 경계 분리에 집중했다.
+- 대안과 트레이드오프:
+  - 파일 이동과 repository 도입을 한 번에 할 수도 있지만, query abstraction과 동작 보존 검증이 섞여 리뷰 범위가 커진다.
+  - branch/message를 하나의 service로 묶을 수도 있지만 rollback과 lineage는 이후 gateway job lifecycle에서도 재사용될 가능성이 있어 별도 service로 뺐다.
+- 수정한 주요 파일:
+  - `src/v2/ai-chat/ai-chat.service.ts`
+  - `src/v2/ai-chat/ai-chat.service.spec.ts`
+  - `src/v2/ai-chat/services/ai-chat-user.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-spreadsheet-context.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - `src/v2/ai-chat/ai-chat.module.ts`
+- 변경 내용:
+  - `AiChatService`를 AI task 실행과 public facade 역할로 축소
+  - user auto-create, active branch 생성, branch lineage, rollback을 별도 service로 이동
+  - 시트 JSONB 로드와 새 버전 데이터 필터링을 `AiChatSpreadsheetContextService`로 이동
+  - user/assistant message 저장과 chat history 변환을 `AiChatMessageService`로 이동
+  - facade delegation 단위 테스트 추가
+- Before/After:
+  - `ai-chat.service.ts`: 937줄 -> 131줄
+  - 신규 내부 service: 4개, 총 794줄
+  - unit test: 4 suites/16 tests -> 5 suites/19 tests
+- 포트폴리오 평가 포인트:
+  - gateway-facing 계약을 유지하면서 application service 책임을 리뷰 가능한 단위로 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-chat/ai-chat.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.ts`
+- DB/Prisma 영향:
+  - schema 변경 없음
+  - query 실행 위치만 `AiChatService`에서 내부 service로 이동
+- API/WebSocket 영향:
+  - 기존 `AiChatService` public method signature 유지
+  - WebSocket event payload shape 변경 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 5 suites, 19 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - message/branch service 내부 로직은 이동 중심이라 세부 케이스 테스트가 아직 부족하다.
+  - `any` 기반 transaction client 전달은 유지했으며, Step 7 repository 도입 때 타입 경계를 다시 다룬다.
+- 다음 단계:
+  - Step 5에서 `AiChatGateway`의 job registry와 socket rate limit 책임을 분리한다.
+- 관련 커밋/PR:
+  - 로컬 커밋 예정: `refactor: AI 채팅 서비스 경계 분리`
