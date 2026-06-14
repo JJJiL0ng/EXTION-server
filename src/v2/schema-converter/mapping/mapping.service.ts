@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createMappingSuggestionRunnable } from './mapping-agent/runnable/mappingSuggestion.runnable';
 import { sheetNameParser } from './../mapping/mapping-agent/sheetParser/sheetNameParser';
+import { LlmModelFactoryService } from 'src/v2/ai-agent/model/llm-model-factory.service';
 
 export type ModelType = 'small' | 'normal' | 'large';
 
@@ -25,33 +25,17 @@ export class MappingService {
     private readonly geminiSmall: ChatGoogleGenerativeAI; // 2.5 flash-lite
 
     constructor(
-        private readonly configService: ConfigService,
+        private readonly llmModelFactory: LlmModelFactoryService,
     ) {
-        this.geminiNormal = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-flash',
+        const mappingOverrides = {
             temperature: 0.1,
-            maxOutputTokens: 6000,
-            streaming: false, // 스트리밍 비활성화
-            maxRetries: 2, // 재시도 2회
-        });
+            streaming: false,
+            maxRetries: 2,
+        };
 
-        this.geminiLarge = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-pro', // 복잡한 매핑 분석용 large model
-            temperature: 0.1,
-            maxOutputTokens: 8000,
-            streaming: false, // 스트리밍 비활성화
-            maxRetries: 2, // 재시도 2회
-        });
-        this.geminiSmall = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-flash-lite', // 간단한 매핑 분석용 small model
-            temperature: 0.1,
-            maxOutputTokens: 8000,
-            streaming: false, // 스트리밍 비활성화
-            maxRetries: 2, // 재시도 2회
-        });
+        this.geminiNormal = this.llmModelFactory.create('gemini-normal', mappingOverrides);
+        this.geminiLarge = this.llmModelFactory.create('gemini-large', mappingOverrides);
+        this.geminiSmall = this.llmModelFactory.create('gemini-small', mappingOverrides);
     }
 
     /**

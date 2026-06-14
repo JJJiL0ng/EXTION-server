@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { validateEnv } from './common/config/env.validation';
 import { PrismaModule } from './v2/prisma/prisma.module';
 import { AuthModule } from './v2/auth/_auth/auth.module';
 
@@ -18,6 +19,7 @@ import { SchemaConverterModule } from './v2/schema-converter/schema-converter.mo
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
+      validate: validateEnv,
     }),
     PrismaModule,
     AuthModule,

@@ -2,9 +2,9 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { createMultiturnMappingRunnable } from '../mapping-agent/runnable/multiturnMapping.runnable';
 import { editScriptReqDto, editScriptResDto } from './dto/editScript.dto';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { sheetNameParser } from '../mapping-agent/sheetParser/sheetNameParser';
+import { LlmModelFactoryService } from 'src/v2/ai-agent/model/llm-model-factory.service';
 
 @Injectable()
 export class MultiturnChattingService {
@@ -15,35 +15,19 @@ export class MultiturnChattingService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly configService: ConfigService,
+        private readonly llmModelFactory: LlmModelFactoryService,
     ) {
         // AI 모델 초기화
-        this.geminiNormal = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-flash',
+        const multiturnOverrides = {
             temperature: 0.0,
-            maxOutputTokens: 16384,
             streaming: false,
+            maxOutputTokens: 16384,
             maxRetries: 2,
-        });
+        };
 
-        this.geminiLarge = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-pro',
-            temperature: 0.0,
-            maxOutputTokens: 16384,
-            streaming: false,
-            maxRetries: 2,
-        });
-
-        this.geminiSmall = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-flash-lite',
-            temperature: 0.0,
-            maxOutputTokens: 16384,
-            streaming: false,
-            maxRetries: 2,
-        });
+        this.geminiNormal = this.llmModelFactory.create('gemini-normal', multiturnOverrides);
+        this.geminiLarge = this.llmModelFactory.create('gemini-large', multiturnOverrides);
+        this.geminiSmall = this.llmModelFactory.create('gemini-small', multiturnOverrides);
     }
 
     /**

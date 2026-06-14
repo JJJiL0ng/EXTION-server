@@ -8,7 +8,7 @@ import {
 } from '../runnables/data_edit/data_edit.runnable';
 
 import { Task, TaskType } from '../types/taskManager.types';
-import { dataEditChatRes, dataEditCommand, dataEditCommandType } from '../types/dataEdit.types';
+import { dataEditCommand, dataEditCommandType } from '../types/dataEdit.types';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { Runnable } from '@langchain/core/runnables';
 
@@ -99,13 +99,6 @@ export async function routeAndRunSingleTask(
     }
     const whatToDo = task.description;
 
-    // 선택된 러너블 실행
-    console.log('DEBUG: Invoking runnable with:', {
-        previousMessages: previousMessages?.length ? `${previousMessages.length} messages` : 'no messages',
-        question: question?.substring(0, 100) + '...',
-        dataContextLength: dataContext?.length || 0
-    });
     const result = await runnable!.invoke({ whatToDo, question, previousMessages, dataContext });
-    // 결과는 dataEditChatRes 형태를 기대함({ dataEditCommands: [...] })
     return result as TaskRouterOutput;
 }

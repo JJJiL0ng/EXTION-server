@@ -23,10 +23,6 @@ export function createMappingScriptMakerRunnable(model: BaseChatModel): Runnable
     .pipe(model)
     .pipe(parser)
     .pipe((output: string) => {
-      console.log('DEBUG: Raw LLM output (length:', output.length, ')');
-      console.log('DEBUG: First 300 chars:', output.substring(0, 300));
-      console.log('DEBUG: Last 300 chars:', output.substring(Math.max(0, output.length - 300)));
-
       // JSON 코드블록 추출 (```json ... ``` 형식)
       let jsonString = output.trim();
 
@@ -51,7 +47,6 @@ export function createMappingScriptMakerRunnable(model: BaseChatModel): Runnable
 
         // 필수 필드 검증 (새로운 형식: source_sheet, target_sheet, mappings)
         if (!mappingScript.source_sheet || !mappingScript.target_sheet || !Array.isArray(mappingScript.mappings)) {
-          console.warn('DEBUG: Invalid mapping script structure');
           throw new Error('Invalid mapping script structure: missing required fields (source_sheet, target_sheet, or mappings array)');
         }
 
@@ -65,18 +60,12 @@ export function createMappingScriptMakerRunnable(model: BaseChatModel): Runnable
         );
 
         if (!isValidMapping) {
-          console.warn('DEBUG: Invalid mapping items structure');
           throw new Error('Invalid mapping items: each mapping must have source_row, source_col, target_row, target_col as numbers');
         }
-
-        console.log('DEBUG: Mapping script parsed successfully with', mappingScript.mappings.length, 'mappings');
 
         // 검증된 JSON을 문자열로 반환
         return JSON.stringify(mappingScript, null, 2);
       } catch (error) {
-        console.error('DEBUG: Failed to parse mapping script JSON:', error);
-        console.error('DEBUG: Attempted to parse (first 500 chars):', jsonString.substring(0, 500));
-        console.error('DEBUG: Attempted to parse (last 500 chars):', jsonString.substring(Math.max(0, jsonString.length - 500)));
         throw new Error(`Failed to parse mapping script: ${error.message}`);
       }
     });
@@ -96,8 +85,6 @@ function fixIncompleteJson(jsonString: string): string {
 
   // m 배열이 닫히지 않은 경우
   if (lastBracketIndex > lastArrayBracketIndex && !jsonString.trim().endsWith('}')) {
-    console.warn('DEBUG: Detected incomplete JSON - attempting to fix');
-
     // 마지막 완전한 객체를 찾기
     const lastCompleteObjectEnd = jsonString.lastIndexOf('}');
     if (lastCompleteObjectEnd !== -1) {
