@@ -1,17 +1,14 @@
 // src/v2/sheet/table-data-json-save/table-data-json-save.service.ts
 
 import { Injectable, Logger, BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { UserService } from '../../user/user.service';
-import { SpreadSheetStatus } from '@prisma/client';
 import { CreateSpreadSheetDto } from './dto/table-data-json-save.dto';
 import {
   LoadSpreadSheetResponse,
-  DeleteResponse,
-  SpreadSheetListItem,
   createSafeError,
   AddNewVersionSpreadSheetData
 } from '../types/spreadsheet.types';
+import { SpreadsheetRepository } from '../repositories/spreadsheet.repository';
 
 
 @Injectable()
@@ -19,7 +16,7 @@ export class TableDataJsonSaveService {
   private readonly logger = new Logger(TableDataJsonSaveService.name);
   
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly spreadsheetRepository: SpreadsheetRepository,
     private readonly userService: UserService,
   ) { }
 
@@ -39,45 +36,33 @@ export class TableDataJsonSaveService {
       jsonData = dto.jsonData;
 
       // 5. 트랜잭션으로 생성
-      const result = await this.prisma.$transaction(async (tx) => {
+      const result = await this.spreadsheetRepository.transaction(async (tx) => {
         // SpreadSheet 생성 - 프론트엔드에서 제공한 ID 사용
-        const spreadSheet = await tx.spreadSheet.create({
-          data: {
-            id: dto.spreadsheetId, // 프론트엔드에서 제공한 ID 사용
-            fileName: dto.fileName,
-            userId: dto.userId,
-            editLockVersion: 1, // 낙관적 잠금용
-            status: SpreadSheetStatus.ACTIVE
-          }
-        });
+        const spreadSheet = await this.spreadsheetRepository.createSpreadSheet({
+          id: dto.spreadsheetId,
+          fileName: dto.fileName,
+          userId: dto.userId,
+          editLockVersion: 1,
+        }, tx);
 
         // 초기 버전 생성 (parentId가 null인 첫 번째 버전)
-        const sheetVersionData = await tx.spreadSheetVersionData.create({
-          data: {
-            spreadSheetId: spreadSheet.id,
-            parentId: null, // 첫 번째 버전이므로 부모 없음
-            authorId: dto.userId, // 작성자 설정
-            name: null, // 기본 버전은 이름 없음
-            data: jsonData as any, // JSON 객체 그대로 저장
-          }
-        });
+        const sheetVersionData = await this.spreadsheetRepository.createVersion({
+          spreadSheetId: spreadSheet.id,
+          parentId: null,
+          authorId: dto.userId,
+          name: null,
+          data: jsonData,
+        }, tx);
 
         // SpreadSheet의 headVersionId를 설정
-        await tx.spreadSheet.update({
-          where: { id: spreadSheet.id },
-          data: {
-            headVersionId: sheetVersionData.id
-          }
-        });
+        await this.spreadsheetRepository.updateHeadVersion(spreadSheet.id, sheetVersionData.id, tx);
 
         // Chat 생성 (1:1 관계) - 사용자가 제공한 chatId 사용
-        const chat = await tx.chat.create({
-          data: {
-            id: dto.chatId, // 사용자가 제공한 chatId를 직접 사용
-            spreadSheetId: spreadSheet.id,
-            userId: dto.userId,
-          }
-        });
+        const chat = await this.spreadsheetRepository.createChat({
+          id: dto.chatId,
+          spreadSheetId: spreadSheet.id,
+          userId: dto.userId,
+        }, tx);
 
         return { spreadSheet, sheetVersionDataId: sheetVersionData.id, chatId: chat.id };
       });
@@ -109,13 +94,10 @@ export class TableDataJsonSaveService {
       this.logger.log(`User validated: ${addNewVersionSpreadSheetData.userId}`);
 
       // 2. 스프레드시트 존재 및 권한 확인
-      const existingSpreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: addNewVersionSpreadSheetData.spreadSheetId,
-          userId: addNewVersionSpreadSheetData.userId,
-          status: SpreadSheetStatus.ACTIVE
-        }
-      });
+      const existingSpreadSheet = await this.spreadsheetRepository.findActiveByIdAndUser(
+        addNewVersionSpreadSheetData.spreadSheetId,
+        addNewVersionSpreadSheetData.userId,
+      );
 
       if (!existingSpreadSheet) {
         throw new NotFoundException('SpreadSheet not found or access denied');
@@ -127,34 +109,23 @@ export class TableDataJsonSaveService {
       }
 
       // 4. 트랜잭션으로 새 버전 생성 및 메타데이터 업데이트
-      const result = await this.prisma.$transaction(async (tx) => {
+      const result = await this.spreadsheetRepository.transaction(async (tx) => {
         // 새 버전 데이터 생성 (현재 헤드를 부모로 설정)
-        const newVersionData = await tx.spreadSheetVersionData.create({
-          data: {
-            spreadSheetId: addNewVersionSpreadSheetData.spreadSheetId,
-            parentId: existingSpreadSheet.headVersionId, // 현재 헤드를 부모로 설정
-            authorId: addNewVersionSpreadSheetData.userId, // 작성자 설정
-            name: null, // 자동 생성된 버전은 이름 없음
-            data: addNewVersionSpreadSheetData.jsonData as any,
-          }
-        });
+        const newVersionData = await this.spreadsheetRepository.createVersion({
+          spreadSheetId: addNewVersionSpreadSheetData.spreadSheetId,
+          parentId: existingSpreadSheet.headVersionId,
+          authorId: addNewVersionSpreadSheetData.userId,
+          name: null,
+          data: addNewVersionSpreadSheetData.jsonData,
+        }, tx);
 
         // 낙관적 잠금을 사용한 스프레드시트 업데이트
         try {
-          const updatedSpreadSheet = await tx.spreadSheet.update({
-            where: {
-              id: addNewVersionSpreadSheetData.spreadSheetId,
-              // ✅ 낙관적 잠금: 프론트엔드가 읽었던 버전과 현재 DB 버전이 일치할 때만 업데이트
-              editLockVersion: addNewVersionSpreadSheetData.editLockVersion
-            },
-            data: {
-              headVersionId: newVersionData.id, // 새로운 버전을 헤드로 설정
-              // ✅ 원자적 증가 연산 사용
-              editLockVersion: {
-                increment: 1
-              }
-            }
-          });
+          const updatedSpreadSheet = await this.spreadsheetRepository.updateHeadWithOptimisticLock({
+            spreadSheetId: addNewVersionSpreadSheetData.spreadSheetId,
+            headVersionId: newVersionData.id,
+            editLockVersion: addNewVersionSpreadSheetData.editLockVersion,
+          }, tx);
 
           return { spreadSheet: updatedSpreadSheet, versionData: newVersionData };
 
@@ -198,18 +169,10 @@ export class TableDataJsonSaveService {
       this.logger.log(`시트 데이터 존재 여부 확인 시작 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
 
       // 2. SpreadSheet 존재 및 권한 확인
-      const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: spreadSheetId,
-          userId: userId,
-          status: 'ACTIVE'
-        },
-        select: {
-          id: true,
-          headVersionId: true,
-          fileName: true
-        }
-      });
+      const spreadSheet = await this.spreadsheetRepository.findActiveByIdAndUser(
+        spreadSheetId,
+        userId,
+      );
 
       if (!spreadSheet) {
         this.logger.warn(`스프레드시트를 찾을 수 없거나 권한이 없음 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
@@ -236,13 +199,10 @@ export class TableDataJsonSaveService {
       await this.userService.validateUser(userId);
 
       // 2. 스프레드시트 존재 및 권한 확인
-      const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: spreadSheetId,
-          userId,
-          status: SpreadSheetStatus.ACTIVE
-        }
-      });
+      const spreadSheet = await this.spreadsheetRepository.findActiveByIdAndUser(
+        spreadSheetId,
+        userId,
+      );
 
       if (!spreadSheet) {
         throw new NotFoundException('SpreadSheet not found or access denied');
@@ -256,14 +216,7 @@ export class TableDataJsonSaveService {
       }
 
       // 4. 특정 버전의 데이터 조회
-      const versionData = await this.prisma.spreadSheetVersionData.findUnique({
-        where: {
-          id: targetVersionId
-        },
-        select: {
-          data: true
-        }
-      });
+      const versionData = await this.spreadsheetRepository.findVersionData(targetVersionId);
 
       if (!versionData) {
         throw new NotFoundException(`Version ${targetVersionId} not found for spreadsheet ${spreadSheetId}`);
@@ -294,35 +247,17 @@ export class TableDataJsonSaveService {
       await this.userService.validateUser(userId);
 
       // 스프레드시트 존재 및 권한 확인
-      const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: spreadSheetId,
-          userId,
-          status: SpreadSheetStatus.ACTIVE
-        }
-      });
+      const spreadSheet = await this.spreadsheetRepository.findActiveByIdAndUser(
+        spreadSheetId,
+        userId,
+      );
 
       if (!spreadSheet) {
         throw new NotFoundException('SpreadSheet not found or access denied');
       }
 
       // 모든 버전 데이터 조회 (최신부터)
-      const versions = await this.prisma.spreadSheetVersionData.findMany({
-        where: {
-          spreadSheetId: spreadSheetId
-        },
-        include: {
-          author: {
-            select: {
-              id: true,
-              displayName: true
-            }
-          }
-        },
-        orderBy: {
-          savedAt: 'desc'
-        }
-      });
+      const versions = await this.spreadsheetRepository.findVersionsBySpreadSheet(spreadSheetId);
 
       return versions.map(version => ({
         id: version.id,
@@ -351,13 +286,10 @@ export class TableDataJsonSaveService {
       await this.userService.validateUser(userId);
 
       // 2. 스프레드시트 존재 및 권한 확인
-      const spreadSheet = await this.prisma.spreadSheet.findFirst({
-        where: {
-          id: spreadSheetId,
-          userId: userId,
-          status: 'ACTIVE'
-        }
-      });
+      const spreadSheet = await this.spreadsheetRepository.findActiveByIdAndUser(
+        spreadSheetId,
+        userId,
+      );
 
       if (!spreadSheet) {
         this.logger.warn(`스프레드시트를 찾을 수 없거나 권한이 없음 - spreadSheetId: ${spreadSheetId}, userId: ${userId}`);
@@ -365,15 +297,7 @@ export class TableDataJsonSaveService {
       }
 
       // 3. 파일 이름 업데이트
-      await this.prisma.spreadSheet.update({
-        where: {
-          id: spreadSheetId
-        },
-        data: {
-          fileName: newFileName,
-          updatedAt: new Date()
-        }
-      });
+      await this.spreadsheetRepository.updateFileName(spreadSheetId, newFileName);
 
       this.logger.log(`파일 이름 변경 완료 - spreadSheetId: ${spreadSheetId}, oldFileName: ${spreadSheet.fileName}, newFileName: ${newFileName}`);
 

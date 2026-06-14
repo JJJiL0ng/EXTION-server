@@ -23,18 +23,12 @@ export function createMultiturnMappingRunnable(model: BaseChatModel): Runnable {
     .pipe(model)
     .pipe(parser)
     .pipe((output: string) => {
-      console.log('DEBUG: Raw LLM output (length:', output.length, ')');
-      console.log('DEBUG: First 300 chars:', output.substring(0, 300));
-      console.log('DEBUG: Last 300 chars:', output.substring(Math.max(0, output.length - 300)));
-
       // 마크다운 형식의 매핑 제안서를 그대로 반환
       const mappingSuggestion = output.trim();
 
       if (!mappingSuggestion) {
         throw new Error('Empty mapping suggestion received from AI');
       }
-
-      console.log('DEBUG: Mapping suggestion generated successfully (length:', mappingSuggestion.length, ')');
 
       return mappingSuggestion;
     });

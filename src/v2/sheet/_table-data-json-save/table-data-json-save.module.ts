@@ -7,6 +7,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { AiChatModule } from 'src/v2/ai-chat/ai-chat.module';
 import { RateLimitGuard } from './guards/rate-limit.guard';
 import { RateLimitCleanupService } from './services/rate-limit-cleanup.service';
+import { SpreadsheetRepository } from '../repositories/spreadsheet.repository';
 
 @Module({
   imports: [
@@ -16,7 +17,12 @@ import { RateLimitCleanupService } from './services/rate-limit-cleanup.service';
     forwardRef(() => AiChatModule),
   ],
   controllers: [TableDataJsonSaveController],
-  providers: [TableDataJsonSaveService, RateLimitGuard, RateLimitCleanupService],
+  providers: [
+    TableDataJsonSaveService,
+    SpreadsheetRepository,
+    RateLimitGuard,
+    RateLimitCleanupService,
+  ],
   exports: [TableDataJsonSaveService],
 })
 export class TableDataJsonSaveModule {}

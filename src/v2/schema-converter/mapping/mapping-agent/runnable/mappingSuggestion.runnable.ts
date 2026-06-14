@@ -23,17 +23,8 @@ export function createMappingSuggestionRunnable(model: BaseChatModel): Runnable 
     .pipe(model)
     .pipe(parser)
     .pipe((output: string) => {
-      console.log('DEBUG: Raw LLM output (length:', output.length, ')');
-      console.log('DEBUG: First 300 chars:', output.substring(0, 300));
-
       // 문자열 정리 (자연어 응답이므로 단순 trim만)
       const cleanedOutput = output.trim();
-
-      if (cleanedOutput) {
-        console.log('DEBUG: Mapping suggestion text generated (length:', cleanedOutput.length, ')');
-      } else {
-        console.warn('DEBUG: Empty output from LLM');
-      }
 
       return cleanedOutput;
     });

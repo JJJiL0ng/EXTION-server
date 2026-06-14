@@ -5,10 +5,10 @@ import {
     MappingScript,
 } from './dto/mappingScript.dto';
 import { PrismaService } from '../../../../v2/prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { createMappingScriptMakerRunnable } from '../mapping-agent/runnable/mappingScriptMaker.runable';
 import { sheetNameParser } from '../mapping-agent/sheetParser/sheetNameParser';
+import { LlmModelFactoryService } from 'src/v2/ai-agent/model/llm-model-factory.service';
 
 @Injectable()
 export class MappingScriptMakerService {
@@ -19,35 +19,19 @@ export class MappingScriptMakerService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly configService: ConfigService,
+        private readonly llmModelFactory: LlmModelFactoryService,
     ) {
         // AI 모델 초기화
-        this.geminiNormal = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-flash',
+        const scriptOverrides = {
             temperature: 0.0,
-            maxOutputTokens: 16384, // 증가: 큰 매핑 스크립트 지원
             streaming: false,
+            maxOutputTokens: 16384,
             maxRetries: 2,
-        });
+        };
 
-        this.geminiLarge = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-pro',
-            temperature: 0.0,
-            maxOutputTokens: 16384, // 증가: 큰 매핑 스크립트 지원
-            streaming: false,
-            maxRetries: 2,
-        });
-
-        this.geminiSmall = new ChatGoogleGenerativeAI({
-            apiKey: this.configService.get<string>('GOOGLE_API_KEY'),
-            model: 'gemini-2.5-flash-lite',
-            temperature: 0.0,
-            maxOutputTokens: 16384, // 증가: 큰 매핑 스크립트 지원
-            streaming: false,
-            maxRetries: 2,
-        });
+        this.geminiNormal = this.llmModelFactory.create('gemini-normal', scriptOverrides);
+        this.geminiLarge = this.llmModelFactory.create('gemini-large', scriptOverrides);
+        this.geminiSmall = this.llmModelFactory.create('gemini-small', scriptOverrides);
     }
 
     /**

@@ -1,0 +1,622 @@
+# 백엔드 리팩토링 작업 기록
+
+## 진행 원칙
+
+- 기준 브랜치: `refactor`
+- 작업 브랜치: `backend/refactor-NNN-topic`
+- 사유: 저장소에 `refactor` 브랜치가 이미 존재해 Git ref 충돌 때문에 `refactor/backend-...` 브랜치를 만들 수 없다.
+- 각 작업은 별도 브랜치에서 커밋한 뒤 `refactor`로 로컬 머지한다.
+
+## Step 1. 테스트 기준선 수집
+
+- 상태: 완료
+- 브랜치: `backend/refactor-001-test-baseline`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 서버 리팩토링 전에 현재 build/test/e2e 상태를 기준선으로 남긴다.
+- 기존 문제:
+  - unit test는 `test/jest-setup.ts`가 예전 Prisma 경로인 `src/prisma/prisma.service`를 mock해 실행 전에 실패한다.
+  - e2e test는 `test/jest-e2e.json`에 `src/*` alias 매핑이 없어 `src/v2/...` import를 해석하지 못한다.
+- 설계 판단:
+  - 이 단계에서는 테스트 설정을 바로 고치지 않고 실패를 기준선으로 기록했다.
+  - 실제 수정은 Step 2 테스트 fixture/mock 정리에서 다룬다.
+- 대안과 트레이드오프:
+  - 테스트 설정을 즉시 수정할 수 있지만, 기준선과 수정 결과가 한 커밋에 섞이면 기존 문제와 개선 효과가 분리되지 않는다.
+- 수정한 주요 파일:
+  - `docs/refactoring/backend-step.md`
+  - `../refactoring-guide/SOP/backend-step.md`
+- 변경 내용:
+  - Node/npm 버전과 build/test/e2e 결과 기록
+  - 브랜치 네이밍 충돌과 실제 작업 브랜치 규칙 기록
+- Before/After:
+  - Before: 서버 repo 안에 백엔드 리팩토링 기록 파일 없음
+  - After: 서버 repo에서 추적 가능한 기준선 기록 추가
+- 포트폴리오 평가 포인트:
+  - 기존 실패를 숨기지 않고 원인과 다음 수정 단위를 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `docs/refactoring/backend-step.md`
+  - `test/jest-setup.ts`
+  - `test/jest-e2e.json`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `node --version`: `v22.20.0`
+  - `npm --version`: `10.9.3`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 실패. `test/jest-setup.ts`의 `src/prisma/prisma.service` mock 경로가 현재 `src/v2/prisma/prisma.service.ts` 구조와 맞지 않음.
+  - `npm run test:e2e`: 실패. e2e Jest 설정에 `src/*` alias 매핑이 없어 `src/v2/ai-chat/ai-chat.service` import를 찾지 못함.
+- 남은 리스크:
+  - 테스트가 실행 전 설정 단계에서 실패하므로 실제 서비스 로직 회귀 여부는 아직 확인하지 못했다.
+- 다음 단계:
+  - Step 2에서 Jest alias와 Prisma mock 경로를 현재 구조에 맞추고, 테스트 fixture 기반을 정리한다.
+- 관련 커밋/PR:
+  - `700cb05 docs: 백엔드 기준선 문서 추가`
+
+## Step 2. 테스트 fixture와 Prisma mock 정리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-002-test-fixtures`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 기존 unit/e2e 테스트가 실행 전 설정 단계에서 실패하던 문제를 고치고, 서비스 테스트에서 재사용할 Prisma mock factory를 만든다.
+- 기존 문제:
+  - `test/jest-setup.ts`가 존재하지 않는 `src/prisma/prisma.service`와 legacy prompt/gemini module을 전역 mock했다.
+  - `UserService` spec은 `PrismaService` provider를 등록하지 않아 setup 경로를 고친 뒤에도 DI 실패가 날 구조였다.
+  - e2e Jest 설정은 `src/*` alias가 없어 AppModule import 경로를 해석하지 못했고, alias를 고치면 실제 DB 연결을 시도했다.
+- 설계 판단:
+  - 전역 `jest.mock` 대신 spec의 provider override로 Prisma 의존성을 명시했다.
+  - e2e `/` 테스트는 DB 기능 검증이 아니므로 `PrismaService`를 mock으로 override해 앱 부트스트랩과 라우팅 계약만 확인했다.
+  - LLM fake adapter는 이번 테스트 범위에서 사용처가 없어서 추가하지 않았다. AiAgent/AiChat service 테스트를 추가하는 단계에서 필요한 인터페이스에 맞춰 만든다.
+- 대안과 트레이드오프:
+  - `PrismaModule`을 unit spec에 import할 수도 있지만 실제 PrismaClient 초기화와 DB 연결 위험이 생긴다.
+  - 모든 Prisma delegate를 정교하게 타입화할 수도 있지만, 현재 목적은 테스트 실행 기준선 회복이므로 공통 delegate mock으로 시작했다.
+- 수정한 주요 파일:
+  - `test/prisma-service.mock.ts`
+  - `test/jest-setup.ts`
+  - `test/jest-e2e.json`
+  - `test/app.e2e-spec.ts`
+  - `src/v2/user/user.service.spec.ts`
+  - `src/v2/user/user.controller.spec.ts`
+- 변경 내용:
+  - 현재 `src/v2/prisma/prisma.service` 구조에 맞는 Prisma mock factory 추가
+  - stale 전역 mock 제거 후 `jest.clearAllMocks()`만 전역 setup에 유지
+  - e2e Jest `src/*` alias 매핑 추가
+  - e2e AppModule에서 `PrismaService`를 mock으로 override
+  - user service/controller 테스트를 defined 수준에서 create/unique conflict/guest validation/controller response 검증까지 확장
+- Before/After:
+  - Unit test: 실행 전 설정 실패 -> 2개 suite, 7개 test 통과
+  - E2E test: alias/DB 연결 실패 -> `/` GET 1개 test 통과
+- 포트폴리오 평가 포인트:
+  - 테스트가 DB와 legacy 전역 mock에 묶이지 않도록 의존성 주입 경계를 명시했다.
+- 리뷰어가 먼저 볼 파일:
+  - `test/prisma-service.mock.ts`
+  - `src/v2/user/user.service.spec.ts`
+  - `test/app.e2e-spec.ts`
+- DB/Prisma 영향:
+  - production schema 영향 없음
+  - 테스트에서만 PrismaClient 실제 연결을 피하도록 mock 사용
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 2 suites, 7 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - `$transaction` mock은 아직 실제 callback/array transaction 동작을 흉내 내지 않는다.
+  - Prisma delegate mock은 현재 테스트에 필요한 공통 메서드만 제공한다.
+- 다음 단계:
+  - Step 3에서 env/config 검증을 추가하고 config 단위 테스트를 만든다.
+- 관련 커밋/PR:
+  - `153bbd3 test: 백엔드 테스트 fixture 정리`
+
+## Step 3. Env/config 검증 추가
+
+- 상태: 완료
+- 브랜치: `backend/refactor-003-env-config`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 서버 시작 시 필수 env와 CORS/payload 설정을 검증 가능한 공통 config 경계로 분리한다.
+- 기존 문제:
+  - `main.ts`와 `ai-chat.gateway.ts`가 각각 다른 env key(`CORS_ORIGINS`, `ALLOWED_ORIGINS`)를 직접 읽었다.
+  - `PORT`, payload limit, 필수 DB/AI key 검증이 앱 시작 전에 명시적으로 수행되지 않았다.
+  - CORS wildcard 매칭 로직이 `main.ts` 안에 직접 들어 있어 단위 테스트가 어려웠다.
+- 설계 판단:
+  - 새 외부 validation 라이브러리를 추가하지 않고 순수 함수 validator를 `ConfigModule.forRoot({ validate })`에 연결했다.
+  - `NODE_ENV=test`에서는 e2e가 DB/API key 없이 AppModule을 부트스트랩할 수 있도록 필수 외부 env 검증을 완화했다.
+  - HTTP와 WebSocket CORS 모두 `getCorsOrigins`를 사용하게 하고, `CORS_ORIGINS`를 우선하되 legacy `ALLOWED_ORIGINS`를 fallback으로 유지했다.
+- 대안과 트레이드오프:
+  - Joi/Zod 도입도 가능하지만, 현재 검증 범위가 작고 의존성 추가 비용이 더 크다고 판단했다.
+  - Gateway decorator는 DI 시점보다 먼저 평가되므로 `ConfigService` 주입 대신 같은 순수 helper를 `process.env`와 함께 사용했다.
+- 수정한 주요 파일:
+  - `src/common/config/app-config.ts`
+  - `src/common/config/env.validation.ts`
+  - `src/common/config/*.spec.ts`
+  - `src/app.module.ts`
+  - `src/main.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+- 변경 내용:
+  - `DATABASE_URL`, `GOOGLE_API_KEY`, `PORT` env 검증 추가
+  - CORS origin 파싱, wildcard 매칭, 고정 origin 병합 helper 추가
+  - HTTP payload limit을 `JSON_BODY_LIMIT`, `URLENCODED_BODY_LIMIT` env로 분리하고 기본값은 기존 `10mb` 유지
+  - WebSocket gateway CORS도 공통 origin helper 사용
+  - config 단위 테스트 추가
+- Before/After:
+  - Before: CORS source가 HTTP/WS에서 분리되고 wildcard 매칭 테스트 없음
+  - After: HTTP/WS가 같은 CORS origin helper를 사용하고 config 테스트 9개 추가
+- 포트폴리오 평가 포인트:
+  - 운영 설정 실패를 앱 시작 단계에서 발견하도록 만들고, CORS/payload 정책을 단위 테스트 가능한 순수 함수로 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/common/config/env.validation.ts`
+  - `src/common/config/app-config.ts`
+  - `src/main.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+- DB/Prisma 영향:
+  - schema 영향 없음
+  - `NODE_ENV !== test`에서 `DATABASE_URL` 누락 시 앱 시작 실패
+- API/WebSocket 영향:
+  - API response shape 영향 없음
+  - HTTP/WS CORS origin source가 공통 helper로 통합됨
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 4 suites, 16 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - `ai-chat.gateway.ts`의 decorator는 여전히 프로세스 시작 시점의 env만 읽는다.
+  - CORS env key를 장기적으로 `CORS_ORIGINS` 하나로 정리하려면 배포 env에서 `ALLOWED_ORIGINS` 사용 여부를 확인해야 한다.
+- 다음 단계:
+  - Step 4에서 `AiChatService`의 메시지/브랜치/시트 컨텍스트 책임을 분리한다.
+- 관련 커밋/PR:
+  - `c2d59a5 feat: 백엔드 환경 설정 검증 추가`
+
+## Step 4. AiChatService 경계 분리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-004-ai-chat-service-boundary`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - `AiChatService`가 맡던 message save/load, branch lineage, spreadsheet context load 책임을 분리하고 기존 gateway-facing public API는 유지한다.
+- 기존 문제:
+  - `ai-chat.service.ts`가 AI task 실행, 시트 JSONB 로드, 메시지 저장, 브랜치 생성/계보 추적, rollback을 동시에 담당했다.
+  - private method가 많아 branch/message 로직을 단위 테스트하기 어렵고, transaction client 전달 위치가 한 파일 안에 섞여 있었다.
+- 설계 판단:
+  - 기존 gateway 호출부가 쓰는 `AiChatService` method signature는 유지하고 facade로 축소했다.
+  - DB query 위치는 service 단위로 이동하되 schema와 response shape는 바꾸지 않았다.
+  - repository 추출은 Step 7 범위로 남기고, 이번 단계는 application service 경계 분리에 집중했다.
+- 대안과 트레이드오프:
+  - 파일 이동과 repository 도입을 한 번에 할 수도 있지만, query abstraction과 동작 보존 검증이 섞여 리뷰 범위가 커진다.
+  - branch/message를 하나의 service로 묶을 수도 있지만 rollback과 lineage는 이후 gateway job lifecycle에서도 재사용될 가능성이 있어 별도 service로 뺐다.
+- 수정한 주요 파일:
+  - `src/v2/ai-chat/ai-chat.service.ts`
+  - `src/v2/ai-chat/ai-chat.service.spec.ts`
+  - `src/v2/ai-chat/services/ai-chat-user.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-spreadsheet-context.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - `src/v2/ai-chat/ai-chat.module.ts`
+- 변경 내용:
+  - `AiChatService`를 AI task 실행과 public facade 역할로 축소
+  - user auto-create, active branch 생성, branch lineage, rollback을 별도 service로 이동
+  - 시트 JSONB 로드와 새 버전 데이터 필터링을 `AiChatSpreadsheetContextService`로 이동
+  - user/assistant message 저장과 chat history 변환을 `AiChatMessageService`로 이동
+  - facade delegation 단위 테스트 추가
+- Before/After:
+  - `ai-chat.service.ts`: 937줄 -> 131줄
+  - 신규 내부 service: 4개, 총 794줄
+  - unit test: 4 suites/16 tests -> 5 suites/19 tests
+- 포트폴리오 평가 포인트:
+  - gateway-facing 계약을 유지하면서 application service 책임을 리뷰 가능한 단위로 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-chat/ai-chat.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.ts`
+- DB/Prisma 영향:
+  - schema 변경 없음
+  - query 실행 위치만 `AiChatService`에서 내부 service로 이동
+- API/WebSocket 영향:
+  - 기존 `AiChatService` public method signature 유지
+  - WebSocket event payload shape 변경 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 5 suites, 19 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - message/branch service 내부 로직은 이동 중심이라 세부 케이스 테스트가 아직 부족하다.
+  - `any` 기반 transaction client 전달은 유지했으며, Step 7 repository 도입 때 타입 경계를 다시 다룬다.
+- 다음 단계:
+  - Step 5에서 `AiChatGateway`의 job registry와 socket rate limit 책임을 분리한다.
+- 관련 커밋/PR:
+  - `d7a32db refactor: AI 채팅 서비스 경계 분리`
+
+## Step 5. AiChatGateway 경계 분리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-005-ai-chat-gateway-boundary`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - `AiChatGateway`가 직접 소유하던 job registry, rate limit map, event name 책임을 별도 경계로 분리한다.
+- 기존 문제:
+  - gateway가 socket handler와 in-memory job map, 사용자/IP rate limit map, cleanup cron 로직을 모두 직접 들고 있었다.
+  - rate limit 정책이 private method에 갇혀 있어 사용자/IP 제한과 cleanup 동작을 단위 테스트하기 어려웠다.
+  - emit 이벤트 이름이 문자열로 반복되어 event contract 변경 시 검색 의존도가 높았다.
+- 설계 판단:
+  - 현재 gateway에는 `jobs.set` 호출이 없어 acknowledge job queue 동작은 바꾸지 않고, 기존 map 소유권만 registry service로 이동했다.
+  - rate limit은 DB에 저장하지 않고 기존과 동일한 in-memory 정책을 유지했다. 분산 rate limit은 운영 인프라 판단이 필요해 이번 범위에서 제외했다.
+  - event payload shape는 바꾸지 않고 이벤트 이름 상수와 payload 타입만 분리했다.
+- 대안과 트레이드오프:
+  - gateway orchestration 전체를 application service로 옮길 수도 있지만, DB sync와 socket emit 순서가 섞여 있어 이번 PR에서는 상태 저장/정책 로직만 먼저 분리했다.
+  - Redis 기반 rate limit도 가능하지만 현재 의존 Redis 설정이 운영에서 확정되어 있지 않아 in-memory 정책을 유지했다.
+- 수정한 주요 파일:
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - `src/v2/ai-chat/services/ai-chat-job-registry.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-rate-limit.service.ts`
+  - `src/v2/ai-chat/events/ai-chat-events.ts`
+  - `src/v2/ai-chat/services/*.spec.ts`
+  - `src/v2/ai-chat/ai-chat.module.ts`
+- 변경 내용:
+  - in-memory job map을 `AiChatJobRegistryService`로 이동
+  - 사용자/IP rate limit tracking과 cleanup을 `AiChatRateLimitService`로 이동
+  - gateway cleanup cron은 service 결과를 받아 timeout event를 emit하는 역할만 유지
+  - socket event 이름과 일부 payload 타입을 `events/ai-chat-events.ts`로 분리
+  - job registry/rate limit 단위 테스트 추가
+- Before/After:
+  - `ai-chat.gateway.ts`: 740줄 -> 567줄
+  - unit test: 5 suites/19 tests -> 7 suites/25 tests
+- 포트폴리오 평가 포인트:
+  - socket adapter 역할과 in-memory 정책 상태를 분리해 rate limit/job lifecycle을 독립 테스트 가능한 단위로 만들었다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - `src/v2/ai-chat/services/ai-chat-rate-limit.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-job-registry.service.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - WebSocket event 이름과 payload shape 유지
+  - event 이름은 상수로 이동
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 7 suites, 25 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - job registry는 기존 동작 보존을 위해 여전히 실제 등록 호출이 없다. acknowledge 기반 실행 플로우를 복구하려면 별도 요구사항 확인이 필요하다.
+  - in-memory rate limit은 multi-instance 배포에서 인스턴스별로 분리된다.
+- 다음 단계:
+  - Step 6에서 spreadsheet versioning, editLockVersion conflict, rollback 관련 테스트를 추가한다.
+- 관련 커밋/PR:
+  - `aa8c64d refactor: AI 채팅 게이트웨이 상태 분리`
+
+## Step 6. Sheet versioning 테스트 추가
+
+- 상태: 완료
+- 브랜치: `backend/refactor-006-sheet-versioning-tests`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - spreadsheet create/addVersion/load/rename/rollback 흐름의 DB 호출 계약과 낙관적 잠금 충돌 처리를 회귀 테스트로 고정한다.
+- 기존 문제:
+  - `TableDataJsonSaveService`는 핵심 versioning 로직을 갖고 있지만 테스트가 없었다.
+  - `$transaction` callback mock이 없어 create/addVersion처럼 transaction 내부에서 여러 delegate를 호출하는 코드를 검증하기 어려웠다.
+  - rollback은 parent branch와 sheet editLockVersion을 함께 바꾸지만 성공/실패 케이스 테스트가 없었다.
+- 설계 판단:
+  - 실제 DB 대신 Prisma mock transaction helper로 service-level DB 호출 계약을 검증했다.
+  - e2e DB 테스트는 환경 의존성이 크므로 이번 단계에서는 unit test로 versioning 분기와 Prisma 호출 shape를 먼저 고정했다.
+- 대안과 트레이드오프:
+  - test DB를 띄워 transaction rollback까지 검증할 수 있지만, 현재 CI/로컬 기준선에서는 DB가 없으면 e2e가 실패한다. 우선 mock 기반 회귀 테스트를 추가했다.
+  - controller 테스트보다 service 테스트를 선택했다. versioning 위험은 DTO validation보다 service transaction 순서와 lock 조건에 더 집중되어 있기 때문이다.
+- 수정한 주요 파일:
+  - `test/prisma-service.mock.ts`
+  - `src/v2/sheet/_table-data-json-save/table-data-json-save.service.spec.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.spec.ts`
+- 변경 내용:
+  - Prisma `$transaction` callback helper 추가
+  - spreadsheet 최초 생성 시 초기 version/chat/headVersionId 업데이트 검증
+  - addVersion parentId/headVersionId/editLockVersion increment 검증
+  - Prisma `P2025` stale lock을 `ConflictException`으로 매핑하는 케이스 검증
+  - load/rename ownership 흐름 검증
+  - rollback parent branch 이동과 spreadsheet editLockVersion increment 검증
+- Before/After:
+  - unit test: 7 suites/25 tests -> 9 suites/33 tests
+- 포트폴리오 평가 포인트:
+  - versioning과 rollback의 DB write 순서, optimistic lock 조건, 실패 매핑을 테스트로 문서화했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/sheet/_table-data-json-save/table-data-json-save.service.spec.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.spec.ts`
+  - `test/prisma-service.mock.ts`
+- DB/Prisma 영향:
+  - schema 변경 없음
+  - production query 변경 없음
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+- 검증 결과:
+  - `npm run test`: 성공. 9 suites, 33 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+- 남은 리스크:
+  - mock transaction은 실제 DB rollback을 재현하지 않는다.
+  - `addNewVersionSpreadSheetData`는 새 version row 생성 후 optimistic lock update를 시도한다. 실제 DB transaction에서는 rollback되지만, 이 순서는 Step 7 repository/transaction 정리 때 다시 검토할 필요가 있다.
+- 다음 단계:
+  - Step 7에서 Prisma query를 repository 계층으로 분리하고 transaction client 전달 패턴을 정리한다.
+- 관련 커밋/PR:
+  - `f0a1c92 test: 시트 버전 관리 회귀 테스트 추가`
+
+## Step 7. Prisma repository 계층 도입
+
+- 상태: 완료
+- 브랜치: `backend/refactor-007-prisma-repositories`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - service use case와 Prisma delegate 호출을 분리해 transaction 안에서 어떤 query가 실행되는지 repository 경계로 모은다.
+- 기존 문제:
+  - `TableDataJsonSaveService`, `AiChatBranchService`, `AiChatMessageService`가 Prisma delegate shape를 직접 들고 있었다.
+  - transaction client를 넘기는 패턴이 service 내부 `tx.*` 호출로 퍼져 있어 query 위치와 use case 판단이 섞였다.
+- 설계 판단:
+  - Step 6에서 테스트로 고정한 sheet versioning/rollback/message 저장 경로부터 repository로 이동했다.
+  - transaction 순서와 예외 매핑은 service에 남기고, Prisma 호출 shape만 repository가 소유하게 했다.
+  - `AiChatSpreadsheetContextService` read-only context load와 `AiChatUserService` user auto-create는 다음 repository 확장 범위로 남겼다.
+- 대안과 트레이드오프:
+  - 모든 Prisma 호출을 한 번에 repository로 이동할 수도 있지만, schema-converter까지 포함하면 리뷰 범위가 커져 회귀 원인 추적이 어려워진다.
+  - repository가 transaction을 완전히 숨길 수도 있지만, 현재 use case에서는 transaction 안의 실행 순서가 중요해 service에 orchestration을 남겼다.
+- 수정한 주요 파일:
+  - `src/v2/sheet/repositories/spreadsheet.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-branch.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-message.repository.ts`
+  - `src/v2/sheet/_table-data-json-save/table-data-json-save.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-branch.service.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - 관련 module/spec 파일
+- 변경 내용:
+  - spreadsheet create/version/head update/load/history/rename query를 `SpreadsheetRepository`로 이동
+  - chat/session/branch/rollback query를 `AiChatBranchRepository`로 이동
+  - chat/message 저장과 owned chat 조회를 `AiChatMessageRepository`로 이동
+  - repository provider를 `AiChatModule`, `TableDataJsonSaveModule`에 등록
+  - 기존 service 테스트는 실제 repository 인스턴스와 Prisma mock을 같이 사용하도록 조정
+- Before/After:
+  - `table-data-json-save.service.ts`: 384줄 -> 311줄
+  - 신규 repository: 3개, 총 388줄
+  - unit test 수: 9 suites/33 tests 유지
+- 포트폴리오 평가 포인트:
+  - transaction orchestration과 Prisma delegate 호출 책임을 분리해 repository 단위 확장과 query 검토가 가능해졌다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/sheet/repositories/spreadsheet.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-branch.repository.ts`
+  - `src/v2/ai-chat/repositories/ai-chat-message.repository.ts`
+- DB/Prisma 영향:
+  - schema 변경 없음
+  - query shape는 기존 테스트 기준으로 유지
+- API/WebSocket 영향:
+  - 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 성공. 9 suites, 33 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+- 남은 리스크:
+  - `AiChatUserService`, `AiChatSpreadsheetContextService`, schema-converter 서비스에는 Prisma 직접 호출이 남아 있다.
+  - repository client 타입은 아직 `any`를 포함한다. Prisma transaction client 타입 정리는 strict TS 강화 단계에서 이어간다.
+- 다음 단계:
+  - Step 8에서 반복된 LLM model 생성 로직을 factory로 통합한다.
+- 관련 커밋/PR:
+  - `3d403de refactor: Prisma repository 경계 도입`
+
+## Step 8. LLM model factory 통합
+
+- 상태: 완료
+- 브랜치: `backend/refactor-008-llm-model-factory`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - `ChatGoogleGenerativeAI` 생성 로직을 factory로 통합해 모델 alias, 기본 옵션, use-case override를 한 곳에서 관리한다.
+- 기존 문제:
+  - `AiAgentService`, `MappingService`, `MappingScriptMakerService`, `MultiturnChattingService`가 각각 `GOOGLE_API_KEY`와 모델 옵션을 반복해서 읽었다.
+  - Extion alias와 실제 Gemini model name 매핑이 서비스마다 코드로 흩어져 있었다.
+- 설계 판단:
+  - `LlmModelFactoryService`는 alias 기본값을 제공하고, mapping/script/multiturn처럼 temperature/max token/retry가 다른 경우 override를 받게 했다.
+  - 기존 model name, temperature, token, retry 값은 변경하지 않았다.
+  - factory config는 순수 함수 `resolveLlmModelConfig`로 분리해 API key 없이 단위 테스트했다.
+- 대안과 트레이드오프:
+  - 모델 인스턴스를 singleton cache로 공유할 수도 있지만, LangChain model 객체의 상태/옵션 변경 가능성을 검토하지 않았으므로 이번 단계에서는 생성 경계만 통합했다.
+  - 모델 옵션을 env로 모두 빼는 방법도 있지만 운영 설정 surface가 커져 alias 기반 코드 config를 먼저 선택했다.
+- 수정한 주요 파일:
+  - `src/v2/ai-agent/model/llm-model-factory.service.ts`
+  - `src/v2/ai-agent/model/llm-model-factory.service.spec.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/schema-converter/mapping/*.service.ts`
+  - 관련 module 파일
+- 변경 내용:
+  - `LlmModelAlias`와 alias별 기본 모델 설정 추가
+  - `AiAgentModule`에서 factory provider export
+  - schema-converter/mapping 모듈에서 factory provider import
+  - 기존 서비스의 `new ChatGoogleGenerativeAI` 직접 생성 제거
+- Before/After:
+  - `new ChatGoogleGenerativeAI`: 16곳 -> 1곳
+  - unit test: 9 suites/33 tests -> 10 suites/36 tests
+- 포트폴리오 평가 포인트:
+  - AI provider 설정을 한 경계로 모아 테스트 가능한 model alias 계약을 만들었다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-agent/model/llm-model-factory.service.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/schema-converter/mapping/mapping.service.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - 없음
+  - AI model option 값은 기존과 동일하게 유지
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 성공. 10 suites, 36 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+- 남은 리스크:
+  - factory는 아직 Google provider 전용이다. Anthropic/OpenAI provider 추상화는 실제 사용처가 정리된 뒤 다루는 편이 안전하다.
+  - model instance caching은 하지 않았다.
+- 다음 단계:
+  - Step 9에서 error payload와 logging 정책을 정리한다.
+- 관련 커밋/PR:
+  - `262bfdc refactor: LLM 모델 factory 통합`
+
+## Step 9. Error와 observability 정리
+
+- 상태: 완료
+- 브랜치: `backend/refactor-009-error-observability`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - REST exception response와 WebSocket error payload 생성 방식을 공통 helper로 정리하고, 에러 코드 매핑을 테스트로 고정한다.
+- 기존 문제:
+  - REST 전역 exception filter가 없어 Nest 기본 error shape에 의존했다.
+  - WebSocket gateway error payload에 timestamp 생성과 code/message 구성이 반복되어 있었다.
+  - HTTP status와 app error code 매핑을 테스트할 경계가 없었다.
+- 설계 판단:
+  - REST는 `HttpExceptionFilter`를 전역 등록해 `{ success:false, statusCode, code, message, timestamp, path }` shape로 통일했다.
+  - production unknown error는 내부 message를 숨기고 `INTERNAL_SERVER_ERROR`로 응답하게 했다.
+  - WebSocket은 event 이름/shape를 유지하면서 `createSocketErrorPayload`로 timestamp 생성을 통일했다.
+- 대안과 트레이드오프:
+  - 모든 서비스 exception을 custom domain error로 바꿀 수도 있지만, 변경 범위가 커서 이번 단계에서는 filter mapping부터 도입했다.
+  - WebSocket error code enum 강제는 프론트 계약 확인이 필요해 기존 string code를 유지했다.
+- 수정한 주요 파일:
+  - `src/common/errors/error-code.ts`
+  - `src/common/errors/http-error-response.ts`
+  - `src/common/errors/http-exception.filter.ts`
+  - `src/common/errors/socket-error-payload.ts`
+  - `src/main.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - 관련 spec 파일
+- 변경 내용:
+  - HTTP status -> app error code mapping 추가
+  - REST global exception filter 등록
+  - HTTP error response builder와 socket error payload helper 추가
+  - gateway error emit에 socket helper 적용
+  - error helper 단위 테스트 추가
+- Before/After:
+  - unit test: 10 suites/36 tests -> 12 suites/41 tests
+- 포트폴리오 평가 포인트:
+  - 운영에서 숨겨야 할 unknown error와 클라이언트가 처리할 code/timestamp 계약을 분리했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/common/errors/http-exception.filter.ts`
+  - `src/common/errors/http-error-response.ts`
+  - `src/common/errors/socket-error-payload.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - REST error response shape 변경 있음
+  - WebSocket error event 이름과 기존 code/message 값은 유지, timestamp는 helper에서 기본 생성
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run build`
+  - `npm run test`
+  - `npm run test:e2e`
+- 검증 결과:
+  - `npm run build`: 성공
+  - `npm run test`: 성공. 12 suites, 41 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+- 남은 리스크:
+  - REST error shape 변경은 프론트 에러 처리와 맞춰 확인해야 한다.
+  - service별 domain error code 세분화는 아직 하지 않았다.
+- 다음 단계:
+  - Step 10에서 legacy dead code, debug log, 미사용 주석 코드를 정리하고 전체 회귀 검증을 실행한다.
+- 관련 커밋/PR:
+  - `b79658d feat: 에러 응답과 관측성 경계 정리`
+
+## Step 10. Legacy cleanup
+
+- 상태: 완료
+- 브랜치: `backend/refactor-010-legacy-cleanup`
+- 작업 기간: 2026-06-14 ~ 2026-06-14
+- 목적:
+  - 주석 처리된 dead code, 임시 debug log, 원문 LLM 출력 로그를 제거해 운영 로그와 리뷰 표면을 정리한다.
+- 기존 문제:
+  - `ai-chat.controller.ts`는 전체가 주석 처리된 legacy REST controller였고 module에서도 주석 import/controller 흔적이 남아 있었다.
+  - AI agent/schema-converter runnable에 `console.log('DEBUG...')`가 남아 LLM 원문 출력 일부가 로그로 노출될 수 있었다.
+  - 일부 service에는 디버그 목적의 상세 branch/version 로그가 운영 Logger에 남아 있었다.
+- 설계 판단:
+  - 공개 API/WebSocket 계약 변경 없이 참조되지 않는 파일과 로그만 제거했다.
+  - 실패 원인 파악에 필요한 AI agent 에러는 Nest `Logger`의 요약 로그로 남기고, prompt/context 원문은 남기지 않았다.
+  - lint 설정 복구는 기존 코드 전반의 대량 오류를 동반하므로 이번 cleanup 커밋 범위에서 제외하고 별도 후속 debt로 분리했다.
+- 대안과 트레이드오프:
+  - 모든 Logger 호출을 구조화 로그 정책으로 바꿀 수도 있지만, 변경 범위가 gateway/service 전반으로 커져 dead code cleanup과 분리했다.
+  - ESLint config를 바로 복구할 수도 있지만, 기존 코드 전반에서 2,219건의 문제가 드러나 이번 리팩토링 검증 범위를 크게 넘는다.
+- 수정한 주요 파일:
+  - `src/v2/ai-chat/ai-chat.controller.ts`
+  - `src/v2/ai-chat/ai-chat.module.ts`
+  - `src/v2/ai-chat/ai-chat.gateway.ts`
+  - `src/v2/ai-chat/services/ai-chat-message.service.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/ai-agent/runnables/*`
+  - `src/v2/schema-converter/mapping/mapping-agent/runnable/*`
+- 변경 내용:
+  - 주석 처리된 legacy `AiChatController` 파일 삭제
+  - module의 주석 처리 controller/import 제거
+  - AI agent task/file name runner의 raw debug output 제거
+  - schema-converter mapping runner의 raw LLM output/snippet debug log 제거
+  - chat message branch/version 저장 경로의 임시 debug log 제거
+  - gateway의 임시 운영 제거 예정 주석 제거
+- Before/After:
+  - `rg "console\\.|DEBUG|프로덕션에서는 지울 예정|AiChatController" src/v2 src/common`: cleanup 전 다수 검출 -> cleanup 후 검출 없음
+  - legacy controller 파일: 주석 코드 169줄 -> 삭제
+- 포트폴리오 평가 포인트:
+  - 운영 로그에 민감할 수 있는 AI 원문 출력이 남지 않도록 하고, 리팩토링 후 남은 dead code를 제거했다.
+- 리뷰어가 먼저 볼 파일:
+  - `src/v2/ai-chat/ai-chat.module.ts`
+  - `src/v2/ai-agent/ai-agent.service.ts`
+  - `src/v2/schema-converter/mapping/mapping-agent/runnable/mappingScriptMaker.runable.ts`
+- DB/Prisma 영향:
+  - 없음
+- API/WebSocket 영향:
+  - API/WebSocket payload shape 변경 없음
+  - 삭제한 controller는 module에 등록되지 않은 주석 처리 legacy 파일이라 runtime route 영향 없음
+- 검증:
+  - 실행 디렉터리: `/Users/jihong/Documents/EXTION/EXTION-server`
+  - `npm run test`
+  - `npm run test:e2e`
+  - `npm run build`
+  - `npm run lint`
+  - `rg "console\\.|DEBUG|프로덕션에서는 지울 예정|ai-chat.controller|AiChatController" src/v2 src/common -n`
+- 검증 결과:
+  - `npm run test`: 성공. 12 suites, 41 tests 통과
+  - `npm run test:e2e`: 성공. 1 suite, 1 test 통과
+  - `npm run build`: 성공
+  - `rg ...`: 성공. 검출 없음
+  - `npm run lint`: 실패. 기존 `eslint.config.mjs`가 전체 주석 처리된 빈 config라 ESLint가 TS 파일을 모두 ignored 처리함. 임시로 주석 설정을 켜 확인한 결과 기존 코드 전반에서 2,219 problems가 발생해 별도 lint 복구 작업으로 분리해야 함.
+- 남은 리스크:
+  - ESLint 설정은 아직 복구되지 않았다.
+  - 운영 로그 표준화는 raw debug 제거까지만 완료했고, 모든 Logger message schema 통일은 후속 작업이다.
+- 다음 단계:
+  - 백엔드 1차 리팩토링 완료. 후속으로 프론트 에러 계약 확인과 ESLint 설정 복구를 별도 브랜치에서 진행한다.
+- 관련 커밋/PR:
+  - `50269b7 chore: 백엔드 legacy 정리`

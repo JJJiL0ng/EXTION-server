@@ -1,5 +1,44 @@
 <div align="center">
 
+# Backend Refactoring Sprint Note
+
+주말과 여유 시간을 활용해 진행한 EXTION 백엔드 집중 리팩토링 기록입니다. 아래의 기존 `main` README는 서비스/포트폴리오 소개 문서로 유지하고, 이 섹션에는 `refactor` 브랜치에서 정리한 구조 개선 내용을 추가로 남깁니다.
+
+</div>
+
+## 리팩토링 요약
+
+- 작업 브랜치: `backend/refactor-001-*` ~ `backend/refactor-010-*`
+- 병합 흐름: `refactor` -> `dev` -> `main`
+- 상세 기록: [docs/refactoring/backend-step.md](docs/refactoring/backend-step.md)
+- 목표: 기존 동작을 유지하면서 service/gateway/repository/LLM/error 경계를 나누고 테스트 가능한 구조로 정리
+
+| 영역 | 정리 내용 |
+| --- | --- |
+| 테스트 기준선 | 기존 build/test/e2e 상태와 실패 원인을 먼저 기록 |
+| 테스트 인프라 | Jest alias, Prisma mock, e2e override 정리 |
+| 설정 | env validation, CORS, payload limit helper 추가 |
+| AI 채팅 | `AiChatService` facade화, message/branch/context service 분리 |
+| WebSocket | job registry, rate limit, event name 경계 분리 |
+| 버전 관리 | sheet versioning, rollback 회귀 테스트 추가 |
+| Prisma | repository 계층 도입으로 query 경계 분리 |
+| LLM | Gemini/Extion model 생성 로직을 factory로 통합 |
+| 에러 처리 | REST exception filter와 socket error payload helper 추가 |
+| cleanup | 주석 처리 controller, raw debug log, dead code 제거 |
+
+## 리팩토링 검증 결과
+
+`refactor` 기준 최종 확인:
+
+- `npm run test`: 성공, 12 suites / 41 tests
+- `npm run test:e2e`: 성공, 1 suite / 1 test
+- `npm run build`: 성공
+- `npm run lint`: 기존 `eslint.config.mjs`가 빈 config라 실패. lint 복구는 별도 후속 작업으로 분리
+
+---
+
+<div align="center">
+
 #  Extion AI - Backend Server
 
 <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
@@ -33,11 +72,11 @@
   - 데이터 가공 및 정렬
   - 함수 자동 적용
   - 패턴 기반 데이터 처리
-  
+
 -  **Sheet Mapping Automation**: 두 시트 간 스크립트 기반 자동 매핑
-  
+
 -  **Global Service**: 국내 50+ / 해외 70+ 활성 사용자
-  
+
 -  **Production-Ready**: Railway 배포 및 실시간 서비스 운영 (2025.06 - 2025.10)
 
 ---
