@@ -1,111 +1,305 @@
-# EXTION Server
+<div align="center">
 
-AI 기반 스프레드시트 작업을 처리하는 EXTION의 NestJS 백엔드입니다. 프론트엔드의 시트 편집 화면, AI 채팅, 스키마 변환 플로우를 위해 REST API, WebSocket gateway, Prisma 기반 버전 관리, LLM 실행 경계를 제공합니다.
+# Backend Refactoring Sprint Note
 
-## 역할
+주말과 여유 시간을 활용해 진행한 EXTION 백엔드 집중 리팩토링 기록입니다. 아래의 기존 `main` README는 서비스/포트폴리오 소개 문서로 유지하고, 이 섹션에는 `refactor` 브랜치에서 정리한 구조 개선 내용을 추가로 남깁니다.
 
-- 사용자/게스트 세션 생성과 초대 코드 흐름 지원
-- 스프레드시트 JSON 데이터 저장, 버전 생성, rollback, 파일명 변경
-- Socket.IO 기반 AI 채팅 job lifecycle 처리
-- LangChain/Gemini 기반 task routing, 데이터 편집 명령 생성, 파일명 생성
-- source/target spreadsheet를 이용한 schema mapping script 생성과 multiturn 수정
-- 운영 설정 검증, CORS/payload limit, REST/WebSocket error payload 정리
+</div>
 
-## 집중 리팩토링 스프린트
+## 리팩토링 요약
 
-이 저장소의 `refactor` 브랜치는 개인 주말/여유 시간에 진행한 집중 리팩토링 스프린트 결과입니다. 단순히 기능을 추가하는 대신, 기존 동작을 유지하면서 서버 코드를 리뷰 가능한 단위로 나누고 테스트 가능한 경계를 만드는 데 초점을 뒀습니다.
+- 작업 브랜치: `backend/refactor-001-*` ~ `backend/refactor-010-*`
+- 병합 흐름: `refactor` -> `dev` -> `main`
+- 상세 기록: [docs/refactoring/backend-step.md](docs/refactoring/backend-step.md)
+- 목표: 기존 동작을 유지하면서 service/gateway/repository/LLM/error 경계를 나누고 테스트 가능한 구조로 정리
 
-작업은 `backend/refactor-001-*`부터 `backend/refactor-010-*`까지 단계별 브랜치로 분리했고, 각 단계의 의도와 검증 결과는 [docs/refactoring/backend-step.md](docs/refactoring/backend-step.md)에 기록했습니다.
+| 영역 | 정리 내용 |
+| --- | --- |
+| 테스트 기준선 | 기존 build/test/e2e 상태와 실패 원인을 먼저 기록 |
+| 테스트 인프라 | Jest alias, Prisma mock, e2e override 정리 |
+| 설정 | env validation, CORS, payload limit helper 추가 |
+| AI 채팅 | `AiChatService` facade화, message/branch/context service 분리 |
+| WebSocket | job registry, rate limit, event name 경계 분리 |
+| 버전 관리 | sheet versioning, rollback 회귀 테스트 추가 |
+| Prisma | repository 계층 도입으로 query 경계 분리 |
+| LLM | Gemini/Extion model 생성 로직을 factory로 통합 |
+| 에러 처리 | REST exception filter와 socket error payload helper 추가 |
+| cleanup | 주석 처리 controller, raw debug log, dead code 제거 |
 
-| Step | 주제 | 핵심 결과 |
-| --- | --- | --- |
-| 1 | 테스트 기준선 | 기존 build/test/e2e 상태와 실패 원인 기록 |
-| 2 | 테스트 fixture | Jest alias, Prisma mock, e2e override 정리 |
-| 3 | env/config | 필수 env 검증, CORS/payload helper 분리 |
-| 4 | AiChatService | message/branch/spreadsheet context 책임 분리 |
-| 5 | AiChatGateway | job registry, rate limit, event name 경계 분리 |
-| 6 | versioning tests | sheet versioning과 rollback 회귀 테스트 추가 |
-| 7 | repository | Prisma query 경계를 repository로 분리 |
-| 8 | LLM factory | Gemini/Extion model 생성 로직을 factory로 통합 |
-| 9 | error/observability | REST exception filter와 socket error payload 정리 |
-| 10 | legacy cleanup | 주석 처리 controller, raw debug log, dead code 제거 |
+## 리팩토링 검증 결과
 
-## 현재 구조
-
-```text
-src/common/config       env validation, CORS, payload limit helper
-src/common/errors       REST/WebSocket error response helper
-src/v2/ai-agent         LLM model factory, task manager, data edit runners
-src/v2/ai-chat          WebSocket gateway, chat facade, branch/message services
-src/v2/sheet            spreadsheet JSON 저장, versioning, repository
-src/v2/schema-converter schema mapping, mapping script, multiturn editing
-src/v2/user             guest/user creation
-test                    e2e setup, Prisma mock factory
-docs/refactoring        리팩토링 기록
-```
-
-## 기술 스택
-
-- NestJS 11, TypeScript
-- Prisma 6, PostgreSQL
-- Socket.IO, `@nestjs/websockets`
-- LangChain, Google Gemini
-- Jest, Supertest
-- Swagger, Helmet, Firebase Admin
-
-## 실행
-
-```bash
-npm install
-npm run db:generate
-npm run start:dev
-```
-
-기본 서버 포트는 `PORT` env 또는 `8080`입니다.
-
-## 주요 환경 변수
-
-```text
-DATABASE_URL=postgresql://...
-GOOGLE_API_KEY=...
-CORS_ORIGINS=http://localhost:3000,https://your-web-domain.com
-PORT=8080
-JSON_BODY_LIMIT=10mb
-URLENCODED_BODY_LIMIT=10mb
-```
-
-`NODE_ENV=test`에서는 unit/e2e 테스트가 외부 DB/API key 없이 부트스트랩될 수 있도록 필수 외부 env 검증을 완화합니다.
-
-## 검증
-
-`refactor` 브랜치 최종 검증 결과:
-
-```bash
-npm run test
-npm run test:e2e
-npm run build
-```
+`refactor` 기준 최종 확인:
 
 - `npm run test`: 성공, 12 suites / 41 tests
 - `npm run test:e2e`: 성공, 1 suite / 1 test
 - `npm run build`: 성공
+- `npm run lint`: 기존 `eslint.config.mjs`가 빈 config라 실패. lint 복구는 별도 후속 작업으로 분리
 
-현재 `npm run lint`는 기존 `eslint.config.mjs`가 전체 주석 처리된 빈 config라 실패합니다. 임시로 설정을 켜 확인했을 때 기존 코드 전반에서 대량의 lint 문제가 드러나므로, lint 복구는 별도 브랜치에서 다룰 후속 과제로 분리했습니다.
+---
 
-## 로컬 DB/배포 관련 명령
+<div align="center">
 
-```bash
-npm run db:push
-npm run db:migrate:dev
-npm run db:migrate:status
-npm run db:health
-npm run railway:build
-npm run railway:start
+#  Extion AI - Backend Server
+
+<img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
+<img src="https://img.shields.io/badge/NestJS-E0234E?style=for-the-badge&logo=nestjs&logoColor=white" />
+<img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
+<img src="https://img.shields.io/badge/Prisma-2D3748?style=for-the-badge&logo=prisma&logoColor=white" />
+<img src="https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white" />
+<img src="https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white" />
+
+### AI-Powered Excel Automation Platform
+
+*Repetitive Excel tasks automated with intelligent AI agents*
+
+[Website](https://www.extion.ai/) • [📂 Frontend Repo](https://github.com/JJJiL0ng/EXTION-web)
+
+---
+
+**🎯 120+ Global Users** • **🌍 Served in 15+ Countries** • **⚡ 4-Month Production Service**
+
+</div>
+
+---
+
+##  Overview
+
+**Extion AI**는 반복적인 엑셀 작업을 AI로 자동화하는 SaaS 플랫폼입니다. Google Gemini API와 LangChain을 활용한 지능형 에이전트가 데이터 가공, 정렬, 함수 적용 등을 자동으로 수행합니다.
+
+###  Key Features
+
+-  **AI Excel Agent**: 자연어로 엑셀 작업 자동화
+  - 데이터 가공 및 정렬
+  - 함수 자동 적용
+  - 패턴 기반 데이터 처리
+
+-  **Sheet Mapping Automation**: 두 시트 간 스크립트 기반 자동 매핑
+
+-  **Global Service**: 국내 50+ / 해외 70+ 활성 사용자
+
+-  **Production-Ready**: Railway 배포 및 실시간 서비스 운영 (2025.06 - 2025.10)
+
+---
+
+##  Architecture
+
+```
+┌─────────────────┐
+│   Next.js App   │
+│  (Vercel Host)  │
+└────────┬────────┘
+         │ REST API
+         ▼
+┌─────────────────┐      ┌──────────────────┐
+│  NestJS Server  │◄────►│   PostgreSQL     │
+│  (Railway Host) │      │  (Prisma ORM)    │
+└────────┬────────┘      └──────────────────┘
+         │
+         ▼
+┌─────────────────┐      ┌──────────────────┐
+│    LangChain    │◄────►│   Gemini API     │
+│   AI Pipeline   │      │  (GCP Service)   │
+└─────────────────┘      └──────────────────┘
 ```
 
-## 포트폴리오에서 볼 지점
+---
 
-- 큰 service/gateway 파일을 facade와 내부 service로 나누면서 public API/WebSocket 계약은 유지했습니다.
-- LLM 호출, DB transaction, socket job lifecycle, sheet versioning을 서로 다른 경계로 분리했습니다.
-- 실패한 기준선도 문서화하고, 각 단계에서 어떤 검증을 했는지 남겼습니다.
-- 운영 로그에 남을 수 있는 raw LLM output debug log를 제거했습니다.
+##  Tech Stack
+
+### Backend Framework
+- **NestJS**: Enterprise-grade Node.js framework
+- **TypeScript**: Type-safe development
+- **Prisma ORM**: Modern database toolkit
+
+### AI & Automation
+- **LangChain**: AI orchestration framework
+- **Google Gemini API**: Advanced language model
+- **Custom AI Agents**: Excel-specific automation logic
+
+### Database & Infrastructure
+- **PostgreSQL**: Robust relational database
+- **Railway**: Cloud deployment platform
+- **GCP**: Google Cloud Platform services
+
+---
+
+##  Project Structure
+
+```
+EXTION-server/
+├── src/
+│   ├── modules/
+│   │   ├── auth/           # JWT 인증 및 사용자 관리
+│   │   ├── excel/          # 엑셀 파일 처리 로직
+│   │   ├── ai-agent/       # LangChain AI 에이전트
+│   │   ├── mapping/        # 시트 매핑 자동화
+│   │   └── file/           # 파일 업로드/다운로드
+│   ├── common/             # 공통 유틸리티 및 필터
+│   ├── config/             # 환경 설정
+│   └── main.ts             # 애플리케이션 엔트리 포인트
+├── prisma/
+│   ├── schema.prisma       # 데이터베이스 스키마
+│   └── migrations/         # DB 마이그레이션
+├── test/                   # E2E 테스트
+└── scripts/                # 배포 및 유틸리티 스크립트
+```
+
+---
+
+##  Getting Started
+
+### Prerequisites
+
+```bash
+node >= 18.0.0
+npm >= 9.0.0
+PostgreSQL >= 14
+```
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/JJJiL0ng/EXTION-server.git
+cd EXTION-server
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your configuration
+
+# Run database migrations
+npx prisma migrate dev
+
+# Generate Prisma Client
+npx prisma generate
+```
+
+### Environment Variables
+
+```env
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/extion"
+
+# Authentication
+JWT_SECRET="your-super-secret-jwt-key"
+JWT_EXPIRES_IN="7d"
+
+# AI Services
+GEMINI_API_KEY="your-gemini-api-key"
+
+# Server
+PORT=3000
+NODE_ENV="development"
+
+# CORS (for production)
+FRONTEND_URL="https://your-frontend-url.com"
+```
+
+### Development
+
+```bash
+# Development mode with hot-reload
+npm run start:dev
+
+# Production build
+npm run build
+
+# Production mode
+npm run start:prod
+```
+
+### Testing
+
+```bash
+# Unit tests
+npm run test
+
+# E2E tests
+npm run test:e2e
+
+# Test coverage
+npm run test:cov
+```
+
+---
+
+##  Key Technical Achievements
+
+### 1. **AI-Powered Automation Engine**
+LangChain과 Gemini API를 활용한 지능형 엑셀 자동화 파이프라인 구축
+- 자연어 명령을 실행 가능한 엑셀 작업으로 변환
+- 컨텍스트 기반 데이터 처리 로직 자동 생성
+
+### 2. **Scalable Microservices Architecture**
+모듈식 NestJS 아키텍처로 확장 가능한 백엔드 구조 설계
+- 각 기능별 독립적인 모듈 구성
+- Prisma ORM을 통한 효율적인 데이터베이스 관리
+
+### 3. **Global User Base**
+4개월간 120+ 글로벌 사용자에게 안정적인 서비스 제공
+- 국내 50+ 사용자
+- 해외 70+ 사용자 (미국, 유럽, 아시아 등)
+
+### 4. **Production Deployment**
+Railway 플랫폼을 활용한 CI/CD 파이프라인 구축
+- 자동 배포 및 모니터링
+- Zero-downtime deployment
+
+---
+
+##  Security Features
+
+- **JWT Authentication**: 토큰 기반 인증 시스템
+- **Password Hashing**: bcrypt를 이용한 안전한 비밀번호 저장
+- **CORS Protection**: 프론트엔드 도메인 화이트리스트
+- **Rate Limiting**: API 요청 제한으로 DDoS 방어
+- **Input Validation**: DTO 기반 요청 데이터 검증
+
+---
+
+##  Performance Optimization
+
+- **Database Indexing**: 주요 쿼리 성능 최적화
+- **Caching Strategy**: 자주 사용되는 데이터 캐싱
+- **Async Processing**: 대용량 파일 처리 시 비동기 작업 큐 활용
+- **Connection Pooling**: 데이터베이스 연결 풀 관리
+
+---
+
+##  Contributing
+
+This is a portfolio project and is not actively maintained. However, feedback and suggestions are welcome!
+
+---
+
+##  License
+
+This project is licensed under the MIT License.
+
+---
+
+##  Developer
+
+**LEE JIHONG**
+
+- GitHub: [@JJJiL0ng](https://github.com/JJJiL0ng)
+- Portfolio: [Extion AI](https://www.extion.ai/)
+
+---
+
+##  Project Status
+
+>  **Note**: This service was operational from June 2025 to October 2025 and is currently discontinued due to operational reasons. This repository is maintained for portfolio purposes.
+
+---
+
+<div align="center">
+
+**Built with using NestJS, TypeScript, and LCEL**
+
+ If you found this project interesting, please consider giving it a star!
+
+</div>
